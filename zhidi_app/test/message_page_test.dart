@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -125,6 +126,32 @@ void main() {
     expect(find.text('标记失败，请稍后重试'), findsOneWidget);
   });
 
+  testWidgets('one page-wide lock prevents distinct rows stacking routes', (
+    tester,
+  ) async {
+    final seeded = _state();
+    final store = _DelayedStore(jsonEncode(seeded.toJson()));
+    final state = OwnerAppState.memory(store: store);
+    await tester.pumpWidget(_app(state));
+
+    await tester.tap(find.text('张师傅'));
+    await tester.pump();
+    await tester.tap(find.text('订单助手'));
+    await tester.pump();
+
+    expect(store.writeCount, 1);
+    store.completeWrite();
+    await tester.pumpAndSettle();
+    expect(find.byType(TextField), findsWidgets);
+    expect(find.text('通知详情'), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('订单助手'), findsOneWidget);
+    expect(find.text('通知详情'), findsNothing);
+    expect(store.writeCount, 1);
+  });
+
   testWidgets('bottom message badge follows app unread state', (tester) async {
     final state = _state();
     await tester.pumpWidget(
@@ -151,4 +178,23 @@ class _FailingStore implements OwnerKeyValueStore {
   @override
   Future<void> setString(String key, String value) =>
       Future<void>.error(StateError('disk full'));
+}
+
+class _DelayedStore implements OwnerKeyValueStore {
+  _DelayedStore(this.value);
+  String value;
+  int writeCount = 0;
+  final _write = Completer<void>();
+
+  @override
+  String? getString(String key) => value;
+
+  @override
+  Future<void> setString(String key, String value) {
+    writeCount += 1;
+    this.value = value;
+    return _write.future;
+  }
+
+  void completeWrite() => _write.complete();
 }

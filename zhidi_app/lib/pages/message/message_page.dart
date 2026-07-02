@@ -18,7 +18,7 @@ class _MessagePageState extends State<MessagePage> {
   String? _category;
   bool _unreadOnly = false;
   bool _markingAll = false;
-  final Set<String> _opening = <String>{};
+  String? _openingMessageId;
 
   static const _categories = <_Category>[
     _Category('系统通知', Icons.campaign_outlined, {'系统'}),
@@ -78,8 +78,8 @@ class _MessagePageState extends State<MessagePage> {
   }
 
   Future<void> _open(OwnerMessage message) async {
-    if (!_opening.add(message.id)) return;
-    setState(() {});
+    if (_openingMessageId != null) return;
+    setState(() => _openingMessageId = message.id);
     try {
       await OwnerAppScope.of(context).markMessageRead(message.id);
       if (!mounted) return;
@@ -98,8 +98,7 @@ class _MessagePageState extends State<MessagePage> {
         ).showSnackBar(const SnackBar(content: Text('消息状态保存失败，请重试')));
       }
     } finally {
-      _opening.remove(message.id);
-      if (mounted) setState(() {});
+      if (mounted) setState(() => _openingMessageId = null);
     }
   }
 
@@ -269,11 +268,12 @@ class _MessagePageState extends State<MessagePage> {
   );
 
   Widget _messageRow(OwnerMessage message) {
-    final busy = _opening.contains(message.id);
+    final pageBusy = _openingMessageId != null;
+    final busy = _openingMessageId == message.id;
     return Material(
       color: Colors.white,
       child: InkWell(
-        onTap: busy ? null : () => _open(message),
+        onTap: pageBusy ? null : () => _open(message),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(
