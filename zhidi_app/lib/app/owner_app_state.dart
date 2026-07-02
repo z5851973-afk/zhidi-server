@@ -35,6 +35,7 @@ class OwnerAppState extends ChangeNotifier {
     required OwnerProfile profile,
     required List<OwnerAddress> addresses,
     required List<OwnerProject> projects,
+    required String? selectedProjectId,
     required List<OwnerReminder> reminders,
     required List<OwnerMessage> messages,
     required List<FavoriteWorker> favoriteWorkers,
@@ -51,6 +52,8 @@ class OwnerAppState extends ChangeNotifier {
        _addresses = addresses,
        // ignore: prefer_initializing_formals
        _projects = projects,
+       // ignore: prefer_initializing_formals
+       _selectedProjectId = selectedProjectId,
        // ignore: prefer_initializing_formals
        _reminders = reminders,
        // ignore: prefer_initializing_formals
@@ -73,6 +76,7 @@ class OwnerAppState extends ChangeNotifier {
   OwnerProfile _profile;
   List<OwnerAddress> _addresses;
   List<OwnerProject> _projects;
+  String? _selectedProjectId;
   List<OwnerReminder> _reminders;
   List<OwnerMessage> _messages;
   List<FavoriteWorker> _favoriteWorkers;
@@ -86,6 +90,15 @@ class OwnerAppState extends ChangeNotifier {
   String get profileName => _profile.name;
   List<OwnerAddress> get addresses => List.unmodifiable(_addresses);
   List<OwnerProject> get projects => List.unmodifiable(_projects);
+  String? get selectedProjectId => _selectedProjectId;
+  OwnerProject? get selectedProject {
+    if (_projects.isEmpty) return null;
+    return _projects.firstWhere(
+      (project) => project.id == _selectedProjectId,
+      orElse: () => _projects.first,
+    );
+  }
+
   List<OwnerReminder> get reminders => List.unmodifiable(_reminders);
   List<OwnerMessage> get messages => List.unmodifiable(_messages);
   List<FavoriteWorker> get favoriteWorkers =>
@@ -132,6 +145,8 @@ class OwnerAppState extends ChangeNotifier {
         (json[key] as List<dynamic>? ?? const [])
             .map((value) => decode(Map<String, dynamic>.from(value as Map)))
             .toList();
+    final projects = read('projects', OwnerProject.fromJson);
+    final storedSelectedProjectId = json['selectedProjectId'] as String?;
     return OwnerAppState._(
       store: store,
       ready: true,
@@ -139,7 +154,11 @@ class OwnerAppState extends ChangeNotifier {
         Map<String, dynamic>.from(json['profile'] as Map),
       ),
       addresses: _normalizeAddresses(read('addresses', OwnerAddress.fromJson)),
-      projects: read('projects', OwnerProject.fromJson),
+      projects: projects,
+      selectedProjectId:
+          projects.any((project) => project.id == storedSelectedProjectId)
+          ? storedSelectedProjectId
+          : (projects.isEmpty ? null : projects.first.id),
       reminders: read('reminders', OwnerReminder.fromJson),
       messages: read('messages', OwnerMessage.fromJson),
       favoriteWorkers: read('favoriteWorkers', FavoriteWorker.fromJson),
@@ -179,6 +198,7 @@ class OwnerAppState extends ChangeNotifier {
         startDate: DateTime(2026, 6, 18),
       ),
     ],
+    selectedProjectId: 'project-1',
     reminders: [
       OwnerReminder(
         id: 'reminder-1',
@@ -228,6 +248,7 @@ class OwnerAppState extends ChangeNotifier {
     'profile': _profile.toJson(),
     'addresses': _addresses.map((item) => item.toJson()).toList(),
     'projects': _projects.map((item) => item.toJson()).toList(),
+    'selectedProjectId': _selectedProjectId,
     'reminders': _reminders.map((item) => item.toJson()).toList(),
     'messages': _messages.map((item) => item.toJson()).toList(),
     'favoriteWorkers': _favoriteWorkers.map((item) => item.toJson()).toList(),
@@ -248,6 +269,7 @@ class OwnerAppState extends ChangeNotifier {
       _profile = restored._profile;
       _addresses = restored._addresses;
       _projects = restored._projects;
+      _selectedProjectId = restored._selectedProjectId;
       _reminders = restored._reminders;
       _messages = restored._messages;
       _favoriteWorkers = restored._favoriteWorkers;
@@ -356,6 +378,23 @@ class OwnerAppState extends ChangeNotifier {
     final next = [..._reminders]
       ..[index] = _reminders[index].copyWith(isCompleted: true);
     return {...toJson(), 'reminders': next.map((e) => e.toJson()).toList()};
+  });
+
+  Future<void> selectProject(String id) => _mutate(() {
+    if (id == _selectedProjectId || !_projects.any((item) => item.id == id)) {
+      return null;
+    }
+    return {...toJson(), 'selectedProjectId': id};
+  });
+
+  Future<void> updateProject(OwnerProject value) => _mutate(() {
+    final index = _projects.indexWhere((item) => item.id == value.id);
+    if (index < 0 ||
+        jsonEncode(_projects[index].toJson()) == jsonEncode(value.toJson())) {
+      return null;
+    }
+    final next = [..._projects]..[index] = value;
+    return {...toJson(), 'projects': next.map((e) => e.toJson()).toList()};
   });
 
   Future<void> submitFeedback(FeedbackEntry entry) => _mutate(() {
