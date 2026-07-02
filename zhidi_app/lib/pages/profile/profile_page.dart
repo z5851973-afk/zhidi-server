@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
 import 'edit_profile_page.dart';
+import 'address_page.dart';
+import 'feedback_page.dart';
 import 'profile_components.dart';
+import 'settings_page.dart';
+import 'support_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -21,10 +25,14 @@ class ProfilePage extends StatelessWidget {
   ];
 
   void _open(BuildContext context, String title) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ProfilePlaceholderPage(title: title)),
-    );
+    final destination = switch (title) {
+      '地址管理' => const AddressPage(),
+      '保障与售后' || '平台客服' => const SupportPage(),
+      '帮助与反馈' => const FeedbackPage(),
+      '设置' => const SettingsPage(),
+      _ => ProfilePlaceholderPage(title: title),
+    };
+    Navigator.push(context, MaterialPageRoute(builder: (_) => destination));
   }
 
   @override

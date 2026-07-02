@@ -257,9 +257,12 @@ class OwnerAppState extends ChangeNotifier {
 
   Future<void> addAddress(OwnerAddress value) => _mutate(() {
     if (_addresses.any((item) => item.id == value.id)) return null;
+    final existing = value.isDefault
+        ? _addresses.map((item) => item.copyWith(isDefault: false))
+        : _addresses;
     return {
       ...toJson(),
-      'addresses': [..._addresses, value].map((e) => e.toJson()).toList(),
+      'addresses': [...existing, value].map((e) => e.toJson()).toList(),
     };
   });
 
@@ -269,13 +272,19 @@ class OwnerAppState extends ChangeNotifier {
         jsonEncode(_addresses[index].toJson()) == jsonEncode(value.toJson())) {
       return null;
     }
-    final next = [..._addresses]..[index] = value;
+    final next = value.isDefault
+        ? _addresses.map((item) => item.copyWith(isDefault: false)).toList()
+        : [..._addresses];
+    next[index] = value;
     return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
   });
 
   Future<void> deleteAddress(String id) => _mutate(() {
     final next = _addresses.where((item) => item.id != id).toList();
     if (next.length == _addresses.length) return null;
+    if (next.isNotEmpty && !next.any((item) => item.isDefault)) {
+      next[0] = next[0].copyWith(isDefault: true);
+    }
     return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
   });
 

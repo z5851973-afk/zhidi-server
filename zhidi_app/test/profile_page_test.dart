@@ -62,7 +62,12 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text(label));
       await tester.pumpAndSettle();
-      expect(find.text('功能建设中'), findsOneWidget);
+      if (const ['我的预约', '在线咨询', '我的收藏'].contains(label)) {
+        expect(find.text('功能建设中'), findsOneWidget);
+      } else {
+        final title = label == '平台客服' ? '保障与售后' : label;
+        expect(find.widgetWithText(AppBar, title), findsOneWidget);
+      }
       await tester.pageBack();
       await tester.pumpAndSettle();
     }
