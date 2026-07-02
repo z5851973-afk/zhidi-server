@@ -233,6 +233,32 @@ void main() {
     expect(state.profile.name, '王先生');
     expect(notifications, 0);
   });
+
+  test(
+    'reset settings persists defaults without changing owner data',
+    () async {
+      final store = MemoryOwnerStore();
+      final state = OwnerAppState.memory(store: store);
+      final originalProfile = state.profile.toJson();
+      final originalAddresses = state.addresses.map((e) => e.toJson()).toList();
+      await state.updateSettings(
+        state.settings.copyWith(pushNotifications: false, hidePhone: false),
+      );
+
+      await state.resetSettings();
+
+      expect(state.settings.toJson(), const OwnerSettings().toJson());
+      expect(state.profile.toJson(), originalProfile);
+      expect(
+        state.addresses.map((e) => e.toJson()).toList(),
+        originalAddresses,
+      );
+      expect(
+        OwnerAppState.memory(store: store).settings.toJson(),
+        const OwnerSettings().toJson(),
+      );
+    },
+  );
 }
 
 class _FailingOwnerStore implements OwnerKeyValueStore {

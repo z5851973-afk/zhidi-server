@@ -54,11 +54,19 @@ class AddressPage extends StatelessWidget {
     );
   }
 
-  Future<void> _openForm(BuildContext context, OwnerAddress? address) =>
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AddressFormPage(address: address)),
+  Future<void> _openForm(BuildContext context, OwnerAddress? address) async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => AddressFormPage(address: address)),
+    );
+    if (saved == true && context.mounted) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        SnackBar(content: Text(address == null ? '地址已新增' : '地址已更新')),
       );
+    }
+  }
 
   Future<void> _delete(BuildContext context, OwnerAddress address) async {
     final confirmed = await showDialog<bool>(
@@ -186,7 +194,7 @@ class _AddressFormPageState extends State<AddressFormPage> {
       await (widget.address == null
           ? state.addAddress(value)
           : state.updateAddress(value));
-      if (mounted) Navigator.pop(context);
+      if (mounted) Navigator.pop(context, true);
     } catch (_) {
       if (mounted) {
         setState(() => _saving = false);

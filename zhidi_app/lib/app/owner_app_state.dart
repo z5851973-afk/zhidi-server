@@ -355,4 +355,8 @@ class OwnerAppState extends ChangeNotifier {
     }
     return {...toJson(), 'settings': value.toJson()};
   });
+
+  /// Restores notification and privacy preferences only.
+  /// Owner profile, addresses, projects, and submitted records are preserved.
+  Future<void> resetSettings() => updateSettings(const OwnerSettings());
 }

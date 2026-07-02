@@ -65,10 +65,10 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const Divider(),
           ListTile(
-            title: const Text('清除临时演示缓存'),
-            subtitle: const Text('不删除账号、地址、项目和反馈记录'),
+            title: const Text('恢复默认通知与隐私设置'),
+            subtitle: const Text('不删除账号、地址、项目和提交记录'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: _clearCache,
+            onTap: _writing ? null : _resetSettings,
           ),
           ListTile(
             title: const Text('关于智地'),
@@ -85,12 +85,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Future<void> _clearCache() async {
+  Future<void> _resetSettings() async {
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
-        title: const Text('清除临时演示缓存？'),
-        content: const Text('只清理可重新生成的临时展示缓存，不会删除账号、地址、项目或提交记录。'),
+        title: const Text('恢复默认设置？'),
+        content: const Text('将恢复默认通知与隐私选项，不会删除账号、地址、项目或提交记录。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c, false),
@@ -98,15 +98,28 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(c, true),
-            child: const Text('确认清理'),
+            child: const Text('确认恢复'),
           ),
         ],
       ),
     );
-    if (ok == true && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('临时演示缓存已清理')));
+    if (ok != true || !mounted) return;
+    setState(() => _writing = true);
+    try {
+      await OwnerAppScope.of(context).resetSettings();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('默认设置已恢复')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('恢复失败，设置未更改，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _writing = false);
     }
   }
 

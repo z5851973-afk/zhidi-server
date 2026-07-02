@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
@@ -46,6 +49,7 @@ void main() {
       await tester.tap(find.text('设为默认地址'));
       await tester.tap(find.text('保存地址'));
       await tester.pumpAndSettle();
+      expect(find.text('地址已新增'), findsOneWidget);
       expect(
         state.addresses.where((address) => address.isDefault),
         hasLength(1),
@@ -60,6 +64,7 @@ void main() {
       );
       await tester.tap(find.text('保存地址'));
       await tester.pumpAndSettle();
+      expect(find.text('地址已更新'), findsOneWidget);
       expect(find.textContaining('春熙路 2 号'), findsOneWidget);
 
       await tester.tap(find.byKey(Key('delete-${state.addresses.last.id}')));
@@ -129,4 +134,55 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('智地业主端'), findsOneWidget);
   });
+
+  testWidgets('settings reset confirms and performs a persisted reset', (
+    tester,
+  ) async {
+    final state = OwnerAppState.memory();
+    await state.updateSettings(
+      state.settings.copyWith(pushNotifications: false, hidePhone: false),
+    );
+    await pumpPage(tester, const SettingsPage(), state);
+    await tester.tap(find.text('恢复默认通知与隐私设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('恢复默认设置？'), findsOneWidget);
+    await tester.tap(find.text('确认恢复'));
+    await tester.pumpAndSettle();
+    expect(state.settings.toJson(), const OwnerSettings().toJson());
+    expect(find.text('默认设置已恢复'), findsOneWidget);
+  });
+
+  testWidgets('settings reset reports persistence failure without success', (
+    tester,
+  ) async {
+    final document = OwnerAppState.memory().toJson();
+    document['settings'] = const OwnerSettings(
+      pushNotifications: false,
+    ).toJson();
+    final store = _ControlledStore(jsonEncode(document));
+    final state = OwnerAppState.memory(store: store);
+    await pumpPage(tester, const SettingsPage(), state);
+    await tester.tap(find.text('恢复默认通知与隐私设置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('确认恢复'));
+    await tester.pump();
+    store.fail(StateError('disk unavailable'));
+    await tester.pumpAndSettle();
+    expect(find.text('恢复失败，设置未更改，请重试'), findsOneWidget);
+    expect(find.text('默认设置已恢复'), findsNothing);
+  });
+}
+
+class _ControlledStore implements OwnerKeyValueStore {
+  _ControlledStore(this.initialValue);
+  final String initialValue;
+  Completer<void> _write = Completer<void>();
+  @override
+  String? getString(String key) => initialValue;
+  @override
+  Future<void> setString(String key, String value) => _write.future;
+  void fail(Object error) {
+    _write.completeError(error);
+    _write = Completer<void>();
+  }
 }
