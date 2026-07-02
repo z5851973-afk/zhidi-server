@@ -197,6 +197,87 @@ void main() {
     expect(failing.settings.projectNotifications, isTrue);
     expect(find.text('设置保存失败，请重试'), findsOneWidget);
   });
+
+  testWidgets('switching projects changes scoped people and records', (
+    tester,
+  ) async {
+    final document = OwnerAppState.memory().toJson();
+    document['profile'] = const OwnerProfile(name: '刘女士', city: '成都').toJson();
+    document['projects'] = [
+      OwnerProject(
+        id: 'project-a',
+        name: '青羊新家',
+        city: '成都',
+        address: '青羊区 1 号',
+        startDate: DateTime(2026, 7, 1),
+      ).toJson(),
+      OwnerProject(
+        id: 'project-b',
+        name: '锦江新家',
+        city: '成都',
+        address: '锦江区 2 号',
+        startDate: DateTime(2026, 9, 10),
+        status: '待开工',
+      ).toJson(),
+    ];
+    document['selectedProjectId'] = 'project-a';
+    final state = OwnerAppState.fromJson(document);
+    await tester.pumpWidget(_app(state));
+
+    await tester.tap(find.text('项目成员'));
+    await tester.pumpAndSettle();
+    expect(find.text('刘女士 · 业主'), findsOneWidget);
+    expect(find.text('周工 · 项目经理'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, '李师傅 · 水电工');
+    expect(find.text('李师傅 · 水电工'), findsOneWidget);
+    await _scrollTo(tester, '施工图纸 12份');
+    expect(find.text('施工图纸 12份'), findsOneWidget);
+
+    await tester.fling(
+      find.byType(Scrollable).first,
+      const Offset(0, 2000),
+      2000,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('切换项目'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('锦江新家'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('项目成员'));
+    await tester.pumpAndSettle();
+    expect(find.text('刘女士 · 业主'), findsOneWidget);
+    expect(find.text('郑工 · 项目经理'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, '陈师傅 · 水电工');
+    expect(find.text('陈师傅 · 水电工'), findsOneWidget);
+    await _scrollTo(tester, '施工图纸 9份');
+    expect(find.text('施工图纸 9份'), findsOneWidget);
+    await _scrollTo(tester, '查看验收记录');
+    await tester.tap(find.text('查看验收记录'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('2026-09-25'), findsOneWidget);
+    expect(find.textContaining('待开工'), findsWidgets);
+  });
+
+  testWidgets('top notification and full progress actions navigate', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_app(OwnerAppState.memory()));
+
+    await tester.tap(find.byIcon(Icons.notifications_outlined));
+    await tester.pumpAndSettle();
+    expect(find.text('消息'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, '查看全部进度');
+    await tester.tap(find.text('查看全部进度'));
+    await tester.pumpAndSettle();
+    expect(find.text('装修进度'), findsWidgets);
+    expect(find.textContaining('进行中'), findsWidgets);
+  });
 }
 
 class _FailingOwnerStore implements OwnerKeyValueStore {

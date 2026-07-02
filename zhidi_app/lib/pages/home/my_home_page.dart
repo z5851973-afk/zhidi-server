@@ -18,32 +18,79 @@ class _ProjectWorker {
   String idFor(String projectId) => '$projectId-worker-$idSuffix';
 }
 
+class _ProjectDashboardData {
+  const _ProjectDashboardData({
+    required this.members,
+    required this.workers,
+    required this.inspections,
+    required this.archives,
+    required this.progress,
+  });
+
+  final List<String> members;
+  final List<_ProjectWorker> workers;
+  final List<String> inspections;
+  final List<String> archives;
+  final List<String> progress;
+
+  factory _ProjectDashboardData.forProject({
+    required OwnerProject project,
+    required OwnerProfile owner,
+    required int projectIndex,
+    required String Function(DateTime) formatDate,
+  }) {
+    final alternate = projectIndex.isOdd;
+    final workers = alternate
+        ? const [
+            _ProjectWorker('electrician-chen', '陈师傅', '水电工'),
+            _ProjectWorker('mason-zhao', '赵师傅', '瓦工'),
+            _ProjectWorker('painter-sun', '孙师傅', '油漆工'),
+          ]
+        : const [
+            _ProjectWorker('electrician-li', '李师傅', '水电工'),
+            _ProjectWorker('mason-wang', '王师傅', '瓦工'),
+            _ProjectWorker('carpenter-zhang', '张师傅', '木工'),
+          ];
+    final manager = alternate ? '郑工' : '周工';
+    final designer = alternate ? '设计师宋女士' : '设计师林女士';
+    final inspector = alternate ? '平台监理何工' : '平台监理陈工';
+    final drawingCount = alternate ? 9 : 12;
+    final contractCount = alternate ? 5 : 8;
+    final recordCount = alternate ? 14 : 36;
+    final reportCount = alternate ? 0 : 2;
+    return _ProjectDashboardData(
+      members: [
+        '${owner.name} · 业主',
+        '$manager · 项目经理',
+        workers.first.label,
+        designer,
+        inspector,
+      ],
+      workers: workers,
+      inspections: [
+        '水电验收 · ${formatDate(project.startDate.add(const Duration(days: 15)))} · ${project.status}',
+        '防水验收 · ${formatDate(project.startDate.add(const Duration(days: 20)))} · 待安排',
+        '泥瓦验收 · 待安排',
+      ],
+      archives: [
+        '施工图纸 · $drawingCount份',
+        '合同文件 · $contractCount份',
+        '施工记录 · $recordCount份',
+        '验收报告 · $reportCount份',
+      ],
+      progress: [
+        '设计方案 · ${alternate ? '待确认' : '已完成'}',
+        '签约开工 · ${alternate ? '待开始' : '已完成'}',
+        '当前项目状态 · ${project.status}',
+        '瓦泥施工 · 待开始',
+        '竣工验收 · 待开始',
+      ],
+    );
+  }
+}
+
 class MyHomePage extends StatelessWidget {
   const MyHomePage({super.key});
-
-  static const _workers = [
-    _ProjectWorker('electrician-li', '李师傅', '水电工'),
-    _ProjectWorker('mason-wang', '王师傅', '瓦工'),
-    _ProjectWorker('carpenter-zhang', '张师傅', '木工'),
-  ];
-  static const _members = [
-    '王先生 · 业主',
-    '周工 · 项目经理',
-    '李师傅 · 水电工',
-    '设计师林女士',
-    '平台监理陈工',
-  ];
-  static const _inspections = [
-    '水电验收 · 2026-07-03',
-    '防水验收 · 2026-07-08',
-    '泥瓦验收 · 待安排',
-  ];
-  static const _archives = [
-    '施工图纸 · 12份',
-    '合同文件 · 8份',
-    '施工记录 · 36份',
-    '验收报告 · 2份',
-  ];
 
   void _push(BuildContext context, Widget page) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
@@ -117,6 +164,15 @@ class MyHomePage extends StatelessWidget {
         .where((item) => !item.isCompleted)
         .toList();
     final nextDate = project.startDate.add(const Duration(days: 16));
+    final projectIndex = state.projects.indexWhere(
+      (item) => item.id == project.id,
+    );
+    final dashboard = _ProjectDashboardData.forProject(
+      project: project,
+      owner: state.profile,
+      projectIndex: projectIndex < 0 ? 0 : projectIndex,
+      formatDate: _date,
+    );
 
     return SafeArea(
       child: ListView(
@@ -124,7 +180,13 @@ class MyHomePage extends StatelessWidget {
         children: [
           _TopBar(
             unread: state.unreadMessageCount,
-            onNotifications: () => _push(context, const MessagePage()),
+            onNotifications: () => _push(
+              context,
+              Scaffold(
+                appBar: AppBar(title: const Text('通知消息')),
+                body: const MessagePage(),
+              ),
+            ),
           ),
           _section(
             child: Column(
@@ -200,14 +262,14 @@ class MyHomePage extends StatelessWidget {
                   children: [
                     _Action(
                       label: '项目成员',
-                      suffix: '${_members.length}人',
+                      suffix: '${dashboard.members.length}人',
                       icon: Icons.people_outline,
                       onTap: () => _push(
                         context,
                         ProjectInfoPage(
                           title: '项目成员',
                           description: '当前项目：${project.name}',
-                          items: _members,
+                          items: dashboard.members,
                         ),
                       ),
                     ),
@@ -240,15 +302,10 @@ class MyHomePage extends StatelessWidget {
             action: '查看全部进度',
             onAction: () => _push(
               context,
-              const ProjectInfoPage(
+              ProjectInfoPage(
                 title: '装修进度',
-                items: [
-                  '设计方案 · 已完成',
-                  '签约开工 · 已完成',
-                  '水电施工 · 进行中',
-                  '瓦泥施工 · 待开始',
-                  '竣工验收 · 待开始',
-                ],
+                description: '当前项目：${project.name}',
+                items: dashboard.progress,
               ),
             ),
             child: const LinearProgressIndicator(value: .42, minHeight: 8),
@@ -305,11 +362,11 @@ class MyHomePage extends StatelessWidget {
             action: '查看全部工人',
             onAction: () => _push(
               context,
-              _ProjectWorkersPage(project: project, workers: _workers),
+              _ProjectWorkersPage(project: project, workers: dashboard.workers),
             ),
             child: Column(
               children: [
-                for (final worker in _workers)
+                for (final worker in dashboard.workers)
                   ListTile(
                     leading: const CircleAvatar(child: Icon(Icons.person)),
                     title: Text(worker.label),
@@ -338,7 +395,7 @@ class MyHomePage extends StatelessWidget {
               ProjectInfoPage(
                 title: '验收记录',
                 description: '当前项目：${project.name}',
-                items: _inspections,
+                items: dashboard.inspections,
               ),
             ),
             child: const Text('平台监理按节点留存验收记录，不达标项目将记录整改。'),
@@ -351,15 +408,17 @@ class MyHomePage extends StatelessWidget {
               ProjectInfoPage(
                 title: '装修档案',
                 description: '当前项目：${project.name}',
-                items: _archives,
+                items: dashboard.archives,
               ),
             ),
-            child: const Wrap(
+            child: Wrap(
               spacing: 8,
               children: [
-                Chip(label: Text('施工图纸 12份')),
-                Chip(label: Text('合同文件 8份')),
-                Chip(label: Text('验收报告 2份')),
+                for (final archive in dashboard.archives.take(2))
+                  Chip(label: Text(archive.replaceFirst(' · ', ' '))),
+                Chip(
+                  label: Text(dashboard.archives.last.replaceFirst(' · ', ' ')),
+                ),
               ],
             ),
           ),
