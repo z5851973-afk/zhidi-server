@@ -25,6 +25,10 @@ class _ProjectDashboardData {
     required this.inspections,
     required this.archives,
     required this.progress,
+    required this.progressValue,
+    required this.nextTitle,
+    required this.nextDescription,
+    required this.nextItems,
   });
 
   final List<String> members;
@@ -32,14 +36,25 @@ class _ProjectDashboardData {
   final List<String> inspections;
   final List<String> archives;
   final List<String> progress;
+  final double progressValue;
+  final String nextTitle;
+  final String nextDescription;
+  final List<String> nextItems;
 
   factory _ProjectDashboardData.forProject({
     required OwnerProject project,
     required OwnerProfile owner,
-    required int projectIndex,
     required String Function(DateTime) formatDate,
   }) {
-    final alternate = projectIndex.isOdd;
+    final fixtureKey = project.id.codeUnits.fold<int>(
+      0,
+      (sum, unit) => sum + unit,
+    );
+    final alternate =
+        project.id == 'project-b' ||
+        (project.id != 'project-1' &&
+            project.id != 'project-a' &&
+            fixtureKey.isOdd);
     final workers = alternate
         ? const [
             _ProjectWorker('electrician-chen', '陈师傅', '水电工'),
@@ -58,6 +73,23 @@ class _ProjectDashboardData {
     final contractCount = alternate ? 5 : 8;
     final recordCount = alternate ? 14 : 36;
     final reportCount = alternate ? 0 : 2;
+    final completed = project.status == '已竣工';
+    final waiting = project.status == '待开工';
+    final progress = completed
+        ? const [
+            '设计方案 · 已完成',
+            '签约开工 · 已完成',
+            '水电施工 · 已完成',
+            '瓦泥施工 · 已完成',
+            '竣工验收 · 已完成',
+          ]
+        : [
+            '设计方案 · ${waiting ? '待确认' : '已完成'}',
+            '签约开工 · ${waiting ? '待开始' : '已完成'}',
+            '当前项目状态 · ${project.status}',
+            '瓦泥施工 · 待开始',
+            '竣工验收 · 待开始',
+          ];
     return _ProjectDashboardData(
       members: [
         '${owner.name} · 业主',
@@ -78,13 +110,19 @@ class _ProjectDashboardData {
         '施工记录 · $recordCount份',
         '验收报告 · $reportCount份',
       ],
-      progress: [
-        '设计方案 · ${alternate ? '待确认' : '已完成'}',
-        '签约开工 · ${alternate ? '待开始' : '已完成'}',
-        '当前项目状态 · ${project.status}',
-        '瓦泥施工 · 待开始',
-        '竣工验收 · 待开始',
-      ],
+      progress: progress,
+      progressValue: completed ? 1 : (waiting ? .08 : .42),
+      nextTitle: completed ? '项目已竣工' : (waiting ? '签约开工' : '瓦泥施工'),
+      nextDescription: completed
+          ? '项目已完成竣工验收，相关资料已归档。'
+          : waiting
+          ? '项目当前待开工，请先完成签约与开工准备。'
+          : '水电验收通过后进入瓦泥施工，预计 ${formatDate(project.startDate.add(const Duration(days: 16)))} 开始。',
+      nextItems: completed
+          ? const ['查看竣工验收结果', '核对装修档案', '了解售后保障']
+          : waiting
+          ? const ['确认合同内容', '约定开工日期', '准备进场交底']
+          : const ['确认水电验收结果', '材料进场核验', '安排瓦工施工'],
     );
   }
 }
@@ -163,14 +201,9 @@ class MyHomePage extends StatelessWidget {
         .where((item) => item.projectId == null || item.projectId == project.id)
         .where((item) => !item.isCompleted)
         .toList();
-    final nextDate = project.startDate.add(const Duration(days: 16));
-    final projectIndex = state.projects.indexWhere(
-      (item) => item.id == project.id,
-    );
     final dashboard = _ProjectDashboardData.forProject(
       project: project,
       owner: state.profile,
-      projectIndex: projectIndex < 0 ? 0 : projectIndex,
       formatDate: _date,
     );
 
@@ -308,15 +341,18 @@ class MyHomePage extends StatelessWidget {
                 items: dashboard.progress,
               ),
             ),
-            child: const LinearProgressIndicator(value: .42, minHeight: 8),
+            child: LinearProgressIndicator(
+              value: dashboard.progressValue,
+              minHeight: 8,
+            ),
           ),
           _section(
-            title: '今日提醒',
+            title: '待办提醒',
             badge: '${reminders.length}项待处理',
             child: reminders.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(child: Text('今日事项已处理完成')),
+                    child: Center(child: Text('暂无待办事项')),
                   )
                 : Column(
                     children: [
@@ -342,15 +378,15 @@ class MyHomePage extends StatelessWidget {
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const CircleAvatar(child: Icon(Icons.construction)),
-              title: const Text('瓦泥施工'),
-              subtitle: Text('预计开始：${_date(nextDate)}'),
+              title: Text(dashboard.nextTitle),
+              subtitle: Text(dashboard.nextDescription),
               trailing: TextButton(
                 onPressed: () => _push(
                   context,
                   ProjectInfoPage(
                     title: '下一步计划',
-                    description: '水电验收通过后进入瓦泥施工，预计 ${_date(nextDate)} 开始。',
-                    items: const ['确认水电验收结果', '材料进场核验', '安排瓦工施工'],
+                    description: dashboard.nextDescription,
+                    items: dashboard.nextItems,
                   ),
                 ),
                 child: const Text('查看下一步'),

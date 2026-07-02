@@ -278,6 +278,114 @@ void main() {
     expect(find.text('装修进度'), findsWidgets);
     expect(find.textContaining('进行中'), findsWidgets);
   });
+
+  testWidgets('project fixtures remain stable after reorder and insertion', (
+    tester,
+  ) async {
+    OwnerProject project(String id, String name) => OwnerProject(
+      id: id,
+      name: name,
+      city: '成都',
+      address: '$name地址',
+      startDate: DateTime(2026, 9, 10),
+    );
+
+    OwnerAppState stateFor(List<OwnerProject> projects) {
+      final json = OwnerAppState.memory().toJson();
+      json['projects'] = projects.map((item) => item.toJson()).toList();
+      json['selectedProjectId'] = 'project-b';
+      return OwnerAppState.fromJson(json);
+    }
+
+    final a = project('project-a', '项目 A');
+    final b = project('project-b', '项目 B');
+    final inserted = project('project-inserted', '新增项目');
+
+    Future<void> verifyStableFixture(OwnerAppState state) async {
+      await tester.pumpWidget(_app(state));
+      await tester.fling(
+        find.byType(Scrollable).first,
+        const Offset(0, 2000),
+        2000,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('项目成员'));
+      await tester.pumpAndSettle();
+      expect(find.text('郑工 · 项目经理'), findsOneWidget);
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await _scrollTo(tester, '陈师傅 · 水电工');
+      await tester.ensureVisible(find.text('陈师傅 · 水电工'));
+      await tester.tap(find.text('陈师傅 · 水电工'));
+      await tester.pumpAndSettle();
+      final detail = tester.widget<WorkerDetailPage>(
+        find.byType(WorkerDetailPage),
+      );
+      expect(detail.workerId, 'project-b-worker-electrician-chen');
+      await tester.tap(find.byIcon(Icons.arrow_back_ios_rounded));
+      await tester.pumpAndSettle();
+    }
+
+    await verifyStableFixture(stateFor([a, b]));
+    await verifyStableFixture(stateFor([b, inserted, a]));
+  });
+
+  testWidgets('completed project shows complete progress and no future phase', (
+    tester,
+  ) async {
+    final json = OwnerAppState.memory().toJson();
+    final original = OwnerProject.fromJson(
+      Map<String, dynamic>.from((json['projects'] as List).single as Map),
+    );
+    json['projects'] = [original.copyWith(status: '已竣工').toJson()];
+    await tester.pumpWidget(_app(OwnerAppState.fromJson(json)));
+
+    final progress = tester.widget<LinearProgressIndicator>(
+      find.byType(LinearProgressIndicator),
+    );
+    expect(progress.value, 1);
+    await _scrollTo(tester, '项目已竣工');
+    expect(find.text('项目已竣工'), findsOneWidget);
+    expect(find.text('瓦泥施工'), findsNothing);
+    await _scrollTo(tester, '查看全部进度');
+    await tester.tap(find.text('查看全部进度'));
+    await tester.pumpAndSettle();
+    expect(find.text('竣工验收 · 已完成'), findsOneWidget);
+  });
+
+  testWidgets('pending reminders include overdue current and future work', (
+    tester,
+  ) async {
+    final json = OwnerAppState.memory().toJson();
+    json['reminders'] = [
+      OwnerReminder(
+        id: 'overdue',
+        title: '逾期事项',
+        dueAt: DateTime(2026, 6, 1),
+        projectId: 'project-1',
+      ).toJson(),
+      OwnerReminder(
+        id: 'current',
+        title: '当前事项',
+        dueAt: DateTime(2026, 7, 2),
+        projectId: 'project-1',
+      ).toJson(),
+      OwnerReminder(
+        id: 'future',
+        title: '未来事项',
+        dueAt: DateTime(2026, 12, 1),
+        projectId: 'project-1',
+      ).toJson(),
+    ];
+    await tester.pumpWidget(_app(OwnerAppState.fromJson(json)));
+
+    expect(find.text('待办提醒'), findsOneWidget);
+    expect(find.text('今日提醒'), findsNothing);
+    expect(find.text('3项待处理'), findsOneWidget);
+    expect(find.text('逾期事项'), findsOneWidget);
+    expect(find.text('当前事项'), findsOneWidget);
+    expect(find.text('未来事项'), findsOneWidget);
+  });
 }
 
 class _FailingOwnerStore implements OwnerKeyValueStore {
