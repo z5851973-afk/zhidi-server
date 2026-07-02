@@ -1,3 +1,5 @@
+const _notProvided = Object();
+
 class OwnerProfile {
   const OwnerProfile({required this.name, required this.city, this.phone = ''});
   final String name;
@@ -125,13 +127,15 @@ class OwnerReminder {
   OwnerReminder copyWith({
     String? id,
     String? title,
-    String? projectId,
+    Object? projectId = _notProvided,
     DateTime? dueAt,
     bool? isCompleted,
   }) => OwnerReminder(
     id: id ?? this.id,
     title: title ?? this.title,
-    projectId: projectId ?? this.projectId,
+    projectId: identical(projectId, _notProvided)
+        ? this.projectId
+        : projectId as String?,
     dueAt: dueAt ?? this.dueAt,
     isCompleted: isCompleted ?? this.isCompleted,
   );

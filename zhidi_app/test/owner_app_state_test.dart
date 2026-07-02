@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 
@@ -99,12 +101,97 @@ void main() {
     expect(state.settings.darkMode, isTrue);
   });
 
-  test('state JSON round-trips all model collections', () {
+  test('state JSON round-trips non-empty optional collections', () async {
     final original = OwnerAppState.memory();
+    await original.toggleFavorite(
+      const FavoriteWorker(
+        id: 'round-worker',
+        name: '周师傅',
+        trade: '油漆工',
+        city: '成都',
+      ),
+    );
+    await original.submitAfterSales(
+      AfterSalesRequest(
+        id: 'round-after-sales',
+        issueType: '施工质量',
+        description: '墙面需要复检',
+        createdAt: DateTime(2026, 7, 2),
+      ),
+    );
+    await original.submitFeedback(
+      FeedbackEntry(
+        id: 'round-feedback',
+        category: '产品建议',
+        description: '增加验收清单',
+        createdAt: DateTime(2026, 7, 2),
+      ),
+    );
 
     final restored = OwnerAppState.fromJson(original.toJson());
 
     expect(restored.toJson(), original.toJson());
+    expect(restored.favoriteWorkers, hasLength(1));
+    expect(restored.afterSalesRequests, hasLength(1));
+    expect(restored.feedbackEntries, hasLength(1));
+  });
+
+  test('reminder copyWith can explicitly clear projectId', () {
+    final reminder = OwnerAppState.memory().reminders.first;
+
+    final cleared = reminder.copyWith(projectId: null);
+
+    expect(cleared.projectId, isNull);
+  });
+
+  test(
+    'submitAfterSales notifies once on success and not on duplicate',
+    () async {
+      final state = OwnerAppState.memory();
+      var notifications = 0;
+      state.addListener(() => notifications++);
+      final request = AfterSalesRequest(
+        id: 'after-sales-1',
+        issueType: '材料问题',
+        description: '瓷砖批次色差',
+        createdAt: DateTime(2026, 7, 2),
+      );
+
+      await state.submitAfterSales(request);
+      await state.submitAfterSales(request);
+
+      expect(state.afterSalesRequests, hasLength(1));
+      expect(notifications, 1);
+    },
+  );
+
+  test('concurrent mutations serialize and preserve both changes', () async {
+    final store = _ControlledOwnerStore();
+    final state = OwnerAppState.memory(store: store);
+    const address = OwnerAddress(
+      id: 'concurrent-address',
+      recipient: '李女士',
+      phone: '13900000000',
+      city: '成都',
+      district: '青羊区',
+      detail: '宽窄巷子 8 号',
+    );
+
+    final profileUpdate = state.updateProfile(
+      state.profile.copyWith(name: '李女士'),
+    );
+    await store.firstWriteStarted;
+    final addressUpdate = state.addAddress(address);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(store.writeCount, 1);
+    store.releaseFirstWrite();
+    await Future.wait([profileUpdate, addressUpdate]);
+
+    expect(state.profile.name, '李女士');
+    expect(state.addresses.any((item) => item.id == address.id), isTrue);
+    final restored = OwnerAppState.memory(store: store);
+    expect(restored.toJson(), state.toJson());
   });
 
   test('one JSON document preserves mutations across instances', () async {
@@ -155,5 +242,29 @@ class _FailingOwnerStore implements OwnerKeyValueStore {
   @override
   Future<void> setString(String key, String value) async {
     throw StateError('write failed');
+  }
+}
+
+class _ControlledOwnerStore implements OwnerKeyValueStore {
+  final Map<String, String> _values = {};
+  final Completer<void> _firstWriteStarted = Completer<void>();
+  final Completer<void> _releaseFirstWrite = Completer<void>();
+  var writeCount = 0;
+
+  Future<void> get firstWriteStarted => _firstWriteStarted.future;
+
+  void releaseFirstWrite() => _releaseFirstWrite.complete();
+
+  @override
+  String? getString(String key) => _values[key];
+
+  @override
+  Future<void> setString(String key, String value) async {
+    writeCount++;
+    if (writeCount == 1) {
+      _firstWriteStarted.complete();
+      await _releaseFirstWrite.future;
+    }
+    _values[key] = value;
   }
 }

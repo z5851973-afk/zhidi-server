@@ -58,6 +58,7 @@ class OwnerAppState extends ChangeNotifier {
   OwnerSettings _settings;
   List<AfterSalesRequest> _afterSalesRequests;
   List<FeedbackEntry> _feedbackEntries;
+  Future<void> _mutationQueue = Future<void>.value();
 
   OwnerProfile get profile => _profile;
   String get profileName => _profile.name;
@@ -212,138 +213,137 @@ class OwnerAppState extends ChangeNotifier {
     'feedbackEntries': _feedbackEntries.map((item) => item.toJson()).toList(),
   };
 
-  Future<void> _commit(Map<String, dynamic> next) async {
-    await _store.setString(documentKey, jsonEncode(next));
-    final restored = _fromMap(next, _store);
-    _profile = restored._profile;
-    _addresses = restored._addresses;
-    _projects = restored._projects;
-    _reminders = restored._reminders;
-    _messages = restored._messages;
-    _favoriteWorkers = restored._favoriteWorkers;
-    _settings = restored._settings;
-    _afterSalesRequests = restored._afterSalesRequests;
-    _feedbackEntries = restored._feedbackEntries;
-    notifyListeners();
+  Future<void> _mutate(Map<String, dynamic>? Function() buildNext) {
+    final operation = _mutationQueue.then((_) async {
+      final next = buildNext();
+      if (next == null) return;
+      await _store.setString(documentKey, jsonEncode(next));
+      final restored = _fromMap(next, _store);
+      _profile = restored._profile;
+      _addresses = restored._addresses;
+      _projects = restored._projects;
+      _reminders = restored._reminders;
+      _messages = restored._messages;
+      _favoriteWorkers = restored._favoriteWorkers;
+      _settings = restored._settings;
+      _afterSalesRequests = restored._afterSalesRequests;
+      _feedbackEntries = restored._feedbackEntries;
+      notifyListeners();
+    });
+    _mutationQueue = operation.then<void>((_) {}, onError: (_, _) {});
+    return operation;
   }
 
-  Future<void> updateProfile(OwnerProfile value) async {
+  Future<void> updateProfile(OwnerProfile value) => _mutate(() {
     if (value.name == _profile.name &&
         value.city == _profile.city &&
         value.phone == _profile.phone) {
-      return;
+      return null;
     }
-    await _commit({...toJson(), 'profile': value.toJson()});
-  }
+    return {...toJson(), 'profile': value.toJson()};
+  });
 
-  Future<void> updateProfileName(String name) async {
+  Future<void> updateProfileName(String name) {
     final normalized = name.trim();
-    if (normalized.isEmpty) return;
-    await updateProfile(_profile.copyWith(name: normalized));
-  }
-
-  Future<void> addAddress(OwnerAddress value) async {
-    if (_addresses.any((item) => item.id == value.id)) return;
-    await _commit({
-      ...toJson(),
-      'addresses': [..._addresses, value].map((e) => e.toJson()).toList(),
+    if (normalized.isEmpty) return Future<void>.value();
+    return _mutate(() {
+      if (normalized == _profile.name) return null;
+      return {
+        ...toJson(),
+        'profile': _profile.copyWith(name: normalized).toJson(),
+      };
     });
   }
 
-  Future<void> updateAddress(OwnerAddress value) async {
+  Future<void> addAddress(OwnerAddress value) => _mutate(() {
+    if (_addresses.any((item) => item.id == value.id)) return null;
+    return {
+      ...toJson(),
+      'addresses': [..._addresses, value].map((e) => e.toJson()).toList(),
+    };
+  });
+
+  Future<void> updateAddress(OwnerAddress value) => _mutate(() {
     final index = _addresses.indexWhere((item) => item.id == value.id);
     if (index < 0 ||
         jsonEncode(_addresses[index].toJson()) == jsonEncode(value.toJson())) {
-      return;
+      return null;
     }
     final next = [..._addresses]..[index] = value;
-    await _commit({
-      ...toJson(),
-      'addresses': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
+  });
 
-  Future<void> deleteAddress(String id) async {
+  Future<void> deleteAddress(String id) => _mutate(() {
     final next = _addresses.where((item) => item.id != id).toList();
-    if (next.length == _addresses.length) return;
-    await _commit({
-      ...toJson(),
-      'addresses': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    if (next.length == _addresses.length) return null;
+    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
+  });
 
-  Future<void> markMessageRead(String id) async {
+  Future<void> markMessageRead(String id) => _mutate(() {
     final index = _messages.indexWhere((item) => item.id == id && !item.isRead);
-    if (index < 0) return;
+    if (index < 0) return null;
     final next = [..._messages]
       ..[index] = _messages[index].copyWith(isRead: true);
-    await _commit({
-      ...toJson(),
-      'messages': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
+  });
 
-  Future<void> markAllMessagesRead() async {
-    if (_messages.every((item) => item.isRead)) return;
+  Future<void> markAllMessagesRead() => _mutate(() {
+    if (_messages.every((item) => item.isRead)) return null;
     final next = _messages.map((item) => item.copyWith(isRead: true)).toList();
-    await _commit({
-      ...toJson(),
-      'messages': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
+  });
 
   bool isFavorite(String workerId) =>
       _favoriteWorkers.any((item) => item.id == workerId);
 
-  Future<void> toggleFavorite(FavoriteWorker worker) async {
+  Future<void> toggleFavorite(FavoriteWorker worker) => _mutate(() {
     final next = isFavorite(worker.id)
         ? _favoriteWorkers.where((item) => item.id != worker.id).toList()
         : [..._favoriteWorkers, worker];
-    await _commit({
+    return {
       ...toJson(),
       'favoriteWorkers': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    };
+  });
 
-  Future<void> completeReminder(String id) async {
+  Future<void> completeReminder(String id) => _mutate(() {
     final index = _reminders.indexWhere(
       (item) => item.id == id && !item.isCompleted,
     );
-    if (index < 0) return;
+    if (index < 0) return null;
     final next = [..._reminders]
       ..[index] = _reminders[index].copyWith(isCompleted: true);
-    await _commit({
-      ...toJson(),
-      'reminders': next.map((e) => e.toJson()).toList(),
-    });
-  }
+    return {...toJson(), 'reminders': next.map((e) => e.toJson()).toList()};
+  });
 
-  Future<void> submitFeedback(FeedbackEntry entry) async {
+  Future<void> submitFeedback(FeedbackEntry entry) => _mutate(() {
     if (_feedbackEntries.any((item) => item.id == entry.id)) {
-      return;
+      return null;
     }
-    await _commit({
+    return {
       ...toJson(),
       'feedbackEntries': [
         ..._feedbackEntries,
         entry,
       ].map((e) => e.toJson()).toList(),
-    });
-  }
+    };
+  });
 
-  Future<void> submitAfterSales(AfterSalesRequest request) async {
-    if (_afterSalesRequests.any((item) => item.id == request.id)) return;
-    await _commit({
+  Future<void> submitAfterSales(AfterSalesRequest request) => _mutate(() {
+    if (_afterSalesRequests.any((item) => item.id == request.id)) return null;
+    return {
       ...toJson(),
       'afterSalesRequests': [
         ..._afterSalesRequests,
         request,
       ].map((e) => e.toJson()).toList(),
-    });
-  }
+    };
+  });
 
-  Future<void> updateSettings(OwnerSettings value) async {
-    if (jsonEncode(value.toJson()) == jsonEncode(_settings.toJson())) return;
-    await _commit({...toJson(), 'settings': value.toJson()});
-  }
+  Future<void> updateSettings(OwnerSettings value) => _mutate(() {
+    if (jsonEncode(value.toJson()) == jsonEncode(_settings.toJson())) {
+      return null;
+    }
+    return {...toJson(), 'settings': value.toJson()};
+  });
 }
