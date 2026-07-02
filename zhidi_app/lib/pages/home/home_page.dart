@@ -1,6 +1,5 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
-import '../../app/owner_app_scope.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
 import 'my_home_page.dart';
@@ -8,6 +7,7 @@ import '../message/message_page.dart';
 import '../renovation/trade_select_page.dart';
 import '../renovation/full_renovation_page.dart';
 import '../renovation/partial_renovation_page.dart';
+import '../profile/profile_page.dart';
 import 'worker/worker_list_page.dart';
 
 class HomePage extends StatefulWidget {
@@ -34,12 +34,7 @@ class _HomePageState extends State<HomePage> {
           // 2: 消息
           const MessagePage(),
           // 3: 我的
-          Center(
-            child: Text(
-              OwnerAppScope.of(context).profileName,
-              style: const TextStyle(fontSize: 18, color: Color(0xFF999999)),
-            ),
-          ),
+          const ProfilePage(),
         ],
       ),
 
