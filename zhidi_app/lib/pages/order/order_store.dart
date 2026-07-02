@@ -45,12 +45,3 @@ class OrderItem {
     createdAt: DateTime.parse(json['createdAt'] as String),
   );
 }
-
-@Deprecated('Use OwnerAppState appointments instead.')
-class OrderStore {
-  static final List<OrderItem> orders = [];
-
-  static void add(OrderItem order) {
-    orders.insert(0, order);
-  }
-}
