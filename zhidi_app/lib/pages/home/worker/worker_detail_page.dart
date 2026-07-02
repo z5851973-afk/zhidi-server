@@ -5,7 +5,7 @@ import '../../../app/owner_models.dart';
 import '../../chat/chat_page.dart';
 import '../../order/create_order_page.dart';
 
-class WorkerDetailPage extends StatelessWidget {
+class WorkerDetailPage extends StatefulWidget {
   final String? workerId;
   final String name;
   final bool fromAi;
@@ -22,6 +22,9 @@ class WorkerDetailPage extends StatelessWidget {
   String get resolvedWorkerId =>
       workerId ??
       'legacy:${Uri.encodeComponent(name)}:${Uri.encodeComponent(workerJob ?? '师傅')}';
+
+  @override
+  State<WorkerDetailPage> createState() => _WorkerDetailPageState();
 
   String get _title {
     switch (workerJob) {
@@ -64,9 +67,40 @@ class WorkerDetailPage extends StatelessWidget {
         return Icons.person_rounded;
     }
   }
+}
+
+class _WorkerDetailPageState extends State<WorkerDetailPage> {
+  bool _savingFavorite = false;
+
+  Future<void> _toggleFavorite() async {
+    if (_savingFavorite) return;
+    final state = OwnerAppScope.of(context);
+    setState(() => _savingFavorite = true);
+    try {
+      await state.toggleFavorite(
+        FavoriteWorker(
+          id: widget.resolvedWorkerId,
+          name: widget.name,
+          trade: widget.workerJob ?? '师傅',
+          city: state.profile.city,
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('收藏保存失败，请稍后重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _savingFavorite = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final favoriteSelected = OwnerAppScope.of(
+      context,
+    ).isFavorite(widget.resolvedWorkerId);
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
@@ -75,7 +109,7 @@ class WorkerDetailPage extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          _title,
+          widget._title,
           style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -88,14 +122,17 @@ class WorkerDetailPage extends StatelessWidget {
         elevation: 0.5,
         actions: [
           _FavoriteAction(
-            workerId: resolvedWorkerId,
-            name: name,
-            workerJob: workerJob,
+            selected: favoriteSelected,
+            saving: _savingFavorite,
+            onPressed: _toggleFavorite,
           ),
           TextButton.icon(
             onPressed: () {
               SharePlus.instance.share(
-                ShareParams(text: '推荐一位${workerJob ?? "师傅"}：$name，来看看合不合适！'),
+                ShareParams(
+                  text:
+                      '推荐一位${widget.workerJob ?? "师傅"}：${widget.name}，来看看合不合适！',
+                ),
               );
             },
             icon: const Icon(Icons.share_rounded, size: 16),
@@ -110,78 +147,52 @@ class WorkerDetailPage extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 80),
         children: [
           _HeaderSection(
-            name: name,
-            personIcon: _personIcon,
-            workerJob: workerJob,
+            name: widget.name,
+            personIcon: widget._personIcon,
+            workerJob: widget.workerJob,
           ),
-          if (fromAi) _MatchBanner(name: name) else const _RankBanner(),
-          _SkillsSection(workerJob: workerJob),
-          _AboutSection(workerJob: workerJob),
-          _PriceDetailSection(workerJob: workerJob),
-          _ProjectGallery(workerJob: workerJob),
+          if (widget.fromAi)
+            _MatchBanner(name: widget.name)
+          else
+            const _RankBanner(),
+          _SkillsSection(workerJob: widget.workerJob),
+          _AboutSection(workerJob: widget.workerJob),
+          _PriceDetailSection(workerJob: widget.workerJob),
+          _ProjectGallery(workerJob: widget.workerJob),
           _ReviewsSection(),
         ],
       ),
       bottomNavigationBar: _BottomActionBar(
-        workerId: resolvedWorkerId,
-        workerName: name,
-        workerJob: workerJob,
+        workerName: widget.name,
+        workerJob: widget.workerJob,
+        favoriteSelected: favoriteSelected,
+        favoriteSaving: _savingFavorite,
+        onToggleFavorite: _toggleFavorite,
       ),
     );
   }
 }
 
-class _FavoriteAction extends StatefulWidget {
+class _FavoriteAction extends StatelessWidget {
   const _FavoriteAction({
-    required this.workerId,
-    required this.name,
-    required this.workerJob,
+    required this.selected,
+    required this.saving,
+    required this.onPressed,
     this.buttonKey,
   });
 
-  final String workerId;
-  final String name;
-  final String? workerJob;
+  final bool selected;
+  final bool saving;
+  final VoidCallback onPressed;
   final Key? buttonKey;
 
   @override
-  State<_FavoriteAction> createState() => _FavoriteActionState();
-}
-
-class _FavoriteActionState extends State<_FavoriteAction> {
-  bool _saving = false;
-
-  Future<void> _toggle() async {
-    final state = OwnerAppScope.of(context);
-    setState(() => _saving = true);
-    try {
-      await state.toggleFavorite(
-        FavoriteWorker(
-          id: widget.workerId,
-          name: widget.name,
-          trade: widget.workerJob ?? '师傅',
-          city: state.profile.city,
-        ),
-      );
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('收藏保存失败，请稍后重试')));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final selected = OwnerAppScope.of(context).isFavorite(widget.workerId);
     return IconButton(
-      key: widget.buttonKey ?? const Key('worker-favorite-button'),
+      key: buttonKey ?? const Key('worker-favorite-button'),
       tooltip: selected ? '取消收藏' : '收藏',
-      onPressed: _saving ? null : _toggle,
-      icon: _saving
+      onPressed: saving ? null : onPressed,
+      icon: saving
           ? const SizedBox.square(
               dimension: 20,
               child: CircularProgressIndicator(strokeWidth: 2),
@@ -2091,12 +2102,16 @@ class _ReviewCard extends StatelessWidget {
 
 // ========== 底部操作栏 ==========
 class _BottomActionBar extends StatelessWidget {
-  final String workerId;
   final String workerName;
   final String? workerJob;
+  final bool favoriteSelected;
+  final bool favoriteSaving;
+  final VoidCallback onToggleFavorite;
   const _BottomActionBar({
-    required this.workerId,
     required this.workerName,
+    required this.favoriteSelected,
+    required this.favoriteSaving,
+    required this.onToggleFavorite,
     this.workerJob,
   });
 
@@ -2113,9 +2128,9 @@ class _BottomActionBar extends StatelessWidget {
           children: [
             // 收藏
             _FavoriteAction(
-              workerId: workerId,
-              name: workerName,
-              workerJob: workerJob,
+              selected: favoriteSelected,
+              saving: favoriteSaving,
+              onPressed: onToggleFavorite,
               buttonKey: const Key('bottom-worker-favorite-button'),
             ),
             const SizedBox(width: 16),

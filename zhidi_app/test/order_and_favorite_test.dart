@@ -153,6 +153,41 @@ void main() {
     expect(state.isFavorite('worker-bottom'), isTrue);
   });
 
+  testWidgets('favorite controls share one pending persistence operation', (
+    tester,
+  ) async {
+    final store = _ControlledStore();
+    final state = OwnerAppState.memory(store: store);
+    await tester.pumpWidget(
+      app(
+        state,
+        const WorkerDetailPage(
+          workerId: 'worker-shared',
+          name: '李师傅',
+          workerJob: '水电师傅',
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('worker-favorite-button')));
+    await tester.pump();
+
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byKey(const Key('bottom-worker-favorite-button')),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(store.writeCount, 1);
+
+    store.succeed();
+    await tester.pumpAndSettle();
+    expect(store.writeCount, 1);
+    expect(state.isFavorite('worker-shared'), isTrue);
+  });
+
   testWidgets('appointment rejects non-mobile and overlong phone values', (
     tester,
   ) async {
@@ -182,7 +217,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('worker-favorite-button')));
     await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNWidgets(2));
     store.fail(StateError('disk unavailable'));
     await tester.pumpAndSettle();
 
@@ -278,12 +313,14 @@ class _ControlledStore implements OwnerKeyValueStore {
   final List<Completer<void>> _writes = [];
   final List<String> _values = [];
   String? _stored;
+  int writeCount = 0;
 
   @override
   String? getString(String key) => _stored;
 
   @override
   Future<void> setString(String key, String value) {
+    writeCount += 1;
     final completer = Completer<void>();
     _writes.add(completer);
     _values.add(value);
