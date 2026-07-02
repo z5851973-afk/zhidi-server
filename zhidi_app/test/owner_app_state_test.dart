@@ -65,6 +65,37 @@ void main() {
     expect(state.addresses.single.isDefault, isTrue);
   });
 
+  test('deleting current default promotes first remaining address', () async {
+    final state = OwnerAppState.memory();
+    final currentDefault = state.addresses.single;
+    await state.addAddress(
+      const OwnerAddress(
+        id: 'fallback-first',
+        recipient: '李女士',
+        phone: '13900000000',
+        city: '成都',
+        district: '锦江区',
+        detail: '春熙路 1 号',
+      ),
+    );
+    await state.addAddress(
+      const OwnerAddress(
+        id: 'fallback-second',
+        recipient: '张先生',
+        phone: '13700000000',
+        city: '成都',
+        district: '武侯区',
+        detail: '天府三街 2 号',
+      ),
+    );
+
+    await state.deleteAddress(currentDefault.id);
+
+    final defaults = state.addresses.where((item) => item.isDefault).toList();
+    expect(defaults, hasLength(1));
+    expect(defaults.single.id, 'fallback-first');
+  });
+
   test('marks one message and then all messages read', () async {
     final state = OwnerAppState.memory();
     final unread = state.messages.where((message) => !message.isRead).toList();
