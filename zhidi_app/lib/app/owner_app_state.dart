@@ -9,6 +9,23 @@ export 'owner_models.dart';
 import 'owner_key_value_store.dart';
 import 'owner_models.dart';
 
+List<OwnerAddress> _normalizeAddresses(
+  Iterable<OwnerAddress> addresses, {
+  String? preferredDefaultId,
+}) {
+  final items = addresses.toList();
+  if (items.isEmpty) return items;
+  var defaultId = preferredDefaultId;
+  if (defaultId == null || !items.any((item) => item.id == defaultId)) {
+    defaultId = items
+        .firstWhere((item) => item.isDefault, orElse: () => items.first)
+        .id;
+  }
+  return items
+      .map((item) => item.copyWith(isDefault: item.id == defaultId))
+      .toList();
+}
+
 /// App-wide owner data, serialized as one document after every mutation.
 class OwnerAppState extends ChangeNotifier {
   OwnerAppState._({
@@ -115,7 +132,7 @@ class OwnerAppState extends ChangeNotifier {
       profile: OwnerProfile.fromJson(
         Map<String, dynamic>.from(json['profile'] as Map),
       ),
-      addresses: read('addresses', OwnerAddress.fromJson),
+      addresses: _normalizeAddresses(read('addresses', OwnerAddress.fromJson)),
       projects: read('projects', OwnerProject.fromJson),
       reminders: read('reminders', OwnerReminder.fromJson),
       messages: read('messages', OwnerMessage.fromJson),
@@ -257,13 +274,13 @@ class OwnerAppState extends ChangeNotifier {
 
   Future<void> addAddress(OwnerAddress value) => _mutate(() {
     if (_addresses.any((item) => item.id == value.id)) return null;
-    final existing = value.isDefault
-        ? _addresses.map((item) => item.copyWith(isDefault: false))
-        : _addresses;
-    return {
-      ...toJson(),
-      'addresses': [...existing, value].map((e) => e.toJson()).toList(),
-    };
+    final next = _normalizeAddresses(
+      [..._addresses, value],
+      preferredDefaultId: value.isDefault || _addresses.isEmpty
+          ? value.id
+          : null,
+    );
+    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
   });
 
   Future<void> updateAddress(OwnerAddress value) => _mutate(() {
@@ -272,19 +289,17 @@ class OwnerAppState extends ChangeNotifier {
         jsonEncode(_addresses[index].toJson()) == jsonEncode(value.toJson())) {
       return null;
     }
-    final next = value.isDefault
-        ? _addresses.map((item) => item.copyWith(isDefault: false)).toList()
-        : [..._addresses];
-    next[index] = value;
+    final replaced = [..._addresses]..[index] = value;
+    final next = _normalizeAddresses(
+      replaced,
+      preferredDefaultId: value.isDefault ? value.id : null,
+    );
     return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
   });
 
   Future<void> deleteAddress(String id) => _mutate(() {
-    final next = _addresses.where((item) => item.id != id).toList();
+    final next = _normalizeAddresses(_addresses.where((item) => item.id != id));
     if (next.length == _addresses.length) return null;
-    if (next.isNotEmpty && !next.any((item) => item.isDefault)) {
-      next[0] = next[0].copyWith(isDefault: true);
-    }
     return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
   });
 

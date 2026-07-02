@@ -76,6 +76,45 @@ void main() {
     },
   );
 
+  testWidgets('address form cannot unset the sole default address', (
+    tester,
+  ) async {
+    final state = OwnerAppState.memory();
+    await pumpPage(tester, const AddressPage(), state);
+    final address = state.addresses.single;
+
+    await tester.tap(find.byTooltip('编辑 ${address.recipient} 的地址'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('设为默认地址'));
+    await tester.tap(find.text('保存地址'));
+    await tester.pumpAndSettle();
+
+    expect(state.addresses.where((item) => item.isDefault), hasLength(1));
+    expect(state.addresses.single.isDefault, isTrue);
+  });
+
+  testWidgets('first address added from empty state becomes default', (
+    tester,
+  ) async {
+    final state = OwnerAppState.memory();
+    await state.deleteAddress(state.addresses.single.id);
+    await pumpPage(tester, const AddressPage(), state);
+    await tester.tap(find.text('新增地址'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('address-recipient')), '李女士');
+    await tester.enterText(
+      find.byKey(const Key('address-phone')),
+      '13900000000',
+    );
+    await tester.enterText(find.byKey(const Key('address-city')), '成都');
+    await tester.enterText(find.byKey(const Key('address-district')), '锦江区');
+    await tester.enterText(find.byKey(const Key('address-detail')), '春熙路 1 号');
+    await tester.tap(find.text('保存地址'));
+    await tester.pumpAndSettle();
+
+    expect(state.addresses.single.isDefault, isTrue);
+  });
+
   testWidgets('support validates and persists a submitted request', (
     tester,
   ) async {

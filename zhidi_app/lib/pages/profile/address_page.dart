@@ -32,11 +32,13 @@ class AddressPage extends StatelessWidget {
                         children: [
                           IconButton(
                             key: Key('edit-${address.id}'),
+                            tooltip: '编辑 ${address.recipient} 的地址',
                             icon: const Icon(Icons.edit_outlined),
                             onPressed: () => _openForm(context, address),
                           ),
                           IconButton(
                             key: Key('delete-${address.id}'),
+                            tooltip: '删除 ${address.recipient} 的地址',
                             icon: const Icon(Icons.delete_outline),
                             onPressed: () => _delete(context, address),
                           ),
@@ -122,6 +124,16 @@ class _AddressFormPageState extends State<AddressFormPage> {
   late final _detail = TextEditingController(text: widget.address?.detail);
   late bool _defaultAddress = widget.address?.isDefault ?? false;
   bool _saving = false;
+
+  @override
+  void dispose() {
+    _recipient.dispose();
+    _phone.dispose();
+    _city.dispose();
+    _district.dispose();
+    _detail.dispose();
+    super.dispose();
+  }
 
   Widget _field(
     Key key,

@@ -14,6 +14,13 @@ class _FeedbackPageState extends State<FeedbackPage> {
   String? _category;
   bool _saving = false;
   bool _success = false;
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('帮助与反馈')),

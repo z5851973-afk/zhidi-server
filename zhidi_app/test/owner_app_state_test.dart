@@ -37,6 +37,34 @@ void main() {
     expect(state.addresses.where((item) => item.id == address.id), isEmpty);
   });
 
+  test('first address added to an empty list becomes default', () async {
+    final state = OwnerAppState.memory();
+    await state.deleteAddress(state.addresses.single.id);
+
+    await state.addAddress(
+      const OwnerAddress(
+        id: 'first-address',
+        recipient: '李女士',
+        phone: '13900000000',
+        city: '成都',
+        district: '锦江区',
+        detail: '春熙路 1 号',
+      ),
+    );
+
+    expect(state.addresses.single.isDefault, isTrue);
+  });
+
+  test('unsetting the current default preserves exactly one default', () async {
+    final state = OwnerAppState.memory();
+    final current = state.addresses.single;
+
+    await state.updateAddress(current.copyWith(isDefault: false));
+
+    expect(state.addresses.where((item) => item.isDefault), hasLength(1));
+    expect(state.addresses.single.isDefault, isTrue);
+  });
+
   test('marks one message and then all messages read', () async {
     final state = OwnerAppState.memory();
     final unread = state.messages.where((message) => !message.isRead).toList();

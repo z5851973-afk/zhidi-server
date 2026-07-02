@@ -69,6 +69,13 @@ class _AfterSalesFormPageState extends State<AfterSalesFormPage> {
   final _description = TextEditingController();
   String? _type;
   bool _saving = false;
+
+  @override
+  void dispose() {
+    _description.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('售后申请')),
