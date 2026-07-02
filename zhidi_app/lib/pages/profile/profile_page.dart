@@ -42,66 +42,14 @@ class ProfilePage extends StatelessWidget {
               ),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
-              children: [
-                const CircleAvatar(
-                  radius: 30,
-                  backgroundColor: Color(0x33FFFFFF),
-                  child: Icon(
-                    Icons.person_rounded,
-                    color: Colors.white,
-                    size: 36,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        state.profile.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      const Text(
-                        '已实名认证',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Text(
-                            state.profile.city,
-                            style: const TextStyle(color: Color(0xE6FFFFFF)),
-                          ),
-                          const Text(
-                            '  ·  ',
-                            style: TextStyle(color: Color(0xE6FFFFFF)),
-                          ),
-                          Text(
-                            '${state.projects.length} 个项目',
-                            style: const TextStyle(color: Color(0xE6FFFFFF)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const EditProfilePage()),
-                  ),
-                  child: const Text(
-                    '编辑资料',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
+            child: _ProfileHeader(
+              name: state.profile.name,
+              city: state.profile.city,
+              projectCount: state.projects.length,
+              onEdit: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const EditProfilePage()),
+              ),
             ),
           ),
           const SizedBox(height: 20),
@@ -142,6 +90,124 @@ class ProfilePage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.name,
+    required this.city,
+    required this.projectCount,
+    required this.onEdit,
+  });
+
+  final String name;
+  final String city;
+  final int projectCount;
+  final VoidCallback onEdit;
+
+  Widget get _avatar => const CircleAvatar(
+    radius: 30,
+    backgroundColor: Color(0x33FFFFFF),
+    child: Icon(Icons.person_rounded, color: Colors.white, size: 36),
+  );
+
+  Widget _identity({int nameLines = 1}) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        name,
+        maxLines: nameLines,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      const SizedBox(height: 5),
+      const Text(
+        '已实名认证',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: Colors.white),
+      ),
+    ],
+  );
+
+  Widget get _editButton => TextButton(
+    onPressed: onEdit,
+    child: const Text('编辑资料', style: TextStyle(color: Colors.white)),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final compact = MediaQuery.sizeOf(context).width < 360 || textScale > 1.3;
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _avatar,
+              const SizedBox(width: 14),
+              Expanded(child: _identity(nameLines: 2)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            city,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: Color(0xE6FFFFFF)),
+          ),
+          Text(
+            '$projectCount 个项目',
+            style: const TextStyle(color: Color(0xE6FFFFFF)),
+          ),
+          Align(alignment: Alignment.centerRight, child: _editButton),
+        ],
+      );
+    }
+    return Row(
+      children: [
+        _avatar,
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _identity(),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      city,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Color(0xE6FFFFFF)),
+                    ),
+                  ),
+                  const Text(
+                    '  ·  ',
+                    style: TextStyle(color: Color(0xE6FFFFFF)),
+                  ),
+                  Text(
+                    '$projectCount 个项目',
+                    style: const TextStyle(color: Color(0xE6FFFFFF)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 4),
+        _editButton,
+      ],
     );
   }
 }

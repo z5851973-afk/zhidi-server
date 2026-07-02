@@ -40,13 +40,25 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _saving = true);
     final state = OwnerAppScope.of(context);
-    await state.updateProfile(
-      state.profile.copyWith(
-        name: _nameController.text.trim(),
-        city: _cityController.text.trim(),
-      ),
-    );
-    if (mounted) Navigator.pop(context);
+    var saved = false;
+    try {
+      await state.updateProfile(
+        state.profile.copyWith(
+          name: _nameController.text.trim(),
+          city: _cityController.text.trim(),
+        ),
+      );
+      saved = true;
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('保存失败，请稍后重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+    if (saved && mounted) Navigator.pop(context);
   }
 
   @override
