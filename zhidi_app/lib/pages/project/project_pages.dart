@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/owner_models.dart';
+import '../../app/owner_app_scope.dart';
 
 class ProjectSelectionPage extends StatelessWidget {
   const ProjectSelectionPage({
@@ -133,23 +134,58 @@ class ProjectInfoPage extends StatelessWidget {
   );
 }
 
-class ProjectSettingsPage extends StatelessWidget {
+class ProjectSettingsPage extends StatefulWidget {
   const ProjectSettingsPage({super.key, required this.project});
   final OwnerProject project;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('项目设置')),
-    body: ListView(
-      children: [
-        ListTile(title: const Text('项目名称'), trailing: Text(project.name)),
-        ListTile(title: const Text('所在城市'), trailing: Text(project.city)),
-        const SwitchListTile(
-          value: true,
-          onChanged: null,
-          title: Text('接收项目进度通知'),
-        ),
-      ],
-    ),
-  );
+  State<ProjectSettingsPage> createState() => _ProjectSettingsPageState();
+}
+
+class _ProjectSettingsPageState extends State<ProjectSettingsPage> {
+  bool _saving = false;
+
+  Future<void> _setProjectNotifications(bool value) async {
+    if (_saving) return;
+    final state = OwnerAppScope.of(context);
+    setState(() => _saving = true);
+    try {
+      await state.updateSettings(
+        state.settings.copyWith(projectNotifications: value),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('设置保存失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = OwnerAppScope.of(context).settings;
+    return Scaffold(
+      appBar: AppBar(title: const Text('项目设置')),
+      body: ListView(
+        children: [
+          ListTile(
+            title: const Text('项目名称'),
+            trailing: Text(widget.project.name),
+          ),
+          ListTile(
+            title: const Text('所在城市'),
+            trailing: Text(widget.project.city),
+          ),
+          SwitchListTile(
+            value: settings.projectNotifications,
+            onChanged: _saving ? null : _setProjectNotifications,
+            title: const Text('接收项目进度通知'),
+          ),
+        ],
+      ),
+    );
+  }
 }

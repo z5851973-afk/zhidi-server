@@ -6,11 +6,26 @@ import '../chat/chat_page.dart';
 import '../message/message_page.dart';
 import '../profile/support_page.dart';
 import '../project/project_pages.dart';
+import 'worker/worker_detail_page.dart';
+
+class _ProjectWorker {
+  const _ProjectWorker(this.idSuffix, this.name, this.trade);
+  final String idSuffix;
+  final String name;
+  final String trade;
+
+  String get label => '$name · $trade';
+  String idFor(String projectId) => '$projectId-worker-$idSuffix';
+}
 
 class MyHomePage extends StatelessWidget {
   const MyHomePage({super.key});
 
-  static const _workers = ['李师傅 · 水电工', '王师傅 · 瓦工', '张师傅 · 木工'];
+  static const _workers = [
+    _ProjectWorker('electrician-li', '李师傅', '水电工'),
+    _ProjectWorker('mason-wang', '王师傅', '瓦工'),
+    _ProjectWorker('carpenter-zhang', '张师傅', '木工'),
+  ];
   static const _members = [
     '王先生 · 业主',
     '周工 · 项目经理',
@@ -170,8 +185,8 @@ class MyHomePage extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          const Chip(
-                            label: Text('水电施工中'),
+                          Chip(
+                            label: Text(project.status),
                             visualDensity: VisualDensity.compact,
                           ),
                         ],
@@ -189,7 +204,11 @@ class MyHomePage extends StatelessWidget {
                       icon: Icons.people_outline,
                       onTap: () => _push(
                         context,
-                        const ProjectInfoPage(title: '项目成员', items: _members),
+                        ProjectInfoPage(
+                          title: '项目成员',
+                          description: '当前项目：${project.name}',
+                          items: _members,
+                        ),
                       ),
                     ),
                     _Action(
@@ -286,19 +305,25 @@ class MyHomePage extends StatelessWidget {
             action: '查看全部工人',
             onAction: () => _push(
               context,
-              const ProjectInfoPage(title: '全部工人', items: _workers),
+              _ProjectWorkersPage(project: project, workers: _workers),
             ),
             child: Column(
               children: [
                 for (final worker in _workers)
                   ListTile(
                     leading: const CircleAvatar(child: Icon(Icons.person)),
-                    title: Text(worker),
-                    trailing: TextButton(
-                      onPressed: () => _push(
-                        context,
-                        ChatPage(workerName: worker.split(' · ').first),
+                    title: Text(worker.label),
+                    onTap: () => _push(
+                      context,
+                      WorkerDetailPage(
+                        workerId: worker.idFor(project.id),
+                        name: worker.name,
+                        workerJob: worker.trade,
                       ),
+                    ),
+                    trailing: TextButton(
+                      onPressed: () =>
+                          _push(context, ChatPage(workerName: worker.name)),
                       child: const Text('联系'),
                     ),
                   ),
@@ -310,7 +335,11 @@ class MyHomePage extends StatelessWidget {
             action: '查看验收记录',
             onAction: () => _push(
               context,
-              const ProjectInfoPage(title: '验收记录', items: _inspections),
+              ProjectInfoPage(
+                title: '验收记录',
+                description: '当前项目：${project.name}',
+                items: _inspections,
+              ),
             ),
             child: const Text('平台监理按节点留存验收记录，不达标项目将记录整改。'),
           ),
@@ -319,7 +348,11 @@ class MyHomePage extends StatelessWidget {
             action: '查看全部档案',
             onAction: () => _push(
               context,
-              const ProjectInfoPage(title: '装修档案', items: _archives),
+              ProjectInfoPage(
+                title: '装修档案',
+                description: '当前项目：${project.name}',
+                items: _archives,
+              ),
             ),
             child: const Wrap(
               spacing: 8,
@@ -399,6 +432,48 @@ class MyHomePage extends StatelessWidget {
           ],
         ),
       ),
+    ),
+  );
+}
+
+class _ProjectWorkersPage extends StatelessWidget {
+  const _ProjectWorkersPage({required this.project, required this.workers});
+  final OwnerProject project;
+  final List<_ProjectWorker> workers;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('全部工人')),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('当前项目：${project.name}'),
+        const SizedBox(height: 8),
+        for (final worker in workers)
+          Card(
+            child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person)),
+              title: Text(worker.label),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => WorkerDetailPage(
+                    workerId: worker.idFor(project.id),
+                    name: worker.name,
+                    workerJob: worker.trade,
+                  ),
+                ),
+              ),
+              trailing: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => ChatPage(workerName: worker.name),
+                  ),
+                ),
+                child: const Text('联系'),
+              ),
+            ),
+          ),
+      ],
     ),
   );
 }

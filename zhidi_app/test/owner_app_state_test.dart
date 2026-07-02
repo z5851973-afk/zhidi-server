@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
@@ -277,6 +278,34 @@ void main() {
     );
     expect(store.getString(OwnerAppState.documentKey), isNotNull);
     expect(store.getString('owner.profileName'), isNull);
+  });
+
+  test('project actions and settings survive a same-store reload', () async {
+    final store = MemoryOwnerStore();
+    final first = OwnerAppState.memory(store: store);
+    final original = first.projects.single;
+    final secondProject = original.copyWith(
+      id: 'project-reload',
+      name: '锦江花园局部改造',
+      status: '待开工',
+    );
+    final document = first.toJson();
+    document['projects'] = [original.toJson(), secondProject.toJson()];
+    await store.setString(OwnerAppState.documentKey, jsonEncode(document));
+    final working = OwnerAppState.memory(store: store);
+
+    await working.selectProject(secondProject.id);
+    await working.updateProject(secondProject.copyWith(name: '锦江新家'));
+    await working.completeReminder(working.reminders.first.id);
+    await working.updateSettings(
+      working.settings.copyWith(projectNotifications: false),
+    );
+
+    final restored = OwnerAppState.memory(store: store);
+    expect(restored.selectedProjectId, secondProject.id);
+    expect(restored.selectedProject!.name, '锦江新家');
+    expect(restored.reminders.first.isCompleted, isTrue);
+    expect(restored.settings.projectNotifications, isFalse);
   });
 
   test('failed persistence does not mutate or notify state', () async {
