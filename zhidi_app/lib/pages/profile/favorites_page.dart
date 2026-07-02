@@ -76,6 +76,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => WorkerDetailPage(
+                          workerId: worker.id,
                           name: worker.name,
                           workerJob: worker.trade,
                         ),

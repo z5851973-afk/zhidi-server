@@ -6,16 +6,22 @@ import '../../chat/chat_page.dart';
 import '../../order/create_order_page.dart';
 
 class WorkerDetailPage extends StatelessWidget {
+  final String? workerId;
   final String name;
   final bool fromAi;
   final String? workerJob;
 
   const WorkerDetailPage({
     super.key,
+    this.workerId,
     required this.name,
     this.fromAi = false,
     this.workerJob,
   });
+
+  String get resolvedWorkerId =>
+      workerId ??
+      'legacy:${Uri.encodeComponent(name)}:${Uri.encodeComponent(workerJob ?? '师傅')}';
 
   String get _title {
     switch (workerJob) {
@@ -81,7 +87,11 @@ class WorkerDetailPage extends StatelessWidget {
         foregroundColor: const Color(0xFF333333),
         elevation: 0.5,
         actions: [
-          _FavoriteAction(name: name, workerJob: workerJob),
+          _FavoriteAction(
+            workerId: resolvedWorkerId,
+            name: name,
+            workerJob: workerJob,
+          ),
           TextButton.icon(
             onPressed: () {
               SharePlus.instance.share(
@@ -113,6 +123,7 @@ class WorkerDetailPage extends StatelessWidget {
         ],
       ),
       bottomNavigationBar: _BottomActionBar(
+        workerId: resolvedWorkerId,
         workerName: name,
         workerJob: workerJob,
       ),
@@ -121,10 +132,17 @@ class WorkerDetailPage extends StatelessWidget {
 }
 
 class _FavoriteAction extends StatefulWidget {
-  const _FavoriteAction({required this.name, required this.workerJob});
+  const _FavoriteAction({
+    required this.workerId,
+    required this.name,
+    required this.workerJob,
+    this.buttonKey,
+  });
 
+  final String workerId;
   final String name;
   final String? workerJob;
+  final Key? buttonKey;
 
   @override
   State<_FavoriteAction> createState() => _FavoriteActionState();
@@ -133,15 +151,13 @@ class _FavoriteAction extends StatefulWidget {
 class _FavoriteActionState extends State<_FavoriteAction> {
   bool _saving = false;
 
-  String get _id => '${widget.name}|${widget.workerJob ?? '师傅'}';
-
   Future<void> _toggle() async {
     final state = OwnerAppScope.of(context);
     setState(() => _saving = true);
     try {
       await state.toggleFavorite(
         FavoriteWorker(
-          id: _id,
+          id: widget.workerId,
           name: widget.name,
           trade: widget.workerJob ?? '师傅',
           city: state.profile.city,
@@ -160,9 +176,9 @@ class _FavoriteActionState extends State<_FavoriteAction> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = OwnerAppScope.of(context).isFavorite(_id);
+    final selected = OwnerAppScope.of(context).isFavorite(widget.workerId);
     return IconButton(
-      key: const Key('worker-favorite-button'),
+      key: widget.buttonKey ?? const Key('worker-favorite-button'),
       tooltip: selected ? '取消收藏' : '收藏',
       onPressed: _saving ? null : _toggle,
       icon: _saving
@@ -2075,9 +2091,14 @@ class _ReviewCard extends StatelessWidget {
 
 // ========== 底部操作栏 ==========
 class _BottomActionBar extends StatelessWidget {
+  final String workerId;
   final String workerName;
   final String? workerJob;
-  const _BottomActionBar({required this.workerName, this.workerJob});
+  const _BottomActionBar({
+    required this.workerId,
+    required this.workerName,
+    this.workerJob,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2091,7 +2112,12 @@ class _BottomActionBar extends StatelessWidget {
         child: Row(
           children: [
             // 收藏
-            const _ActionIcon(icon: Icons.star_border_rounded, label: '收藏'),
+            _FavoriteAction(
+              workerId: workerId,
+              name: workerName,
+              workerJob: workerJob,
+              buttonKey: const Key('bottom-worker-favorite-button'),
+            ),
             const SizedBox(width: 16),
             // 客服
             const _ActionIcon(icon: Icons.headset_mic_outlined, label: '客服'),

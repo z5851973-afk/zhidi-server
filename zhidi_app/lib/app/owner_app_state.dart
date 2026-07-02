@@ -8,7 +8,7 @@ export 'owner_models.dart';
 
 import 'owner_key_value_store.dart';
 import 'owner_models.dart';
-import '../pages/order/order_store.dart';
+import 'owner_appointment.dart';
 
 List<OwnerAddress> _normalizeAddresses(
   Iterable<OwnerAddress> addresses, {

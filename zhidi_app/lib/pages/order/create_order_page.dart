@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../app/owner_app_scope.dart';
-import 'order_store.dart';
+import '../../app/owner_appointment.dart';
 import 'order_success_page.dart';
 
 class CreateOrderPage extends StatefulWidget {
@@ -108,7 +108,9 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
                   validator: (value) {
                     final text = value?.trim() ?? '';
                     if (text.isEmpty) return '请填写手机号';
-                    if (text.length < 11) return '手机号格式不正确';
+                    if (!RegExp(r'^1\d{10}$').hasMatch(text)) {
+                      return '手机号格式不正确';
+                    }
                     return null;
                   },
                 ),
