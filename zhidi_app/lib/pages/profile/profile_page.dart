@@ -7,6 +7,8 @@ import 'feedback_page.dart';
 import 'profile_components.dart';
 import 'settings_page.dart';
 import 'support_page.dart';
+import '../order/my_orders_page.dart';
+import 'favorites_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -30,6 +32,8 @@ class ProfilePage extends StatelessWidget {
       '保障与售后' || '平台客服' => const SupportPage(),
       '帮助与反馈' => const FeedbackPage(),
       '设置' => const SettingsPage(),
+      '我的预约' => const MyOrdersPage(),
+      '我的收藏' => const FavoritesPage(),
       _ => ProfilePlaceholderPage(title: title),
     };
     Navigator.push(context, MaterialPageRoute(builder: (_) => destination));

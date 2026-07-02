@@ -8,6 +8,7 @@ export 'owner_models.dart';
 
 import 'owner_key_value_store.dart';
 import 'owner_models.dart';
+import '../pages/order/order_store.dart';
 
 List<OwnerAddress> _normalizeAddresses(
   Iterable<OwnerAddress> addresses, {
@@ -37,6 +38,7 @@ class OwnerAppState extends ChangeNotifier {
     required List<OwnerReminder> reminders,
     required List<OwnerMessage> messages,
     required List<FavoriteWorker> favoriteWorkers,
+    required List<OrderItem> appointments,
     required OwnerSettings settings,
     required List<AfterSalesRequest> afterSalesRequests,
     required List<FeedbackEntry> feedbackEntries,
@@ -56,6 +58,8 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _favoriteWorkers = favoriteWorkers,
        // ignore: prefer_initializing_formals
+       _appointments = appointments,
+       // ignore: prefer_initializing_formals
        _settings = settings,
        // ignore: prefer_initializing_formals
        _afterSalesRequests = afterSalesRequests,
@@ -72,6 +76,7 @@ class OwnerAppState extends ChangeNotifier {
   List<OwnerReminder> _reminders;
   List<OwnerMessage> _messages;
   List<FavoriteWorker> _favoriteWorkers;
+  List<OrderItem> _appointments;
   OwnerSettings _settings;
   List<AfterSalesRequest> _afterSalesRequests;
   List<FeedbackEntry> _feedbackEntries;
@@ -85,6 +90,7 @@ class OwnerAppState extends ChangeNotifier {
   List<OwnerMessage> get messages => List.unmodifiable(_messages);
   List<FavoriteWorker> get favoriteWorkers =>
       List.unmodifiable(_favoriteWorkers);
+  List<OrderItem> get appointments => List.unmodifiable(_appointments);
   OwnerSettings get settings => _settings;
   List<AfterSalesRequest> get afterSalesRequests =>
       List.unmodifiable(_afterSalesRequests);
@@ -137,6 +143,7 @@ class OwnerAppState extends ChangeNotifier {
       reminders: read('reminders', OwnerReminder.fromJson),
       messages: read('messages', OwnerMessage.fromJson),
       favoriteWorkers: read('favoriteWorkers', FavoriteWorker.fromJson),
+      appointments: read('appointments', OrderItem.fromJson),
       settings: OwnerSettings.fromJson(
         Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
       ),
@@ -211,6 +218,7 @@ class OwnerAppState extends ChangeNotifier {
       ),
     ],
     favoriteWorkers: const [],
+    appointments: const [],
     settings: const OwnerSettings(),
     afterSalesRequests: const [],
     feedbackEntries: const [],
@@ -223,6 +231,7 @@ class OwnerAppState extends ChangeNotifier {
     'reminders': _reminders.map((item) => item.toJson()).toList(),
     'messages': _messages.map((item) => item.toJson()).toList(),
     'favoriteWorkers': _favoriteWorkers.map((item) => item.toJson()).toList(),
+    'appointments': _appointments.map((item) => item.toJson()).toList(),
     'settings': _settings.toJson(),
     'afterSalesRequests': _afterSalesRequests
         .map((item) => item.toJson())
@@ -242,6 +251,7 @@ class OwnerAppState extends ChangeNotifier {
       _reminders = restored._reminders;
       _messages = restored._messages;
       _favoriteWorkers = restored._favoriteWorkers;
+      _appointments = restored._appointments;
       _settings = restored._settings;
       _afterSalesRequests = restored._afterSalesRequests;
       _feedbackEntries = restored._feedbackEntries;
@@ -327,6 +337,14 @@ class OwnerAppState extends ChangeNotifier {
     return {
       ...toJson(),
       'favoriteWorkers': next.map((e) => e.toJson()).toList(),
+    };
+  });
+
+  Future<void> addAppointment(OrderItem appointment) => _mutate(() {
+    final next = [appointment, ..._appointments];
+    return {
+      ...toJson(),
+      'appointments': next.map((item) => item.toJson()).toList(),
     };
   });
 
