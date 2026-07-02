@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import '../../app/owner_app_scope.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
 import 'my_home_page.dart';
@@ -174,6 +175,7 @@ class _HomePageState extends State<HomePage> {
                       Icons.chat_bubble_outline_rounded,
                       '消息',
                       2,
+                      badgeCount: OwnerAppScope.of(context).unreadMessageCount,
                     ),
                   ),
                   Expanded(
@@ -203,7 +205,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildTab(IconData icon, String label, int index) {
+  Widget _buildTab(
+    IconData icon,
+    String label,
+    int index, {
+    int badgeCount = 0,
+  }) {
     final isActive = _currentTab == index;
     return GestureDetector(
       onTap: () => setState(() => _currentTab = index),
@@ -211,10 +218,19 @@ class _HomePageState extends State<HomePage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 22,
-            color: isActive ? const Color(0xFFFF6B35) : const Color(0xFFAAAAAA),
+          Badge(
+            key: badgeCount > 0 && index == 2
+                ? const Key('bottom-message-badge')
+                : null,
+            isLabelVisible: badgeCount > 0,
+            label: Text(badgeCount > 99 ? '99+' : '$badgeCount'),
+            child: Icon(
+              icon,
+              size: 22,
+              color: isActive
+                  ? const Color(0xFFFF6B35)
+                  : const Color(0xFFAAAAAA),
+            ),
           ),
           const SizedBox(height: 4),
           Text(
