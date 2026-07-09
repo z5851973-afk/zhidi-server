@@ -1,0 +1,46 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:zhidi_app/app/owner_app_scope.dart';
+import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/pages/home/my_home_page.dart';
+
+Future<void> _pumpMyHome(
+  WidgetTester tester, {
+  required double width,
+  double textScale = 1,
+}) async {
+  tester.view.physicalSize = Size(width, 900);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  final state = await OwnerAppState.memory();
+
+  await tester.pumpWidget(
+    OwnerAppScope(
+      state: state,
+      child: MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: Size(width, 900),
+            textScaler: TextScaler.linear(textScale),
+          ),
+          child: const Scaffold(body: MyHomePage()),
+        ),
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  testWidgets('my home page renders core refreshed sections', (tester) async {
+    await _pumpMyHome(tester, width: 390);
+
+    expect(find.byKey(const Key('my-home-hero')), findsOneWidget);
+    expect(find.byKey(const Key('my-home-quick-actions')), findsOneWidget);
+    expect(find.byKey(const Key('my-home-progress-card')), findsOneWidget);
+    expect(find.byKey(const Key('my-home-reminder-card')), findsOneWidget);
+    expect(find.byKey(const Key('my-home-next-step-card')), findsOneWidget);
+  });
+}
