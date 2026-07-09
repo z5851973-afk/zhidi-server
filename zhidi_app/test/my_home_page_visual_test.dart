@@ -43,4 +43,23 @@ void main() {
     expect(find.byKey(const Key('my-home-reminder-card')), findsOneWidget);
     expect(find.byKey(const Key('my-home-next-step-card')), findsOneWidget);
   });
+
+  testWidgets('hero keeps project title dominant over address', (tester) async {
+    await _pumpMyHome(tester, width: 390);
+
+    final title = tester.widget<Text>(find.text('全屋装修'));
+    final address = tester.widget<Text>(find.text('金牛区 XX小区 3栋2单元'));
+
+    expect(title.style?.fontSize, greaterThan(address.style?.fontSize ?? 0));
+  });
+
+  testWidgets('hero notification stays inside hero bounds', (tester) async {
+    await _pumpMyHome(tester, width: 390);
+
+    final heroRect = tester.getRect(find.byKey(const Key('my-home-hero')));
+    final bellRect = tester.getRect(find.byKey(const Key('my-home-hero-bell')));
+
+    expect(heroRect.contains(bellRect.topLeft), isTrue);
+    expect(heroRect.contains(bellRect.bottomRight), isTrue);
+  });
 }
