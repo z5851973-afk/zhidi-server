@@ -1,15 +1,21 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
+import '../../design/tokens.dart';
 import '../../app/owner_app_scope.dart';
+import '../../app/owner_models.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
 import 'my_home_page.dart';
+import '../chat/chat_page.dart';
 import '../message/message_page.dart';
 import '../renovation/trade_select_page.dart';
-import '../renovation/full_renovation_page.dart';
-import '../renovation/partial_renovation_page.dart';
-import '../profile/profile_page.dart';
 import 'worker/worker_list_page.dart';
+import 'master_selection_page.dart';
+import '../price/price_transparency_page.dart';
+import '../renovation/construction_guarantee_page.dart';
+import '../renovation/fund_bank_escrow_page.dart';
+import '../profile/profile_page.dart';
+import '../auth/login_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,10 +27,24 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   int _currentTab = 0;
 
+  void _onTabTapped(int index) async {
+    // 首页以外的 tab 需要登录
+    if (index != 0) {
+      final appState = OwnerAppScope.of(context);
+      if (!appState.isLoggedIn) {
+        final loggedIn = await Navigator.of(
+          context,
+        ).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+        if (loggedIn != true) return;
+      }
+    }
+    setState(() => _currentTab = index);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
+      backgroundColor: ZdColors.background,
       body: IndexedStack(
         index: _currentTab,
         children: [
@@ -64,55 +84,12 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 20),
 
             // ==================== 需求选择入口 ====================
-            const _RequirementHub(),
-
-            const SizedBox(height: 20),
-
-            // ==================== 推荐师傅团队 ====================
-            _SectionTitle(
-              spacing: 12,
-              title: '为你匹配的施工团队',
-              trailing: GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => WorkerListPage()),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '更多师傅',
-                      style: TextStyle(fontSize: 12, color: Color(0xFF8A8580)),
-                    ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 16,
-                      color: Color(0xFF999999),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              child: _TeamMatchSection(),
-            ),
-
-            const SizedBox(height: 20),
-
-            // ==================== "为什么选择知底？" 四宫格 ====================
-            _SectionTitle(title: '为什么选择知底？', subtitle: '4大保障 · 让装修更省心更放心'),
-            const SizedBox(height: 10),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
-              child: _WhyChooseUs(),
-            ),
+            const HomeRequirementHub(),
 
             const SizedBox(height: 20),
 
             // ==================== 施工建议 ====================
-            _SectionTitle(spacing: 12, title: '施工建议'),
+            _SectionTitle(spacing: 12, title: '今日施工建议'),
             const SizedBox(height: 10),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 14),
@@ -160,6 +137,7 @@ class _HomePageState extends State<HomePage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final tabWidth = constraints.maxWidth / 4;
+          final unreadCount = OwnerAppScope.of(context).unreadMessageCount;
           return Stack(
             clipBehavior: Clip.none,
             children: [
@@ -175,11 +153,16 @@ class _HomePageState extends State<HomePage> {
                       Icons.chat_bubble_outline_rounded,
                       '消息',
                       2,
-                      badgeCount: OwnerAppScope.of(context).unreadMessageCount,
+                      badgeCount: unreadCount,
                     ),
                   ),
                   Expanded(
-                    child: _buildTab(Icons.person_outline_rounded, '我的', 3),
+                    child: _buildTab(
+                      Icons.person_outline_rounded,
+                      '我的',
+                      3,
+                      badgeCount: unreadCount,
+                    ),
                   ),
                 ],
               ),
@@ -193,7 +176,7 @@ class _HomePageState extends State<HomePage> {
                   width: 32,
                   height: 3,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF6B35),
+                    color: ZdColors.primary,
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -213,23 +196,21 @@ class _HomePageState extends State<HomePage> {
   }) {
     final isActive = _currentTab == index;
     return GestureDetector(
-      onTap: () => setState(() => _currentTab = index),
+      onTap: () => _onTabTapped(index),
       behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Badge(
-            key: badgeCount > 0 && index == 2
-                ? const Key('bottom-message-badge')
+            key: badgeCount > 0
+                ? ValueKey('bottom-tab-$index-badge-$badgeCount')
                 : null,
             isLabelVisible: badgeCount > 0,
             label: Text(badgeCount > 99 ? '99+' : '$badgeCount'),
             child: Icon(
               icon,
               size: 22,
-              color: isActive
-                  ? const Color(0xFFFF6B35)
-                  : const Color(0xFFAAAAAA),
+              color: isActive ? ZdColors.primary : ZdColors.textHint,
             ),
           ),
           const SizedBox(height: 4),
@@ -238,269 +219,8 @@ class _HomePageState extends State<HomePage> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-              color: isActive
-                  ? const Color(0xFFFF6B35)
-                  : const Color(0xFFAAAAAA),
+              color: isActive ? ZdColors.primary : ZdColors.textHint,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ==================== "为什么选择知底？" 四宫格 ====================
-class _WhyChooseUs extends StatelessWidget {
-  const _WhyChooseUs();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // 2×2 卡片网格
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 4,
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 1.15,
-          ),
-          itemBuilder: (context, index) {
-            final configs = [
-              _WhyCardConfig(
-                icon: Icons.engineering_rounded,
-                title: '师傅知底',
-                details: ['实名认证', '技能审核', '履历透明可查'],
-                gradient: const [Color(0xFFFF6B35), Color(0xFFFF8A3D)],
-              ),
-              _WhyCardConfig(
-                icon: Icons.monetization_on_outlined,
-                title: '工价知底',
-                details: ['价格透明', '合理报价', '杜绝隐形增项'],
-                gradient: const [Color(0xFFFFB800), Color(0xFFFFCA28)],
-              ),
-              _WhyCardConfig(
-                icon: Icons.build_circle_outlined,
-                title: '工艺知底',
-                details: ['工艺标准', '节点验收', '全程质量把控'],
-                gradient: const [Color(0xFF4CAF50), Color(0xFF66BB6A)],
-              ),
-              _WhyCardConfig(
-                icon: Icons.shield_outlined,
-                title: '平台托底',
-                details: ['先行赔付', '资金托管', '售后无忧保障'],
-                gradient: const [Color(0xFF5B8DEF), Color(0xFF7BA7FF)],
-              ),
-            ];
-            return _WhyCard(config: configs[index]);
-          },
-        ),
-        const SizedBox(height: 14),
-        // 底部 CTA 横幅
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFFFF3E8), Color(0xFFFFFBF7)],
-            ),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFFFE0C8), width: 1),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF6B35), Color(0xFFFF8A3D)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF6B35).withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.verified_user,
-                  size: 22,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Expanded(
-                child: Text(
-                  '知底平台全程保障，让每一笔装修都更透明、更安心',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF5D4037),
-                    height: 1.5,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFFF8A3D), Color(0xFFFF6B35)],
-                  ),
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF6B35).withValues(alpha: 0.25),
-                      blurRadius: 8,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  '了解详情',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _WhyCardConfig {
-  final IconData icon;
-  final String title;
-  final List<String> details;
-  final List<Color> gradient;
-  const _WhyCardConfig({
-    required this.icon,
-    required this.title,
-    required this.details,
-    required this.gradient,
-  });
-}
-
-class _WhyCard extends StatelessWidget {
-  final _WhyCardConfig config;
-  const _WhyCard({required this.config});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: config.gradient.first.withValues(alpha: 0.06),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 顶部图标 + 标题
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(13),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: config.gradient,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: config.gradient.first.withValues(alpha: 0.35),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: Icon(config.icon, size: 22, color: Colors.white),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  config.title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...config.details.map(
-            (d) => Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Row(
-                children: [
-                  Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: config.gradient.first,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      d,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF777777),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          Row(
-            children: [
-              Expanded(
-                child: Container(height: 1, color: const Color(0xFFF0F0F0)),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                '查看',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: config.gradient.first,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 12,
-                color: config.gradient.first,
-              ),
-            ],
           ),
         ],
       ),
@@ -613,13 +333,16 @@ class _WeatherAdviceCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF1A1A1A),
+                      color: ZdColors.textPrimary,
                     ),
                   ),
                   SizedBox(height: 2),
                   Text(
                     '26°C  小雨 · 今日不宜室外施工',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF999999)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: ZdColors.textSecondary,
+                    ),
                   ),
                 ],
               ),
@@ -646,7 +369,7 @@ class _WeatherAdviceCard extends StatelessWidget {
                       height: 22,
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [Color(0xFFFF6B35), Color(0xFFFF8A3D)],
+                          colors: [ZdColors.primary, ZdColors.primaryDark],
                         ),
                         borderRadius: BorderRadius.circular(7),
                       ),
@@ -662,7 +385,7 @@ class _WeatherAdviceCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A1A1A),
+                        color: ZdColors.textPrimary,
                       ),
                     ),
                   ],
@@ -687,14 +410,12 @@ class _WeatherAdviceCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     decoration: BoxDecoration(
                       gradient: const LinearGradient(
-                        colors: [Color(0xFFFF8A3D), Color(0xFFFF6B35)],
+                        colors: [ZdColors.primaryDark, ZdColors.primary],
                       ),
                       borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(
-                            0xFFFF6B35,
-                          ).withValues(alpha: 0.25),
+                          color: ZdColors.primary.withValues(alpha: 0.25),
                           blurRadius: 6,
                           offset: const Offset(0, 3),
                         ),
@@ -770,7 +491,7 @@ class _XhsCaseCard extends StatelessWidget {
   Color get _tagColor {
     switch (data.label) {
       case '老房翻新':
-        return const Color(0xFFFF9800);
+        return const Color(0xFFFF7A2F);
       case '局部改造':
         return const Color(0xFF9C27B0);
       case '新房软装':
@@ -890,7 +611,7 @@ class _XhsCaseCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
+                    color: ZdColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -898,7 +619,7 @@ class _XhsCaseCard extends StatelessWidget {
                   data.location,
                   style: const TextStyle(
                     fontSize: 10,
-                    color: Color(0xFFAAAAAA),
+                    color: ZdColors.textHint,
                   ),
                 ),
               ],
@@ -926,12 +647,15 @@ class _FourGuarantees extends StatelessWidget {
         border: Border.all(color: const Color(0xFFDCE8CC), width: 0.5),
       ),
       child: Row(
-        children: const [
+        children: [
           Expanded(
             child: _GuaranteeCard(
               icon: Icons.shield_outlined,
-              title: '资金托管',
-              subtitle: '装修款专用账户',
+              title: '资金银行托管',
+              subtitle: '银行监管账户',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FundBankEscrowPage()),
+              ),
             ),
           ),
           _GuaranteeDivider(),
@@ -976,15 +700,17 @@ class _GuaranteeCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
+  final VoidCallback? onTap;
   const _GuaranteeCard({
     required this.icon,
     required this.title,
     required this.subtitle,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final child = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
@@ -1008,312 +734,22 @@ class _GuaranteeCard extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           subtitle,
-          style: const TextStyle(fontSize: 10, color: Color(0xFF888888)),
+          style: const TextStyle(fontSize: 10, color: ZdColors.textSecondary),
           textAlign: TextAlign.center,
         ),
       ],
     );
-  }
-}
-
-// ==================== 推荐师傅团队 ====================
-class _TeamMatchSection extends StatelessWidget {
-  const _TeamMatchSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        // 团队卡片
-        _TeamCard(
-          teamName: '王工团队',
-          location: '金牛区',
-          members: '水电·泥瓦·木工·油漆',
-          completedCount: 26,
-          rating: 4.9,
-          nearbyCount: 3,
-          nearbyLocation: '金牛区',
-          avatarColor: const Color(0xFFFF6B35),
-        ),
-        const SizedBox(height: 10),
-        _TeamCard(
-          teamName: '赵工团队',
-          location: '武侯区',
-          members: '水电·泥瓦·木工·油漆',
-          completedCount: 18,
-          rating: 4.8,
-          nearbyCount: 2,
-          nearbyLocation: '武侯区',
-          avatarColor: const Color(0xFF5B8DEF),
-        ),
-
-        const SizedBox(height: 12),
-
-        // 平台托管付款 CTA
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFF0F5E8), Color(0xFFF5F9EE)],
-            ),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFDCE8CC), width: 0.5),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF5A8F3F).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.shield_outlined,
-                  size: 18,
-                  color: Color(0xFF5A8F3F),
-                ),
-              ),
-              const SizedBox(width: 10),
-              const Expanded(
-                child: Text(
-                  '平台托管付款，按工序验收后分批释放，不满意可冻结',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF4A6B30),
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TeamCard extends StatelessWidget {
-  final String teamName;
-  final String location;
-  final String members;
-  final int completedCount;
-  final double rating;
-  final int nearbyCount;
-  final String nearbyLocation;
-  final Color avatarColor;
-
-  const _TeamCard({
-    required this.teamName,
-    required this.location,
-    required this.members,
-    required this.completedCount,
-    required this.rating,
-    required this.nearbyCount,
-    required this.nearbyLocation,
-    required this.avatarColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: [
-              BoxShadow(
-                color: avatarColor.withValues(alpha: 0.05),
-                blurRadius: 14,
-                offset: const Offset(0, 5),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // 左侧渐变头像
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [avatarColor.withValues(alpha: 0.8), avatarColor],
-                  ),
-                ),
-                child: const Icon(
-                  Icons.groups_rounded,
-                  size: 26,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 12),
-              // 中间信息
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          teamName,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF5F5F5),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            location,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF999999),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      members,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF777777),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _SignalChip(
-                          icon: Icons.home_work_outlined,
-                          text: '$completedCount 套',
-                          color: const Color(0xFF5A8F3F),
-                        ),
-                        const SizedBox(width: 8),
-                        _SignalChip(
-                          icon: Icons.star_rounded,
-                          text: '$rating',
-                          color: const Color(0xFFFFB800),
-                        ),
-                        const SizedBox(width: 8),
-                        _SignalChip(
-                          icon: Icons.location_on_outlined,
-                          text: '$nearbyLocation $nearbyCount 个',
-                          color: const Color(0xFF5B8DEF),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: Color(0xFFDDDDDD),
-              ),
-            ],
-          ),
-        ),
-        // 推荐标签 — 右上角
-        Positioned(
-          top: 10,
-          right: 10,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: avatarColor.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(3),
-            ),
-            child: Text(
-              '推荐',
-              style: TextStyle(
-                fontSize: 8,
-                fontWeight: FontWeight.w700,
-                color: avatarColor,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TagChip extends StatelessWidget {
-  final String label;
-  final Color color;
-  const _TagChip({required this.label, required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-class _SignalChip extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  final Color? color;
-  const _SignalChip({required this.icon, required this.text, this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    final c = color ?? const Color(0xFF5A8F3F);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 11, color: c),
-        const SizedBox(width: 3),
-        Text(
-          text,
-          style: TextStyle(fontSize: 10, color: c, fontWeight: FontWeight.w600),
-        ),
-      ],
-    );
+    if (onTap == null) return child;
+    return GestureDetector(onTap: onTap, child: child);
   }
 }
 
 // ==================== 统一板块标题组件 ====================
 class _SectionTitle extends StatelessWidget {
   final String title;
-  final String? subtitle;
-  final Widget? trailing;
   final double spacing;
   const _SectionTitle({
     required this.title,
-    this.subtitle,
-    this.trailing,
     this.spacing = 10,
   });
 
@@ -1328,7 +764,7 @@ class _SectionTitle extends StatelessWidget {
             height: 20,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFFF6B35), Color(0xFFFF8A3D)],
+                colors: [ZdColors.primary, ZdColors.primaryDark],
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
               ),
@@ -1345,24 +781,13 @@ class _SectionTitle extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF1A1A1A),
+                    color: ZdColors.textPrimary,
                     height: 1.2,
                   ),
                 ),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF999999),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
-          if (trailing != null) trailing!,
         ],
       ),
     );
@@ -1609,113 +1034,225 @@ class _Divider extends StatelessWidget {
 }
 
 // ==================== 需求选择入口 ====================
-class _RequirementHub extends StatelessWidget {
-  const _RequirementHub();
+class HomeRequirementHub extends StatelessWidget {
+  const HomeRequirementHub({super.key});
+
+  Future<void> _onMatch(BuildContext context) async {
+    final appState = OwnerAppScope.of(context);
+    if (!appState.isLoggedIn) {
+      final loggedIn = await Navigator.of(
+        context,
+      ).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
+      if (loggedIn != true) return;
+    }
+    if (!context.mounted) return;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const TradeSelectPage()),
+    );
+    if (result is Worker && context.mounted) {
+      final phaseIndex = WorkerListPage.tradeToPhaseIndex(result.trade);
+      if (phaseIndex != null) {
+        final booked = BookedWorker(
+          id: result.id,
+          name: result.name,
+          trade: result.trade.label,
+          phaseName: WorkerListPage.phaseNames[phaseIndex],
+          phaseIndex: phaseIndex,
+          rating: result.rating,
+          completedOrders: result.completedProjects,
+          years: result.experienceYears,
+          avatarEmoji: result.trade.icon,
+          skills: result.certifications,
+          distance: result.distance,
+        );
+        appState.bookWorker(booked);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 标题区
-          const Text(
-            '选择你的装修需求',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF2D2D2D),
-              letterSpacing: -0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            '我们帮你找工人、排工期、组团队',
-            style: TextStyle(fontSize: 13, color: Color(0xFF888888)),
-          ),
-          const SizedBox(height: 16),
+          // ── Hero: 3分钟匹配合适工人 ──
+          _HeroSection(onMatch: () => _onMatch(context)),
+          const SizedBox(height: 20),
+          // ── 按需找服务 ──
+          const _ServiceRow(),
+          const SizedBox(height: 24),
+          // ── 为什么选择知底 ──
+          const _TrustRow(),
+        ],
+      ),
+    );
+  }
+}
 
-          // 找工种 — 大卡片
-          _HeroWorkerCard(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const TradeSelectPage()),
-            ),
-          ),
-          const SizedBox(height: 12),
+// ── Hero: 3分钟匹配合适工人（主卡片 + 数据统计条）──
+class _HeroSection extends StatelessWidget {
+  final VoidCallback onMatch;
+  const _HeroSection({required this.onMatch});
 
-          // 小卡片 — 2×2 宫格
-          Row(
-            children: [
-              Expanded(
-                child: _SmallServiceCard(
-                  icon: Icons.home_work_rounded,
-                  title: '全屋装修',
-                  subtitle: '毛坯房·新房整装',
-                  desc: '设计·施工·材料一站式服务',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const FullRenovationPage(
-                        type: RequirementType.fullRenovation,
-                      ),
-                    ),
-                  ),
-                ),
+  static const _orange = ZdColors.primary;
+  static const _dark = ZdColors.textPrimary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // ── 主卡片 ──
+        Container(
+          key: const Key('home-hero-card'),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFF0F0F0), width: 3.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallServiceCard(
-                  icon: Icons.autorenew_rounded,
-                  title: '旧房改造',
-                  subtitle: '老房翻新·拆除重建',
-                  desc: '设计·施工·材料一站式服务',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const FullRenovationPage(
-                        type: RequirementType.oldHouseRenovation,
-                      ),
-                    ),
-                  ),
-                ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 1),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Row(
+          clipBehavior: Clip.antiAlias,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: _SmallServiceCard(
-                  icon: Icons.format_paint_rounded,
-                  title: '局部改造',
-                  subtitle: '厨房·卫生间·墙面',
-                  desc: '设计·施工·材料一站式服务',
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PartialRenovationPage(),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const _LeftNumber(),
+                        const SizedBox(height: 1),
+                        const Text(
+                          '匹配合适工人',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: _dark,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          '',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w400,
+                            color: ZdColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
+                  const _WorkerWithBubble(),
+                ],
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: _SmallServiceCard(
-                  icon: Icons.grid_view_rounded,
-                  title: '更多服务',
-                  subtitle: '定制·监理·软装等',
-                  desc: '一站式解决装修难题',
-                  onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('更多服务，敬请期待'),
-                      duration: Duration(seconds: 1),
-                    ),
-                  ),
-                ),
+              const SizedBox(height: 12),
+              _CtaButton(onMatch: onMatch),
+              const SizedBox(height: 6),
+              const Wrap(
+                spacing: 10,
+                runSpacing: 6,
+                children: [
+                  _TagItem(label: '严格筛选'),
+                  _TagItem(label: '实名认证'),
+                  _TagItem(label: '银行监管'),
+                ],
               ),
             ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        // ── 数据统计条 ──
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return Container(
+              key: const Key('home-stats-panel'),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFCFA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFF5EDE5), width: 2.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.02),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 2,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: const _HeroStatsPanel(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroStatsPanel extends StatelessWidget {
+  const _HeroStatsPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: const [
+          SizedBox(
+            width: 70,
+            child: _StatCell(
+              icon: Icons.people_outline_rounded,
+              value: '12,368+',
+              label: '业主的选择',
+            ),
+          ),
+          SizedBox(width: 10),
+          SizedBox(
+            width: 70,
+            child: _StatCell(
+              icon: Icons.access_time_rounded,
+              value: '平均30分钟',
+              label: '快速响应',
+            ),
+          ),
+          SizedBox(width: 10),
+          SizedBox(
+            width: 56,
+            child: _StatCell(
+              icon: Icons.thumb_up_outlined,
+              value: '99%',
+              label: '好评率',
+            ),
+          ),
+          SizedBox(width: 10),
+          SizedBox(
+            width: 56,
+            child: _StatCell(
+              icon: Icons.verified_user_rounded,
+              value: '100%',
+              label: '资质认证',
+            ),
           ),
         ],
       ),
@@ -1723,164 +1260,159 @@ class _RequirementHub extends StatelessWidget {
   }
 }
 
-// ==================== 找工种 · 大卡片 ====================
-class _HeroWorkerCard extends StatelessWidget {
-  final VoidCallback onTap;
-  const _HeroWorkerCard({required this.onTap});
+// ── "3 分钟" 数字行（独立组件，const优化）──
+class _LeftNumber extends StatelessWidget {
+  const _LeftNumber();
+  @override
+  Widget build(BuildContext context) {
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          const Text(
+            '3',
+            style: TextStyle(
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              color: _HeroSection._orange,
+              height: 1,
+            ),
+          ),
+          const SizedBox(width: 2),
+          const Padding(
+            padding: EdgeInsets.only(bottom: 3),
+            child: Text(
+              '分钟',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: _HeroSection._dark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 工人插画 + 气泡（独立组件）──
+class _WorkerWithBubble extends StatelessWidget {
+  const _WorkerWithBubble();
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 155,
+      height: 160,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          const Positioned(
+            top: 2,
+            left: 34,
+            child: Text(
+              '最快当天可上门',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                color: ZdColors.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Image.asset(
+              'assets/images/worker_confident.png',
+              width: 150,
+              height: 140,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── 标签子组件 ──
+class _TagItem extends StatelessWidget {
+  final String label;
+  const _TagItem({required this.label});
 
   @override
   Widget build(BuildContext context) {
-    const orange = Color(0xFFFF8C00);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0F000000),
-              blurRadius: 16,
-              offset: Offset(0, 4),
-            ),
-          ],
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 14,
+          height: 14,
+          decoration: const BoxDecoration(
+            color: Color(0xFFFFF0E5),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.check, size: 9, color: Colors.white),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              // 左侧：文案区
-              Expanded(
-                flex: 5,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(18, 18, 12, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // 图标 + 标题 + 角标
-                      Row(
-                        children: [
-                          Container(
-                            width: 40,
-                            height: 40,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Color(0xFFFFF5EB),
-                            ),
-                            child: const Icon(
-                              Icons.engineering_rounded,
-                              size: 22,
-                              color: orange,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          const Flexible(
-                            child: Text(
-                              '找工种',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF2D2D2D),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFFE8D6),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '♥',
-                                  style: TextStyle(fontSize: 8, color: orange),
-                                ),
-                                SizedBox(width: 3),
-                                Text(
-                                  '平台优选',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w700,
-                                    color: orange,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      const Text(
-                        '水电·泥瓦·木工·油漆等',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF666666),
-                        ),
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        '精准匹配靠谱工人',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF999999),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 9,
-                        ),
-                        decoration: BoxDecoration(
-                          color: orange,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '去匹配工人',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                            SizedBox(width: 4),
-                            Icon(
-                              Icons.arrow_forward_rounded,
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              // 右侧：砌砖工人场景图
-              Expanded(
-                flex: 4,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(40),
-                  ),
-                  child: Image.asset(
-                    'assets/images/worker_bricklaying.png',
-                    fit: BoxFit.cover,
-                  ),
-                ),
+        const SizedBox(width: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF777777),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 立即匹配工人按钮 ──
+class _CtaButton extends StatelessWidget {
+  final VoidCallback onMatch;
+  const _CtaButton({required this.onMatch});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onMatch,
+      child: FractionallySizedBox(
+        widthFactor: 0.70,
+        alignment: Alignment.centerLeft,
+        child: Container(
+          key: const Key('home-match-action'),
+          constraints: const BoxConstraints(minHeight: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [ZdColors.primary, ZdColors.primaryDark],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: ZdColors.primary.withValues(alpha: 0.25),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
             ],
+          ),
+          child: const Center(
+            child: Text(
+              '立即匹配工人',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
           ),
         ),
       ),
@@ -1888,105 +1420,347 @@ class _HeroWorkerCard extends StatelessWidget {
   }
 }
 
-// ==================== 小卡片 — 横排布局 ====================
-class _SmallServiceCard extends StatelessWidget {
+// ── 统计行：单格 ──
+class _StatCell extends StatelessWidget {
   final IconData icon;
-  final String title;
-  final String subtitle;
-  final String desc;
-  final VoidCallback onTap;
-
-  const _SmallServiceCard({
+  final String value;
+  final String label;
+  const _StatCell({
     required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.desc,
-    required this.onTap,
+    required this.value,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
-    const orange = Color(0xFFFF8C00);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 14, 10, 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0A000000),
-              blurRadius: 12,
-              offset: Offset(0, 3),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18, color: ZdColors.primary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: ZdColors.primary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: ZdColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ── 按需找服务 ──
+class _ServiceRow extends StatelessWidget {
+  const _ServiceRow();
+
+  void _openConsultant(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const ChatPage(workerName: 'AI装修顾问'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 20,
+              decoration: BoxDecoration(
+                color: ZdColors.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                '按需找服务',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: ZdColors.textPrimary,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: () => _openConsultant(context),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0E5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Text(
+                  '帮我选服务',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: ZdColors.primary,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
-        child: Row(
-          children: [
-            // 图标
-            Container(
-              width: 42,
-              height: 42,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFFFF5EB),
-              ),
-              child: Icon(icon, size: 22, color: orange),
+        const SizedBox(height: 14),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          mainAxisSpacing: 10,
+          crossAxisSpacing: 10,
+          childAspectRatio: 2.0,
+          children: const [
+            _SvcCard(
+              icon: Icons.engineering_rounded,
+              iconColor: ZdColors.primary,
+              bgColor: Color(0xFFFFF0E5),
+              title: '全屋装修',
             ),
-            const SizedBox(width: 10),
-            // 文案区
+            _SvcCard(
+              icon: Icons.home_repair_service_rounded,
+              iconColor: Color(0xFF7C4DFF),
+              bgColor: Color(0xFFF3E5FF),
+              title: '旧房改造',
+            ),
+            _SvcCard(
+              icon: Icons.grid_view_rounded,
+              iconColor: Color(0xFF4CAF50),
+              bgColor: Color(0xFFE8F5E9),
+              title: '局部改造',
+            ),
+            _SvcCard(
+              icon: Icons.water_drop_outlined,
+              iconColor: Color(0xFFFFB800),
+              bgColor: Color(0xFFFFF8E1),
+              title: '防水维修',
+            ),
+            _SvcCard(
+              icon: Icons.fact_check_rounded,
+              iconColor: Color(0xFF4CAF50),
+              bgColor: Color(0xFFE8F5E9),
+              title: '验房收房',
+            ),
+            _SvcCard(
+              icon: Icons.more_horiz_rounded,
+              iconColor: Color(0xFF8A6B56),
+              bgColor: Color(0xFFF7F1EA),
+              title: '更多服务',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SvcCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color bgColor;
+  final String title;
+
+  const _SvcCard({
+    required this.icon,
+    required this.iconColor,
+    required this.bgColor,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: bgColor),
+              child: Icon(icon, size: 22, color: iconColor),
+            ),
+            const SizedBox(width: 8),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // 标题行：标题 + 箭头
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF2D2D2D),
-                          ),
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 18,
-                        color: orange,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  // 副标题
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF777777),
-                      height: 1.3,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  // 第三行描述
-                  Text(
-                    desc,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xFFAAAAAA),
-                      height: 1.3,
-                    ),
-                  ),
-                ],
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: ZdColors.textPrimary,
+                ),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+// ── 为什么选择知底 ──
+class _TrustRow extends StatelessWidget {
+  const _TrustRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 4,
+              height: 20,
+              decoration: BoxDecoration(
+                color: ZdColors.primary,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Text(
+              '为什么选择知底',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: ZdColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            Expanded(
+              child: _TrustIndicator(
+                key: const Key('home-worker-selection-entry'),
+                icon: Icons.engineering_rounded,
+                title: '师傅严选',
+                sub: '5重审核机制',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const MasterSelectionPage(),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _TrustIndicator(
+                icon: Icons.monetization_on_outlined,
+                title: '工价透明',
+                sub: '平台统一标准',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PriceTransparencyPage(),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _TrustIndicator(
+                icon: Icons.verified_user_outlined,
+                title: '施工保障',
+                sub: '过程监管验收',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ConstructionGuaranteePage()),
+                ),
+              ),
+            ),
+            Expanded(
+              child: _TrustIndicator(
+                icon: Icons.shield_outlined,
+                title: '资金银行托管',
+                sub: '银行监管账户',
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const FundBankEscrowPage()),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _TrustIndicator extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String sub;
+  final VoidCallback? onTap;
+  const _TrustIndicator({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.sub,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Column(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF0E5),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 24, color: ZdColors.primary),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: ZdColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          sub,
+          style: const TextStyle(fontSize: 10, color: ZdColors.textSecondary),
+        ),
+      ],
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: content,
     );
   }
 }
