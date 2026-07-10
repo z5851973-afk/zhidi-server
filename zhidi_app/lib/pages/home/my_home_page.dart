@@ -653,26 +653,44 @@ class _ProgressBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
       child: Container(
         key: const Key('my-home-progress-card'),
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
+          color: ZdColors.surfaceWarm,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: ZdShadow.cardSoft,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _SectionLabel('装修进度'),
-            const SizedBox(height: 12),
+            const Text(
+              '装修进度',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: _textDark,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '当前项目的施工旅程',
+              style: TextStyle(fontSize: 12, color: _textMid),
+            ),
+            const SizedBox(height: 16),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  for (int i = 0; i < phases.length; i++) ...[
-                    if (i > 0) _ProgressLine(done: phases[i - 1].status == _PhaseStatus.done),
-                    _ProgressDot(phase: phases[i]),
+                  for (int i = 0; i < phases.take(6).length; i++) ...[
+                    _PhaseNode(phase: phases[i]),
+                    if (i != phases.take(6).length - 1)
+                      Container(
+                        width: 18,
+                        height: 2,
+                        margin: const EdgeInsets.only(bottom: 24),
+                        color: phases[i].status == _PhaseStatus.done
+                            ? const Color(0xFF9FD8AF)
+                            : const Color(0xFFE9DED2),
+                      ),
                   ],
                 ],
               ),
@@ -684,43 +702,84 @@ class _ProgressBar extends StatelessWidget {
   }
 }
 
-class _ProgressDot extends StatelessWidget {
-  const _ProgressDot({required this.phase});
+class _PhaseNode extends StatelessWidget {
+  const _PhaseNode({required this.phase});
   final _Phase phase;
 
   @override
   Widget build(BuildContext context) {
-    Color bg;
-    Color textColor;
+    Color fillColor;
+    Color ringColor;
+    Color labelColor;
     Widget content;
 
     switch (phase.status) {
       case _PhaseStatus.done:
-        bg = _green;
-        textColor = _green;
+        fillColor = _green;
+        ringColor = const Color(0xFF9FD8AF);
+        labelColor = const Color(0xFF1BA64B);
         content = const Icon(Icons.check, size: 14, color: Colors.white);
+        break;
       case _PhaseStatus.current:
-        bg = _primary;
-        textColor = _primary;
-        content = Text('${phase.index + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white));
-      default:
-        bg = const Color(0xFFEEEEEE);
-        textColor = const Color(0xFF999999);
-        content = Text('${phase.index + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFBBBBBB)));
+        fillColor = _primary;
+        ringColor = const Color(0xFFFFD4BA);
+        labelColor = _primary;
+        content = Text(
+          '${phase.index + 1}',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        );
+        break;
+      case _PhaseStatus.available:
+        fillColor = const Color(0xFFF2E9DF);
+        ringColor = const Color(0xFFE9DED2);
+        labelColor = const Color(0xFF8C7E72);
+        content = Text(
+          '${phase.index + 1}',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF8C7E72),
+          ),
+        );
+        break;
+      case _PhaseStatus.blocked:
+        fillColor = const Color(0xFFF5F1EC);
+        ringColor = const Color(0xFFE5DDD4);
+        labelColor = const Color(0xFFA89A8E);
+        content = Text(
+          '${phase.index + 1}',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFFB2A69C),
+          ),
+        );
+        break;
     }
 
     return SizedBox(
-      width: 44,
+      width: 52,
       child: Column(
         children: [
           Container(
-            width: 28,
-            height: 28,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
-              color: bg,
+              color: fillColor,
               shape: BoxShape.circle,
+              border: Border.all(color: ringColor, width: 1.5),
               boxShadow: phase.status == _PhaseStatus.current
-                  ? [BoxShadow(color: _primary.withValues(alpha: 0.15), blurRadius: 4, spreadRadius: 2)]
+                  ? [
+                      BoxShadow(
+                        color: _primary.withValues(alpha: 0.16),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ]
                   : null,
             ),
             alignment: Alignment.center,
@@ -732,26 +791,11 @@ class _ProgressDot extends StatelessWidget {
             style: TextStyle(
               fontSize: 10,
               fontWeight: phase.status == _PhaseStatus.current ? FontWeight.w600 : FontWeight.normal,
-              color: textColor,
+              color: labelColor,
             ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ProgressLine extends StatelessWidget {
-  const _ProgressLine({required this.done});
-  final bool done;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 20,
-      height: 2,
-      color: done ? _green : const Color(0xFFEEEEEE),
-      margin: const EdgeInsets.only(bottom: 20),
     );
   }
 }
@@ -767,17 +811,10 @@ class _TodayReminderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-      child: Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      child: _buildFocusCard(
         key: const Key('my-home-reminder-card'),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
-        ),
+        background: const Color(0xFFFFF6EA),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -785,8 +822,8 @@ class _TodayReminderCard extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: _warnBg,
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFFFECD3),
+                borderRadius: BorderRadius.circular(14),
               ),
               child: const Icon(Icons.notifications_active, color: _primary, size: 20),
             ),
@@ -797,20 +834,20 @@ class _TodayReminderCard extends StatelessWidget {
                 children: [
                   const Text(
                     '今日提醒',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _textDark),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _textDark),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     '【${worker.name}·${worker.trade}】正在施工中，预计今天完成。\n提醒：请确认楼下邻居已沟通防水测试配合事项。',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8A), height: 1.5),
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF7D6F63), height: 1.55),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
                   GestureDetector(
                     onTap: () => onPush(WorkerDetailPage(workerName: worker.name, distance: worker.distance)),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('查看详情', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _primary)),
+                        Text('查看详情', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _primary)),
                         SizedBox(width: 4),
                         Icon(Icons.chevron_right, size: 14, color: _primary),
                       ],
@@ -849,17 +886,10 @@ class _NextStepCard extends StatelessWidget {
     );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-      child: Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      child: _buildFocusCard(
         key: const Key('my-home-next-step-card'),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
-        ),
+        background: const Color(0xFFF1F8F1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -867,10 +897,14 @@ class _NextStepCard extends StatelessWidget {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: _greenBg,
-                borderRadius: BorderRadius.circular(12),
+                color: const Color(0xFFDFF1E3),
+                borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.check_circle_outline, color: _green, size: 20),
+              child: const Icon(
+                Icons.check_circle_outline,
+                color: Color(0xFF2F8F57),
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -879,20 +913,38 @@ class _NextStepCard extends StatelessWidget {
                 children: [
                   const Text(
                     '下一步计划',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _textDark),
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: _textDark),
                   ),
-                  const SizedBox(height: 4),
-                  Text(desc, style: const TextStyle(fontSize: 12, color: Color(0xFF8A8A8A), height: 1.5)),
+                  const SizedBox(height: 6),
+                  Text(
+                    desc,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFF667A69),
+                      height: 1.55,
+                    ),
+                  ),
                   if (currentPhase != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     GestureDetector(
                       onTap: () {},
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('联系下一位师傅', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _primary)),
+                          Text(
+                            '联系下一位师傅',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2F8F57),
+                            ),
+                          ),
                           SizedBox(width: 4),
-                          Icon(Icons.chevron_right, size: 14, color: _primary),
+                          Icon(
+                            Icons.chevron_right,
+                            size: 14,
+                            color: Color(0xFF2F8F57),
+                          ),
                         ],
                       ),
                     ),
@@ -905,6 +957,32 @@ class _NextStepCard extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _buildFocusCard({
+  required Key key,
+  required Color background,
+  required Widget child,
+}) {
+  return Container(
+    key: key,
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: background,
+      borderRadius: BorderRadius.circular(24),
+      boxShadow: ZdShadow.cardSoft,
+    ),
+    child: child,
+  );
+}
+
+BoxDecoration _softCardDecoration() {
+  return BoxDecoration(
+    color: ZdColors.surfaceWarm,
+    borderRadius: BorderRadius.circular(22),
+    border: Border.all(color: const Color(0xFFF1E8DE)),
+    boxShadow: ZdShadow.cardSoft,
+  );
 }
 
 // ============================================================
@@ -1101,13 +1179,7 @@ class _MaterialEstimatePanelState extends State<_MaterialEstimatePanel> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
       child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
-        ),
+        decoration: _softCardDecoration(),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -1140,7 +1212,10 @@ class _MaterialEstimatePanelState extends State<_MaterialEstimatePanel> {
                     onToggle: () => widget.onToggleItem(item.id),
                   )),
               const Divider(height: 24),
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1155,7 +1230,6 @@ class _MaterialEstimatePanelState extends State<_MaterialEstimatePanel> {
                       ),
                     ],
                   ),
-                  const Spacer(),
                   SizedBox(
                     height: 42,
                     child: ElevatedButton(
@@ -1172,7 +1246,7 @@ class _MaterialEstimatePanelState extends State<_MaterialEstimatePanel> {
                         elevation: 0,
                         disabledBackgroundColor: const Color(0xFFDDDDDD),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
                       ),
                       child: const Text('确认下单',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
@@ -1250,13 +1324,15 @@ class _MaterialItemCard extends StatelessWidget {
                     if ((item.spec?.isNotEmpty ?? false))
                       Text('规格：${item.spec}', style: const TextStyle(fontSize: 11, color: _textLight)),
                     const SizedBox(height: 2),
-                    Row(
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 2,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           '单价：¥${item.unitPrice.toStringAsFixed(0)}/${item.unit}',
                           style: const TextStyle(fontSize: 12, color: _textMid),
                         ),
-                        const SizedBox(width: 10),
                         Text(
                           '数量：${item.quantity}${item.unit}',
                           style: const TextStyle(fontSize: 12, color: _textMid),
@@ -1298,13 +1374,13 @@ class _InspectionBanner extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
+          decoration: _softCardDecoration().copyWith(
             gradient: const LinearGradient(
               colors: [_primary, Color(0xFFFF5A1F)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0x1AFFFFFF)),
           ),
           child: Stack(
             children: [
@@ -1390,13 +1466,7 @@ class _WorkerCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
-        ),
+        decoration: _softCardDecoration(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1427,7 +1497,10 @@ class _WorkerCard extends StatelessWidget {
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Row(
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -1438,7 +1511,6 @@ class _WorkerCard extends StatelessWidget {
                             child: const Text('施工中',
                                 style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _green)),
                           ),
-                          const SizedBox(width: 8),
                           const Icon(Icons.star, size: 12, color: _star),
                           Text(' ${worker.rating}',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _textDark)),
@@ -1584,23 +1656,19 @@ class _ArchiveCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
       child: Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(color: Color(0x0A000000), blurRadius: 12, offset: Offset(0, 2)),
-          ],
-        ),
+        decoration: _softCardDecoration(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Text(
                   '已记录 ${archives.length}/$totalPhases 个验收项',
                   style: const TextStyle(fontSize: 13, color: _textMid),
                 ),
-                const Spacer(),
                 GestureDetector(
                   onTap: onTap,
                   child: const Row(

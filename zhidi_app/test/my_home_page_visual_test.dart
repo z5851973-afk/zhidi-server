@@ -62,4 +62,26 @@ void main() {
     expect(heroRect.contains(bellRect.topLeft), isTrue);
     expect(heroRect.contains(bellRect.bottomRight), isTrue);
   });
+
+  testWidgets('core status cards stay ordered and vertically separated', (
+    tester,
+  ) async {
+    await _pumpMyHome(tester, width: 390);
+
+    final progress = tester.getTopLeft(find.byKey(const Key('my-home-progress-card')));
+    final reminder = tester.getTopLeft(find.byKey(const Key('my-home-reminder-card')));
+    final nextStep = tester.getTopLeft(find.byKey(const Key('my-home-next-step-card')));
+
+    expect(progress.dy, lessThan(reminder.dy));
+    expect(reminder.dy, lessThan(nextStep.dy));
+  });
+
+  testWidgets('narrow layout keeps refreshed cards overflow-free', (
+    tester,
+  ) async {
+    await _pumpMyHome(tester, width: 320, textScale: 1.2);
+
+    expect(find.byKey(const Key('my-home-progress-card')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
