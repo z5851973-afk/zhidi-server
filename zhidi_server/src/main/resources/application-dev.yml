@@ -14,3 +14,6 @@ spring:
 auth:
   sms:
     hmac-secret: ${SMS_CODE_HMAC_SECRET:dev-only-sms-code-secret-change-me}
+  jwt:
+    secret: ${AUTH_JWT_SECRET:dev-only-jwt-signing-secret-change-me}
+    ttl: PT720H

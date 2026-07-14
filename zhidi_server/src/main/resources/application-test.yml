@@ -10,3 +10,6 @@ spring:
 auth:
   sms:
     hmac-secret: test-only-sms-code-secret-32-characters
+  jwt:
+    secret: test-only-jwt-signing-secret-at-least-32-bytes
+    ttl: PT720H
