@@ -73,6 +73,57 @@ class AuthControllerTest {
 	}
 
 	@Test
+	void logsInAnOwnerAndDocumentsTheOperationInChinese() throws Exception {
+		UUID userId = UUID.fromString("01904f24-3f5b-7000-8000-000000000002");
+		RegistrationResult user = new RegistrationResult(userId, "16600000002",
+			UserStatus.ACTIVE, Set.of(UserRole.OWNER));
+		when(authService.loginOwner("16600000002", "123456"))
+			.thenReturn(new LoginResult("jwt", "Bearer", 2_592_000, user));
+
+		mvc.perform(post("/api/v1/auth/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000002\",\"code\":\"123456\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.accessToken").value("jwt"))
+			.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+			.andExpect(jsonPath("$.data.expiresInSeconds").value(2_592_000))
+			.andExpect(jsonPath("$.data.user.id").value(userId.toString()))
+			.andExpect(jsonPath("$.data.user.roles[0]").value("OWNER"));
+
+		mvc.perform(get("/v3/api-docs"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.summary")
+				.value("业主短信验证码登录"));
+	}
+
+	@Test
+	void validatesLoginRequestsAndMapsOwnerAccessErrors() throws Exception {
+		mvc.perform(post("/api/v1/auth/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000002\",\"code\":\"12\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		when(authService.loginOwner("16600000003", "123456"))
+			.thenThrow(new BusinessException(HttpStatus.FORBIDDEN,
+				"ACCOUNT_DISABLED", "account is disabled"));
+		mvc.perform(post("/api/v1/auth/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000003\",\"code\":\"123456\"}"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("ACCOUNT_DISABLED"));
+
+		when(authService.loginOwner("16600000004", "123456"))
+			.thenThrow(new BusinessException(HttpStatus.FORBIDDEN,
+				"OWNER_ACCESS_DENIED", "owner access is not allowed"));
+		mvc.perform(post("/api/v1/auth/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000004\",\"code\":\"123456\"}"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("OWNER_ACCESS_DENIED"));
+	}
+
+	@Test
 	void validatesPhoneAndMapsRateLimitErrors() throws Exception {
 		mvc.perform(post("/api/v1/auth/sms-codes")
 				.contentType(APPLICATION_JSON)
