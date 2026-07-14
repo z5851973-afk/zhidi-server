@@ -1,5 +1,6 @@
 package com.zhidi.server;
 
+import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.auth.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +16,9 @@ class ZhidiServerApplicationTests {
 
 	@MockitoBean
 	AuthService authService;
+
+	@MockitoBean
+	UserRepository userRepository;
 
 	@Test
 	void contextLoads() {

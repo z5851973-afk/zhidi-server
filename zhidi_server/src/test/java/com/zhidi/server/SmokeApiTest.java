@@ -1,6 +1,8 @@
 package com.zhidi.server;
 
 import static org.springframework.http.MediaType.APPLICATION_JSON;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -8,8 +10,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.zhidi.server.auth.AuthService;
+import com.zhidi.server.auth.JwtTokenService;
+import com.zhidi.server.account.User;
+import com.zhidi.server.account.UserRepository;
+import com.zhidi.server.account.UserRole;
+import com.zhidi.server.account.UserStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -31,12 +41,20 @@ import org.springframework.web.bind.annotation.RestController;
 @AutoConfigureMockMvc
 @Import(SmokeApiTest.ValidationProbeController.class)
 class SmokeApiTest {
+	private static final UUID USER_ID =
+		UUID.fromString("01904f24-3f5b-7000-8000-000000000088");
 
 	@Autowired
 	MockMvc mvc;
 
 	@MockitoBean
 	AuthService authService;
+
+	@Autowired
+	JwtTokenService tokens;
+
+	@MockitoBean
+	UserRepository users;
 
 	@Test
 	void healthResponseCarriesTraceId() throws Exception {
@@ -47,7 +65,16 @@ class SmokeApiTest {
 
 	@Test
 	void validationErrorsUseTheSharedEnvelope() throws Exception {
+		User user = mock(User.class);
+		when(user.getPhone()).thenReturn("13800138000");
+		when(user.getStatus()).thenReturn(UserStatus.ACTIVE);
+		when(user.getRoles()).thenReturn(Set.of(UserRole.OWNER));
+		when(users.findById(USER_ID)).thenReturn(Optional.of(user));
+		String token = tokens.issue(USER_ID, "13800138000", Set.of(UserRole.OWNER))
+			.accessToken();
+
 		mvc.perform(post("/api/v1/test/validation")
+				.header("Authorization", "Bearer " + token)
 				.contentType(APPLICATION_JSON)
 				.content("{}"))
 			.andExpect(status().isBadRequest())
