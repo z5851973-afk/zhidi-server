@@ -3,6 +3,7 @@ package com.zhidi.server.auth;
 import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
+import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
 import java.time.Clock;
 import java.time.Duration;
@@ -22,14 +23,17 @@ public class AuthService {
 	private final UserRepository userRepository;
 	private final VerificationCodeGenerator generator;
 	private final VerificationCodeHasher hasher;
+	private final JwtTokenService jwtTokenService;
 	private final Clock clock;
 
 	public AuthService(SmsVerificationCodeRepository codeRepository, UserRepository userRepository,
-			VerificationCodeGenerator generator, VerificationCodeHasher hasher, Clock clock) {
+			VerificationCodeGenerator generator, VerificationCodeHasher hasher,
+			JwtTokenService jwtTokenService, Clock clock) {
 		this.codeRepository = codeRepository;
 		this.userRepository = userRepository;
 		this.generator = generator;
 		this.hasher = hasher;
+		this.jwtTokenService = jwtTokenService;
 		this.clock = clock;
 	}
 
@@ -63,14 +67,60 @@ public class AuthService {
 	@Transactional(noRollbackFor = BusinessException.class)
 	public RegistrationResult register(String rawPhone, String code) {
 		String phone = User.normalizePhone(rawPhone);
-		if (code == null || !code.matches("\\d{6}")) {
-			throw business(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "verification code must contain six digits");
-		}
 		if (userRepository.findByPhone(phone).isPresent()) {
 			throw business(HttpStatus.CONFLICT, "PHONE_ALREADY_REGISTERED", "phone is already registered");
 		}
 
-		Instant now = clock.instant();
+		verifyAndConsume(phone, code, clock.instant());
+		User user = User.create(phone);
+		user.grantRole(UserRole.OWNER);
+		try {
+			userRepository.saveAndFlush(user);
+		}
+		catch (DataIntegrityViolationException exception) {
+			throw business(HttpStatus.CONFLICT,
+				"PHONE_ALREADY_REGISTERED", "phone is already registered");
+		}
+		return registrationResult(user);
+	}
+
+	@Transactional(noRollbackFor = BusinessException.class)
+	public LoginResult loginOwner(String rawPhone, String code) {
+		String phone = User.normalizePhone(rawPhone);
+		verifyAndConsume(phone, code, clock.instant());
+
+		User user = userRepository.findByPhone(phone).orElseGet(() -> createOwner(phone));
+		requireOwnerAccess(user);
+		JwtTokenResult token = jwtTokenService.issue(
+			user.getId(), user.getPhone(), user.getRoles());
+		return new LoginResult(token.accessToken(), "Bearer", token.expiresInSeconds(),
+			registrationResult(user));
+	}
+
+	private User createOwner(String phone) {
+		User user = User.create(phone);
+		user.grantRole(UserRole.OWNER);
+		try {
+			return userRepository.saveAndFlush(user);
+		}
+		catch (DataIntegrityViolationException exception) {
+			return userRepository.findByPhone(phone).orElseThrow(() -> exception);
+		}
+	}
+
+	private void requireOwnerAccess(User user) {
+		if (user.getStatus() == UserStatus.DISABLED) {
+			throw business(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "account is disabled");
+		}
+		if (!user.hasRole(UserRole.OWNER)) {
+			throw business(HttpStatus.FORBIDDEN, "OWNER_ACCESS_DENIED", "owner access is not allowed");
+		}
+	}
+
+	private void verifyAndConsume(String phone, String code, Instant now) {
+		if (code == null || !code.matches("\\d{6}")) {
+			throw business(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "verification code must contain six digits");
+		}
 		SmsVerificationCode verification = codeRepository
 			.findFirstByPhoneAndConsumedAtIsNullAndInvalidatedAtIsNullOrderByIssuedAtDesc(phone)
 			.orElseThrow(() -> business(HttpStatus.BAD_REQUEST,
@@ -89,16 +139,11 @@ public class AuthService {
 		}
 
 		verification.consume(now);
-		User user = User.create(phone);
-		user.grantRole(UserRole.OWNER);
-		try {
-			userRepository.saveAndFlush(user);
-		}
-		catch (DataIntegrityViolationException exception) {
-			throw business(HttpStatus.CONFLICT,
-				"PHONE_ALREADY_REGISTERED", "phone is already registered");
-		}
-		return new RegistrationResult(user.getId(), user.getPhone(), user.getStatus(), user.getRoles());
+	}
+
+	private RegistrationResult registrationResult(User user) {
+		return new RegistrationResult(
+			user.getId(), user.getPhone(), user.getStatus(), user.getRoles());
 	}
 
 	private void requireBelow(long currentCount, long limit) {

@@ -7,13 +7,17 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
+import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -24,6 +28,7 @@ class AuthServiceTest {
 	private UserRepository userRepository;
 	private VerificationCodeGenerator generator;
 	private VerificationCodeHasher hasher;
+	private JwtTokenService jwtTokenService;
 	private AuthService service;
 
 	@BeforeEach
@@ -32,8 +37,9 @@ class AuthServiceTest {
 		userRepository = mock(UserRepository.class);
 		generator = mock(VerificationCodeGenerator.class);
 		hasher = mock(VerificationCodeHasher.class);
+		jwtTokenService = mock(JwtTokenService.class);
 		service = new AuthService(codeRepository, userRepository, generator, hasher,
-			Clock.fixed(NOW, ZoneOffset.UTC));
+			jwtTokenService, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -141,6 +147,107 @@ class AuthServiceTest {
 		when(userRepository.findByPhone("13800138000")).thenReturn(Optional.of(mock()));
 		assertBusinessCode(() -> service.register("13800138000", "123456"),
 			"PHONE_ALREADY_REGISTERED");
+	}
+
+	@Test
+	void createsAndLogsInANewOwner() {
+		givenValidCode("16600000001", "123456");
+		when(userRepository.findByPhone("16600000001")).thenReturn(Optional.empty());
+		User persistedOwner = owner("16600000001");
+		when(userRepository.saveAndFlush(any(User.class))).thenReturn(persistedOwner);
+		when(jwtTokenService.issue(persistedOwner.getId(), persistedOwner.getPhone(),
+			persistedOwner.getRoles())).thenReturn(new JwtTokenResult("jwt-new", 2_592_000));
+
+		LoginResult result = service.loginOwner("16600000001", "123456");
+
+		assertThat(result.accessToken()).isEqualTo("jwt-new");
+		assertThat(result.tokenType()).isEqualTo("Bearer");
+		assertThat(result.user().phone()).isEqualTo("16600000001");
+		assertThat(result.user().roles()).containsExactly(UserRole.OWNER);
+	}
+
+	@Test
+	void logsInAnExistingActiveOwnerWithoutCreatingAnotherUser() {
+		givenValidCode("16600000002", "123456");
+		User existingOwner = owner("16600000002");
+		when(userRepository.findByPhone("16600000002"))
+			.thenReturn(Optional.of(existingOwner));
+		when(jwtTokenService.issue(existingOwner.getId(), existingOwner.getPhone(),
+			existingOwner.getRoles())).thenReturn(new JwtTokenResult("jwt-existing", 2_592_000));
+
+		LoginResult result = service.loginOwner("16600000002", "123456");
+
+		assertThat(result.user().id()).isEqualTo(existingOwner.getId());
+		assertThat(result.accessToken()).isEqualTo("jwt-existing");
+		verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(any(User.class));
+	}
+
+	@Test
+	void rejectsDisabledOwners() {
+		givenValidCode("16600000003", "123456");
+		User disabledOwner = user("16600000003", UserStatus.DISABLED,
+			Set.of(UserRole.OWNER));
+		when(userRepository.findByPhone("16600000003"))
+			.thenReturn(Optional.of(disabledOwner));
+
+		assertBusinessCode(() -> service.loginOwner("16600000003", "123456"),
+			"ACCOUNT_DISABLED");
+	}
+
+	@Test
+	void rejectsUsersWithoutOwnerRole() {
+		givenValidCode("16600000004", "123456");
+		User worker = user("16600000004", UserStatus.ACTIVE, Set.of(UserRole.WORKER));
+		when(userRepository.findByPhone("16600000004")).thenReturn(Optional.of(worker));
+
+		assertBusinessCode(() -> service.loginOwner("16600000004", "123456"),
+			"OWNER_ACCESS_DENIED");
+	}
+
+	@Test
+	void cannotReuseAConsumedCodeForLogin() {
+		SmsVerificationCode code = validCode("16600000005");
+		when(codeRepository
+			.findFirstByPhoneAndConsumedAtIsNullAndInvalidatedAtIsNullOrderByIssuedAtDesc(
+				"16600000005"))
+			.thenReturn(Optional.of(code), Optional.empty());
+		when(hasher.matches("16600000005", "123456", "digest")).thenReturn(true);
+		User owner = owner("16600000005");
+		when(userRepository.findByPhone("16600000005")).thenReturn(Optional.of(owner));
+		when(jwtTokenService.issue(owner.getId(), owner.getPhone(), owner.getRoles()))
+			.thenReturn(new JwtTokenResult("jwt", 2_592_000));
+
+		service.loginOwner("16600000005", "123456");
+
+		assertBusinessCode(() -> service.loginOwner("16600000005", "123456"),
+			"SMS_CODE_INVALID");
+	}
+
+	private void givenValidCode(String phone, String plaintextCode) {
+		SmsVerificationCode code = validCode(phone);
+		when(codeRepository
+			.findFirstByPhoneAndConsumedAtIsNullAndInvalidatedAtIsNullOrderByIssuedAtDesc(phone))
+			.thenReturn(Optional.of(code));
+		when(hasher.matches(phone, plaintextCode, "digest")).thenReturn(true);
+	}
+
+	private SmsVerificationCode validCode(String phone) {
+		return SmsVerificationCode.issue(
+			phone, "digest", "127.0.0.1", NOW.minusSeconds(10), NOW.plusSeconds(290));
+	}
+
+	private User owner(String phone) {
+		return user(phone, UserStatus.ACTIVE, Set.of(UserRole.OWNER));
+	}
+
+	private User user(String phone, UserStatus status, Set<UserRole> roles) {
+		User user = mock(User.class);
+		when(user.getId()).thenReturn(UUID.randomUUID());
+		when(user.getPhone()).thenReturn(phone);
+		when(user.getStatus()).thenReturn(status);
+		when(user.getRoles()).thenReturn(roles);
+		when(user.hasRole(UserRole.OWNER)).thenReturn(roles.contains(UserRole.OWNER));
+		return user;
 	}
 
 	private void assertBusinessCode(Runnable action, String expectedCode) {

@@ -3,6 +3,7 @@ package com.zhidi.server.auth;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.common.error.BusinessException;
@@ -59,6 +60,34 @@ class AuthServiceIntegrationTest extends MySqlContainerSupport {
 		SmsVerificationCode stored = codeRepository.findAll().getFirst();
 		assertThat(stored.getFailedAttempts()).isEqualTo(5);
 		assertThat(stored.getInvalidatedAt()).isNotNull();
+	}
+
+	@Test
+	void logsInANewOwnerAndConsumesTheCodeOnce() {
+		SmsCodeIssueResult issued = service.issueCode("16600000001", "127.0.0.3");
+
+		LoginResult result = service.loginOwner("16600000001", issued.simulatedCode());
+
+		assertThat(result.accessToken()).isNotBlank();
+		assertThat(result.tokenType()).isEqualTo("Bearer");
+		assertThat(result.expiresInSeconds()).isEqualTo(2_592_000);
+		assertThat(result.user().roles()).containsExactly(UserRole.OWNER);
+		assertThat(userRepository.count()).isEqualTo(1);
+		assertBusinessCode(() -> service.loginOwner("16600000001", issued.simulatedCode()),
+			"SMS_CODE_INVALID");
+	}
+
+	@Test
+	void logsInAnExistingOwnerWithoutCreatingADuplicate() {
+		User owner = User.create("16600000002");
+		owner.grantRole(UserRole.OWNER);
+		userRepository.saveAndFlush(owner);
+		SmsCodeIssueResult issued = service.issueCode("16600000002", "127.0.0.4");
+
+		LoginResult result = service.loginOwner("16600000002", issued.simulatedCode());
+
+		assertThat(result.user().id()).isEqualTo(owner.getId());
+		assertThat(userRepository.count()).isEqualTo(1);
 	}
 
 	private void assertBusinessCode(Runnable action, String expectedCode) {
