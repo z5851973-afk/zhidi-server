@@ -1,40 +1,40 @@
-# Owner App Phone Authentication Integration Design
+# 业主端手机号认证接入设计
 
-## Goal
+## 目标
 
-Connect the existing Flutter owner login screen to the Spring Boot SMS-code APIs and add a unified backend login endpoint that automatically registers new owners, authenticates existing owners, and returns a 30-day JWT session.
+将现有 Flutter 业主端登录页接入 Spring Boot 短信验证码接口，并为后端增加统一登录接口：新手机号自动注册业主账号，已有业主直接登录，成功后返回有效期 30 天的 JWT 会话令牌。
 
-## Scope
+## 范围
 
-This feature applies only to the owner app. The worker login page remains unchanged until the backend supports `WORKER` authentication.
+本功能只接入业主端。工匠端登录页暂时保持不变，等待后端支持 `WORKER` 身份认证后再接入。
 
-The backend keeps the existing endpoints:
+后端保留现有接口：
 
 - `POST /api/v1/auth/sms-codes`
 - `POST /api/v1/auth/register`
 
-It adds:
+新增接口：
 
 - `POST /api/v1/auth/login`
 
-The Flutter owner app uses `sms-codes` and `login`. Users do not choose between registration and login: a verified new phone creates an owner account, while a verified existing owner phone opens a session.
+Flutter 业主端使用 `sms-codes` 和 `login`。用户不需要选择“注册”或“登录”：新手机号验证成功后自动创建业主账号，已有业主手机号验证成功后直接建立会话。
 
-## User Flow
+## 用户流程
 
-1. The user enters a mainland China mobile number on the existing owner login page.
-2. The app requests a code from `POST /api/v1/auth/sms-codes`.
-3. In development, the returned simulated code is placed into the code field and the app explains that it was filled automatically. In environments where the response does not contain a code, the app reports that an SMS was sent.
-4. The user submits the six-digit code.
-5. The app calls `POST /api/v1/auth/login`.
-6. The backend validates and consumes the code exactly once.
-7. If no user exists, the backend creates an `ACTIVE` user with `OWNER`. If an active owner exists, it reuses that account.
-8. The backend returns user data and a signed JWT.
-9. The app stores the JWT in platform secure storage, updates owner state, and follows the existing onboarding/home routing rules.
-10. Logging out clears the secure token and the local logged-in flag.
+1. 用户在现有业主登录页输入中国大陆手机号。
+2. App 调用 `POST /api/v1/auth/sms-codes` 获取验证码。
+3. 开发环境下，App 将接口返回的模拟验证码自动填入验证码输入框，并提示用户“开发验证码已填入”。正式环境响应不包含验证码时，只提示“验证码已发送”。
+4. 用户提交六位验证码。
+5. App 调用 `POST /api/v1/auth/login`。
+6. 后端校验验证码，并确保验证码只能消费一次。
+7. 如果手机号不存在，后端创建 `ACTIVE` 状态且拥有 `OWNER` 角色的用户；如果已有有效业主账号，则直接使用该账号。
+8. 后端返回用户信息和签名后的 JWT。
+9. App 将 JWT 写入系统安全存储，更新业主端状态，并继续使用现有的资料完善页／首页路由规则。
+10. 用户退出登录时，清除安全存储中的令牌和本地登录状态。
 
-## Backend API
+## 后端接口
 
-### Login request
+### 登录请求
 
 `POST /api/v1/auth/login`
 
@@ -45,9 +45,9 @@ The Flutter owner app uses `sms-codes` and `login`. Users do not choose between 
 }
 ```
 
-### Login response
+### 登录响应
 
-The endpoint uses the existing `ApiResponse` envelope. Its `data` value is:
+接口继续使用现有 `ApiResponse` 外层结构，其中 `data` 为：
 
 ```json
 {
@@ -63,111 +63,115 @@ The endpoint uses the existing `ApiResponse` envelope. Its `data` value is:
 }
 ```
 
-The login operation is transactional. Successful verification consumes the code before returning. Concurrent reuse cannot create multiple users or sessions from one code.
+登录过程必须在事务中完成。验证码验证成功后立即消费。并发重复提交同一验证码时，不能创建多个用户，也不能产生多个有效登录结果。
 
-## Account Rules
+## 账号规则
 
-- A missing phone is automatically registered as an `ACTIVE` user with `OWNER`.
-- An existing `ACTIVE` user with `OWNER` may log in.
-- A `DISABLED` user receives `ACCOUNT_DISABLED` and no token.
-- An existing user without `OWNER` receives `OWNER_ACCESS_DENIED` and no token.
-- Duplicate-account races rely on the unique phone constraint and are resolved by loading the winning user before completing login.
-- The existing `/register` behavior remains available and unchanged for compatibility.
+- 手机号不存在时，自动注册为拥有 `OWNER` 角色的 `ACTIVE` 用户。
+- 已有 `ACTIVE` 且拥有 `OWNER` 角色的用户可以直接登录。
+- `DISABLED` 用户返回 `ACCOUNT_DISABLED`，不签发令牌。
+- 已有用户不包含 `OWNER` 角色时返回 `OWNER_ACCESS_DENIED`，不允许进入业主端。
+- 并发创建同一手机号时，以数据库手机号唯一约束为最终保护；发生竞争后读取已成功创建的用户，再继续登录流程。
+- 现有 `/register` 接口继续保留，行为不变，以避免影响已经完成的功能。
 
-## JWT Design
+## JWT 设计
 
-JWTs use the existing JJWT dependencies and HMAC signing. The signing secret comes from `AUTH_JWT_SECRET`; no production secret is committed. Development and test profiles use explicit non-production defaults of at least 32 bytes.
+JWT 使用项目现有的 JJWT 依赖和 HMAC 签名。签名密钥从环境变量 `AUTH_JWT_SECRET` 读取，不在仓库中提交正式环境密钥。开发和测试配置只提供明确标记为非生产用途、长度不少于 32 字节的默认值。
 
-Each token contains:
+每个令牌包含：
 
-- `sub`: user UUID;
-- `phone`: normalized phone number;
-- `roles`: role names;
-- `iat`: issue time;
-- `exp`: issue time plus 30 days.
+- `sub`：用户 UUID；
+- `phone`：标准化后的手机号；
+- `roles`：角色名称集合；
+- `iat`：签发时间；
+- `exp`：签发时间加 30 天。
 
-The response declares `tokenType` as `Bearer` and `expiresInSeconds` as `2592000`. This first version does not issue refresh tokens or persist token plaintext. Future protected API calls send `Authorization: Bearer <token>`.
+响应中的 `tokenType` 固定为 `Bearer`，`expiresInSeconds` 固定为 `2592000`。第一版不实现刷新令牌，也不在数据库保存 JWT 明文。后续受保护接口通过 `Authorization: Bearer <token>` 传递身份凭证。
 
-## Flutter Components
+## Flutter 组件
 
 ### `AuthApiClient`
 
-Owns JSON HTTP calls for SMS issuance and login. It parses the shared backend envelope and maps backend error codes into typed app exceptions. The base URL comes from:
+负责获取短信验证码、统一登录和解析后端 JSON 响应。它将后端业务错误码转换为 App 内部的明确异常类型。
+
+基础地址通过以下编译参数配置：
 
 ```text
 --dart-define=API_BASE_URL=<url>
 ```
 
-Defaults and launch guidance are:
+本地启动规则：
 
-- iOS Simulator and macOS: `http://localhost:8080`;
-- Android Emulator: `http://10.0.2.2:8080`;
-- physical devices: the development Mac's reachable LAN address.
+- iOS 模拟器和 macOS：`http://localhost:8080`；
+- Android 模拟器：`http://10.0.2.2:8080`；
+- 真机：填写开发电脑在同一局域网内可访问的 IP 地址。
 
-No production host is hard-coded.
+代码中不写死正式环境地址。
 
 ### `AuthSessionStore`
 
-Uses `flutter_secure_storage` so iOS stores the token in Keychain and Android stores it through platform-backed encrypted storage. It provides read, write, and clear operations for the JWT and authenticated user ID.
+使用 `flutter_secure_storage` 保存会话。iOS 端写入 Keychain，Android 端使用平台支持的加密存储。它负责读取、写入和清除 JWT 及已认证用户 ID。
 
 ### `OwnerAppState`
 
-The existing state remains responsible for local profile and route state. After a backend login succeeds, it records the phone and logged-in state. Logout clears secure session data as well as local state. Secure-storage failures prevent claiming a successful login, rather than silently continuing without a token.
+现有状态对象继续负责本地资料和页面路由状态。后端登录成功且令牌安全保存后，更新手机号和登录状态。退出登录时，同时清除安全会话和本地状态。
+
+如果安全存储失败，App 不得假装登录成功，也不能静默进入首页。
 
 ### `LoginPage`
 
-The existing visual design stays intact. The page replaces simulated delays with real async operations, disables duplicate submissions while requests are active, starts the countdown only after successful issuance, and always clears loading state after success or failure.
+保持现有视觉设计不变。页面移除模拟等待逻辑，改为真实异步请求；请求期间禁用重复点击；只有验证码发送成功后才开始倒计时；无论成功还是失败都必须正确结束加载状态。
 
-## Error Handling
+## 错误处理
 
-The app presents concise Chinese messages for:
+App 为以下情况显示简洁的中文提示：
 
-- `SMS_RATE_LIMITED`, including the retry guidance returned by the backend;
-- `SMS_CODE_INVALID`;
-- `SMS_CODE_EXPIRED`;
-- `SMS_CODE_ATTEMPTS_EXCEEDED`;
-- `ACCOUNT_DISABLED`;
-- `OWNER_ACCESS_DENIED`;
-- invalid request fields;
-- connection timeout or unreachable server;
-- unexpected server responses.
+- `SMS_RATE_LIMITED`：请求过于频繁，并显示后端给出的等待提示；
+- `SMS_CODE_INVALID`：验证码错误；
+- `SMS_CODE_EXPIRED`：验证码已过期；
+- `SMS_CODE_ATTEMPTS_EXCEEDED`：验证码错误次数过多；
+- `ACCOUNT_DISABLED`：账号已被禁用；
+- `OWNER_ACCESS_DENIED`：该账号不能进入业主端；
+- 请求字段格式不正确；
+- 连接超时或后端无法访问；
+- 无法识别的服务端响应。
 
-The app must not mark the user logged in after any failed network, verification, token-storage, or state-persistence operation. Tokens and verification codes are excluded from logs.
+任何网络、验证码、令牌存储或本地状态写入失败，都不能把用户标记为已登录。日志中不得输出 JWT 和验证码。
 
-## Dependencies and Configuration
+## 依赖与配置
 
-The Flutter app adds an HTTP client package and `flutter_secure_storage`. Platform manifests receive only the changes required for local HTTP development and secure storage. Production transport must use HTTPS; development cleartext exceptions must be scoped to local development instead of globally weakening release security.
+Flutter 新增一个 HTTP 客户端依赖和 `flutter_secure_storage`。平台配置只加入本地 HTTP 调试和安全存储所必需的内容。正式环境必须使用 HTTPS；本地明文 HTTP 例外必须限定在开发场景，不能全局降低发布版本的网络安全设置。
 
-The Spring Boot app adds JWT configuration properties but no new library, because JJWT is already present.
+Spring Boot 增加 JWT 配置项，不新增 JWT 库，因为项目已经包含 JJWT。
 
-## Testing
+## 测试
 
-Backend tests cover:
+后端测试覆盖：
 
-- new phone auto-registration and login;
-- existing active owner login;
-- one-time code consumption;
-- invalid, expired, and five-times-wrong codes;
-- disabled users and users without `OWNER`;
-- duplicate-account races;
-- JWT signature, subject, phone, roles, issue time, and 30-day expiration;
-- OpenAPI exposure of `/api/v1/auth/login`;
-- unchanged `/register` behavior.
+- 新手机号自动注册并登录；
+- 已有有效业主直接登录；
+- 验证码只能消费一次；
+- 验证码错误、过期以及连续输错 5 次；
+- 禁用账号和不含 `OWNER` 角色的账号；
+- 同手机号并发注册竞争；
+- JWT 签名、用户 ID、手机号、角色、签发时间和 30 天过期时间；
+- Swagger 展示 `/api/v1/auth/login`；
+- 原有 `/register` 行为保持不变。
 
-Flutter tests cover:
+Flutter 测试覆盖：
 
-- SMS request success and development auto-fill;
-- countdown starting only after success;
-- unified login request and response parsing;
-- backend error-code messages;
-- network failure without false login;
-- secure token save on success;
-- token clearing on logout;
-- existing owner route behavior after login;
-- all existing widget and state tests.
+- 获取验证码成功及开发环境自动填入；
+- 只有请求成功后才开始倒计时；
+- 统一登录请求和响应解析；
+- 后端错误码对应的中文提示；
+- 网络失败时不会错误地进入登录状态；
+- 登录成功后安全保存令牌；
+- 退出登录时清除令牌；
+- 登录后继续遵循现有业主端页面路由；
+- 现有 Widget 和状态测试全部回归通过。
 
-The complete Maven suite runs against Docker-backed MySQL. Flutter unit/widget tests run with fake API and session-store implementations, so tests do not depend on a live backend.
+完整 Maven 测试使用 Docker 中的 MySQL。Flutter 单元测试和 Widget 测试使用假的 API 与会话存储实现，不依赖正在运行的真实后端。
 
-## Acceptance Criteria
+## 验收标准
 
-With the backend running locally, the owner Flutter app can request a simulated code, automatically fill it in development, log in with an existing active owner or automatically create a new owner, securely retain the returned 30-day JWT, and clear it on logout. Failed or rate-limited requests never create a false local login. The login endpoint appears in Swagger, and the complete backend and Flutter test suites pass.
+本地后端运行时，Flutter 业主端能够请求模拟验证码，在开发环境自动填入验证码，使用已有有效业主账号登录或自动创建新业主账号，安全保存后端返回的 30 天 JWT，并在退出登录时清除令牌。失败或受限请求不得导致本地假登录。Swagger 中能看到统一登录接口，后端和 Flutter 完整测试全部通过。
