@@ -1,0 +1,12 @@
+spring:
+  flyway:
+    enabled: true
+  jpa:
+    properties:
+      hibernate:
+        type:
+                 preferred_uuid_jdbc_type: BINARY
+
+auth:
+  sms:
+    hmac-secret: test-only-sms-code-secret-32-characters

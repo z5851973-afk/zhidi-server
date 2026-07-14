@@ -1,7 +1,9 @@
 package com.zhidi.server;
 
+import com.zhidi.server.auth.AuthService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest(properties = {
 	"spring.autoconfigure.exclude="
@@ -10,6 +12,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 		+ "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration"
 })
 class ZhidiServerApplicationTests {
+
+	@MockitoBean
+	AuthService authService;
 
 	@Test
 	void contextLoads() {

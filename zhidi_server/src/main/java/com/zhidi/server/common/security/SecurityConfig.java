@@ -13,7 +13,15 @@ public class SecurityConfig {
 	SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 		return http
 			.csrf(AbstractHttpConfigurer::disable)
-			.authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())
+			.authorizeHttpRequests(authorize -> authorize
+				.requestMatchers(
+					"/api/v1/auth/**",
+					"/actuator/health/**",
+					"/v3/api-docs/**",
+					"/swagger-ui/**",
+					"/swagger-ui.html")
+				.permitAll()
+				.anyRequest().permitAll())
 			.build();
 	}
 }

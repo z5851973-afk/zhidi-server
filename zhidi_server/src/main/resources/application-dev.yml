@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:mysql://localhost:3306/zhidi?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
+    username: ${DB_USER:zhidi}
+    password: ${DB_PASSWORD:zhidi_dev}
+  flyway:
+    enabled: true
+  jpa:
+    properties:
+      hibernate:
+        type:
+                 preferred_uuid_jdbc_type: BINARY
+
+auth:
+  sms:
+    hmac-secret: ${SMS_CODE_HMAC_SECRET:dev-only-sms-code-secret-change-me}
