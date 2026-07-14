@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.zhidi.server.account.UserRole;
+import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
 import java.util.Set;
@@ -35,6 +36,9 @@ class AuthControllerTest {
 
 	@MockitoBean
 	AuthService authService;
+
+	@MockitoBean
+	UserRepository userRepository;
 
 	@Test
 	void issuesADevelopmentCodeUsingTheDirectRemoteAddress() throws Exception {
