@@ -77,6 +77,28 @@ class JwtAuthenticationFilterTest {
 	}
 
 	@Test
+	void ignoresPublicWorkerDirectoryGetRequestsWithoutAToken() throws Exception {
+		MockHttpServletRequest request = request("/api/v1/workers");
+
+		filter.doFilter(request, response, chain);
+
+		verify(chain).doFilter(request, response);
+		verifyNoInteractions(jwtTokenService, userRepository);
+		assertThat(response.getContentAsByteArray()).isEmpty();
+	}
+
+	@Test
+	void stillProtectsCurrentWorkerProfileRequests() throws Exception {
+		MockHttpServletRequest request = request("/api/v1/workers/me");
+
+		filter.doFilter(request, response, chain);
+
+		assertErrorResponse(HttpStatus.UNAUTHORIZED,
+			"AUTHENTICATION_REQUIRED", "authentication required");
+		verifyNoInteractions(chain);
+	}
+
+	@Test
 	void ignoresRequestsOutsideTheVersionedApi() throws Exception {
 		MockHttpServletRequest request = request("/actuator/health");
 

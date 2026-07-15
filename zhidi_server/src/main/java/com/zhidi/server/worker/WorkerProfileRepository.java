@@ -7,4 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UUID> {
 
 	Optional<WorkerProfile> findByUserId(UUID userId);
+
+	Optional<WorkerProfile> findByUserIdAndNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNull(
+		UUID userId);
+
+	java.util.List<WorkerProfile> findByNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullOrderByUpdatedAtDesc();
 }

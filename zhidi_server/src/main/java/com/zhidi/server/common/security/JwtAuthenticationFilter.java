@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -42,7 +43,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 	@Override
 	protected boolean shouldNotFilter(HttpServletRequest request) {
 		String path = request.getRequestURI();
-		return !path.startsWith("/api/v1/") || path.startsWith("/api/v1/auth/");
+		return !path.startsWith("/api/v1/")
+			|| path.startsWith("/api/v1/auth/")
+			|| isPublicWorkerDirectoryGet(request, path);
+	}
+
+	private boolean isPublicWorkerDirectoryGet(HttpServletRequest request, String path) {
+		if (!HttpMethod.GET.matches(request.getMethod())) {
+			return false;
+		}
+		return path.equals("/api/v1/workers")
+			|| (path.startsWith("/api/v1/workers/") && !path.equals("/api/v1/workers/me"));
 	}
 
 	@Override

@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
+import com.zhidi.server.account.UserRole;
+import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.support.MySqlContainerSupport;
 import jakarta.validation.Validator;
 import java.math.BigDecimal;
@@ -105,10 +107,51 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 			null, null, null, 60, new BigDecimal("99999.99"), null))).isEmpty();
 	}
 
+	@Test
+	void listsOnlyCompleteWorkerProfilesForDirectory() {
+		User complete = createWorker("13800138011");
+		User incomplete = createWorker("13800138012");
+		service.update(complete.getId(), complete.getPhone(),
+			new WorkerProfileRequest("张师傅", "成都", "水电", 8,
+				new BigDecimal("180.00"), "擅长旧房水电改造"));
+		service.update(incomplete.getId(), incomplete.getPhone(),
+			new WorkerProfileRequest("李师傅", "成都", null, 6,
+				new BigDecimal("160.00"), null));
+
+		assertThat(service.listVisible()).containsExactly(new WorkerDirectoryResponse(
+			complete.getId(), "张师傅", "成都", "水电", 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造"));
+	}
+
+	@Test
+	void getsVisibleWorkerDetailByUserId() {
+		service.update(worker.getId(), worker.getPhone(),
+			new WorkerProfileRequest("张师傅", "成都", "水电", 8,
+				new BigDecimal("180.00"), "擅长旧房水电改造"));
+
+		assertThat(service.getVisible(worker.getId())).isEqualTo(new WorkerDirectoryResponse(
+			worker.getId(), "张师傅", "成都", "水电", 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造"));
+	}
+
+	@Test
+	void rejectsMissingOrIncompleteWorkerDetail() {
+		assertThat(org.assertj.core.api.Assertions.catchThrowable(() ->
+			service.getVisible(worker.getId())))
+			.isInstanceOfSatisfying(BusinessException.class,
+				error -> assertThat(error.code()).isEqualTo("WORKER_NOT_FOUND"));
+	}
+
 	private WorkerProfileResponse update(String name, String primaryTrade,
 			Integer experienceYears, BigDecimal dailyRate) {
 		return service.update(worker.getId(), worker.getPhone(),
 			new WorkerProfileRequest(name, "成都", primaryTrade, experienceYears,
 				dailyRate, null));
+	}
+
+	private User createWorker(String phone) {
+		User user = User.create(phone);
+		user.grantRole(UserRole.WORKER);
+		return userRepository.saveAndFlush(user);
 	}
 }

@@ -1,7 +1,10 @@
 package com.zhidi.server.worker;
 
+import com.zhidi.server.common.error.BusinessException;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -24,6 +27,25 @@ public class WorkerProfileService {
 			.map(profile -> toResponse(profile, phone))
 			.orElseGet(() -> new WorkerProfileResponse(
 				userId, phone, null, DEFAULT_CITY, null, null, null, null, false));
+	}
+
+	@Transactional(readOnly = true)
+	public List<WorkerDirectoryResponse> listVisible() {
+		return repository
+			.findByNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullOrderByUpdatedAtDesc()
+			.stream()
+			.map(this::toDirectoryResponse)
+			.toList();
+	}
+
+	@Transactional(readOnly = true)
+	public WorkerDirectoryResponse getVisible(UUID userId) {
+		Objects.requireNonNull(userId);
+		return repository
+			.findByUserIdAndNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNull(userId)
+			.map(this::toDirectoryResponse)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"WORKER_NOT_FOUND", "worker is not available"));
 	}
 
 	@Transactional
@@ -53,6 +75,12 @@ public class WorkerProfileService {
 		return new WorkerProfileResponse(profile.getUserId(), phone, profile.getName(),
 			profile.getServiceCity(), profile.getPrimaryTrade(), profile.getExperienceYears(),
 			profile.getDailyRate(), profile.getBio(), complete);
+	}
+
+	private WorkerDirectoryResponse toDirectoryResponse(WorkerProfile profile) {
+		return new WorkerDirectoryResponse(profile.getUserId(), profile.getName(),
+			profile.getServiceCity(), profile.getPrimaryTrade(), profile.getExperienceYears(),
+			profile.getDailyRate(), profile.getBio());
 	}
 
 	private String normalizeNullable(String value) {
