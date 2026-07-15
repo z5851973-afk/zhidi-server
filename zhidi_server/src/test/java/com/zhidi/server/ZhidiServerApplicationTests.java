@@ -2,6 +2,7 @@ package com.zhidi.server;
 
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.auth.AuthService;
+import com.zhidi.server.owner.OwnerProfileService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -16,6 +17,9 @@ class ZhidiServerApplicationTests {
 
 	@MockitoBean
 	AuthService authService;
+
+	@MockitoBean
+	OwnerProfileService ownerProfileService;
 
 	@MockitoBean
 	UserRepository userRepository;

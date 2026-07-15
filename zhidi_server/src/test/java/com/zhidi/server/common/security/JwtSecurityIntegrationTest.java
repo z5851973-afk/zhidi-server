@@ -13,6 +13,7 @@ import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.auth.AuthService;
 import com.zhidi.server.auth.JwtTokenService;
+import com.zhidi.server.owner.OwnerProfileService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -58,6 +59,9 @@ class JwtSecurityIntegrationTest {
 
 	@MockitoBean
 	AuthService authService;
+
+	@MockitoBean
+	OwnerProfileService ownerProfileService;
 
 	@Test
 	void missingTokenReturnsUnifiedAuthenticationErrorWithTraceId() throws Exception {

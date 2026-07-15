@@ -12,6 +12,7 @@ import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.owner.OwnerProfileService;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,9 @@ class AuthControllerTest {
 
 	@MockitoBean
 	AuthService authService;
+
+	@MockitoBean
+	OwnerProfileService ownerProfileService;
 
 	@MockitoBean
 	UserRepository userRepository;

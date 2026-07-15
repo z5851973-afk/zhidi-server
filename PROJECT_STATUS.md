@@ -43,6 +43,7 @@ zhidi/
 - 业主端已有启动页、手机号登录、首次资料引导、首页、工匠列表/详情、预约与订单、透明价格、装修项目、消息、聊天、个人中心、地址、收藏、设置、售后等页面或交互原型。
 - 工匠端已有登录、首页、订单详情、报价、施工日报、验收、收入、资料等页面或交互原型。
 - 业主端手机号验证码登录已接入 Spring Boot；JWT 使用平台安全存储保存。
+- 业主资料 GET/PUT 接入和首次引导保存已在 Android 模拟器完成端到端验证：登录后读取服务端默认资料，首次引导提交资料落库，强停重启后不再回到首次引导。后端能力已整理到主工作区提交范围；相关 Flutter 接入仍是主工作区未提交改动。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。
@@ -56,13 +57,16 @@ zhidi/
 - 已完成 JWT 入站认证：受保护 API 回查数据库用户状态与角色，并统一返回 JSON 401/403 错误。
 - 已实现验证码哈希保存、5 分钟有效期、错误次数限制，以及手机号/IP 发送频率限制。
 - 已有服务、控制器、JWT、仓库和 MySQL Testcontainers 测试。
+- 业主资料 MySQL 持久化、`GET /api/v1/owners/me`、`PUT /api/v1/owners/me` 已同步到主工作区，并通过后端全测试。
 
-当前真实后端 API 只有：
+当前主工作区真实后端 API 包括：
 
 ```text
 POST /api/v1/auth/sms-codes
 POST /api/v1/auth/register
 POST /api/v1/auth/login
+GET /api/v1/owners/me
+PUT /api/v1/owners/me
 ```
 
 ## 4. 当前未完成
@@ -71,7 +75,7 @@ POST /api/v1/auth/login
 
 - 真实短信供应商；开发环境目前返回模拟验证码。
 - Refresh Token、登出撤销、会话/设备管理和账号注销。
-- 业主资料、头像、地址、实名认证的正式 API 与数据库持久化。
+- 业主资料 API 与数据库持久化已整理到主工作区提交范围；头像、地址簿、实名认证仍未实现。
 - 工匠登录、资料、工种、认证审核、可接单状态、列表和详情 API。
 - 预约、派单、接单/拒单、状态历史。
 - 报价单、报价版本、明细和业主确认。
@@ -86,7 +90,7 @@ POST /api/v1/auth/login
 ### Flutter 集成缺口
 
 - 当前产品交付与本地端到端验证目标仅为 Android；iOS 目录是 Flutter 工程结构，不作为现阶段完成标准。
-- 除业主认证外，大多数页面尚未接入 Spring Boot REST API。
+- 除业主认证和已验证的业主资料闭环外，大多数页面尚未接入 Spring Boot REST API。
 - 许多看似可操作的功能实际只修改本地 `OwnerAppState` / `WorkerAppState` 或 Mock 数据。
 - Firestore 桥接需要逐步迁移或明确保留方案，避免与 Spring Boot 形成双数据源。
 - 上传、聊天、通知、支付和完整业务状态同步尚未形成端到端闭环。
@@ -97,13 +101,13 @@ POST /api/v1/auth/login
 建议按依赖顺序推进：
 
 1. JWT 入站认证、统一当前用户身份和权限测试已完成。
-2. 下一步完成业主资料 GET/PUT，并接入 Flutter 个人资料与首次引导。
+2. 业主资料 GET/PUT 与 Android 首次引导闭环已验证；下一步继续拆分 Flutter 接入未提交改动，再推进工匠账号与资料。
 3. 完成工匠账号、资料、审核、列表和详情。
 4. 完成预约/派单/接单，再替换现有本地与 Firestore 订单桥接。
 5. 完成报价、施工项目、日报、验收和文件上传。
 6. 最后建设消息通知、支付、管理后台和生产部署能力。
 
-`docs/superpowers/plans/2026-07-14-owner-profile-backend.md` 是业主资料后端计划，但当前主源码中尚未看到对应模块；执行前必须重新核对分支、工作树和最新源码。
+`docs/superpowers/plans/2026-07-14-owner-profile-backend.md` 是较早的业主资料后端计划；当前以主工作区未提交源码和最新验证结果为准。
 
 ## 6. 运行与验证
 
@@ -124,6 +128,7 @@ Swagger：`http://localhost:8080/swagger-ui/index.html`
 cd /Users/liupei/Documents/zhidi/zhidi_app
 ../flutter/bin/flutter run \
   --flavor owner \
+  --dart-define=ZHIDI_APP_FLAVOR=owner \
   --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
 
