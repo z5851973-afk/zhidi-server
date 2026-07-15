@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../app/owner_app_scope.dart';
 import '../../../app/owner_models.dart';
+import '../../../data/price_standards.dart';
 import '../../chat/chat_page.dart';
 import '../../order/create_order_page.dart';
+import '../../price/worker_quote_page.dart';
 
 class WorkerDetailPage extends StatefulWidget {
   final String? workerId;
@@ -2166,6 +2168,35 @@ class _BottomActionBar extends StatelessWidget {
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            // 查看报价
+            Expanded(
+              child: SizedBox(
+                height: 44,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => WorkerQuotePage(
+                        workerName: workerName,
+                        trade: demolitionTrade,
+                      ),
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFFF9800),
+                    side: const BorderSide(color: Color(0xFFFF9800)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    '看报价',
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
