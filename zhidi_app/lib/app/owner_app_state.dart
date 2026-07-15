@@ -51,6 +51,7 @@ class OwnerAppState extends ChangeNotifier {
     required List<FeedbackEntry> feedbackEntries,
     required List<BookedWorker> bookedWorkers,
     required List<InspectionRequest> inspections,
+    required List<RenovationArchive> archives,
     required Set<int> completedPhases,
     required this._isLoggedIn,
     // Named public-looking parameters keep seeded-data construction readable.
@@ -85,6 +86,8 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _inspections = inspections,
        // ignore: prefer_initializing_formals
+       _archives = archives,
+       // ignore: prefer_initializing_formals
        _completedPhases = completedPhases;
 
   static const documentKey = 'owner.appState';
@@ -107,6 +110,7 @@ class OwnerAppState extends ChangeNotifier {
   List<FeedbackEntry> _feedbackEntries;
   List<BookedWorker> _bookedWorkers;
   List<InspectionRequest> _inspections;
+  List<RenovationArchive> _archives;
   Set<int> _completedPhases;
   bool _isLoggedIn;
   Future<void> _mutationQueue = Future<void>.value();
@@ -137,6 +141,7 @@ class OwnerAppState extends ChangeNotifier {
       List.unmodifiable(_feedbackEntries);
   List<BookedWorker> get bookedWorkers => List.unmodifiable(_bookedWorkers);
   List<InspectionRequest> get inspections => List.unmodifiable(_inspections);
+  List<RenovationArchive> get archives => List.unmodifiable(_archives);
   Set<int> get completedPhases => Set.unmodifiable(_completedPhases);
   bool get isLoggedIn => _isLoggedIn;
   int get unreadMessageCount =>
@@ -263,6 +268,7 @@ class OwnerAppState extends ChangeNotifier {
       feedbackEntries: read('feedbackEntries', FeedbackEntry.fromJson),
       bookedWorkers: read('bookedWorkers', BookedWorker.fromJson),
       inspections: read('inspections', InspectionRequest.fromJson),
+      archives: read('archives', RenovationArchive.fromJson),
       completedPhases: Set<int>.from(
         (json['completedPhases'] as List<dynamic>? ?? const []).map(
           (value) => value as int,
@@ -349,6 +355,7 @@ class OwnerAppState extends ChangeNotifier {
     feedbackEntries: const [],
     bookedWorkers: const [],
     inspections: const [],
+    archives: const [],
     completedPhases: const {},
     isLoggedIn: false,
   );
@@ -370,6 +377,7 @@ class OwnerAppState extends ChangeNotifier {
     'feedbackEntries': _feedbackEntries.map((item) => item.toJson()).toList(),
     'bookedWorkers': _bookedWorkers.map((item) => item.toJson()).toList(),
     'inspections': _inspections.map((item) => item.toJson()).toList(),
+    'archives': _archives.map((item) => item.toJson()).toList(),
     'completedPhases': _completedPhases.toList(),
     'isLoggedIn': _isLoggedIn,
   };
@@ -394,6 +402,7 @@ class OwnerAppState extends ChangeNotifier {
       _feedbackEntries = restored._feedbackEntries;
       _bookedWorkers = restored._bookedWorkers;
       _inspections = restored._inspections;
+      _archives = restored._archives;
       _completedPhases = restored._completedPhases;
       _isLoggedIn = restored._isLoggedIn;
       notifyListeners();
@@ -736,6 +745,24 @@ class OwnerAppState extends ChangeNotifier {
               : item,
         )
         .toList();
+    final archiveExists = _archives.any(
+      (item) => item.workerId == inspection.workerId &&
+          item.phaseIndex == inspection.phaseIndex,
+    );
+    final nextArchives = archiveExists
+        ? _archives
+        : [
+            RenovationArchive(
+              id:
+                  'archive-${inspection.workerId}-${now.millisecondsSinceEpoch}',
+              workerId: inspection.workerId,
+              workerName: inspection.workerName,
+              phaseName: inspection.phaseName,
+              phaseIndex: inspection.phaseIndex,
+              completedAt: now,
+            ),
+            ..._archives,
+          ];
     final message = OwnerMessage(
       id: 'msg-inspection-approved-${now.millisecondsSinceEpoch}',
       title: '验收已通过',
@@ -747,6 +774,7 @@ class OwnerAppState extends ChangeNotifier {
       ...toJson(),
       'inspections': nextInspections.map((item) => item.toJson()).toList(),
       'bookedWorkers': nextWorkers.map((item) => item.toJson()).toList(),
+      'archives': nextArchives.map((item) => item.toJson()).toList(),
       'completedPhases': nextPhases.toList(),
       'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
     };

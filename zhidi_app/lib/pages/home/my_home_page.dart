@@ -17,6 +17,8 @@ class MyHomePage extends StatelessWidget {
     final project = state.selectedProject;
     final workers = state.bookedWorkers.toList()
       ..sort((a, b) => a.phaseIndex.compareTo(b.phaseIndex));
+    final archives = state.archives.toList()
+      ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
     final completedPhases = state.completedPhases;
 
     return ColoredBox(
@@ -36,6 +38,8 @@ class MyHomePage extends StatelessWidget {
             _ProgressCard(workers: workers, completedPhases: completedPhases),
             const SizedBox(height: 14),
             _WorkerSection(workers: workers),
+            const SizedBox(height: 14),
+            _ArchiveSection(archives: archives),
           ],
         ),
       ),
@@ -353,6 +357,87 @@ class _WorkerCard extends StatelessWidget {
                 ),
               ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ArchiveSection extends StatelessWidget {
+  const _ArchiveSection({required this.archives});
+
+  final List<RenovationArchive> archives;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: '装修档案',
+      child: archives.isEmpty
+          ? const _EmptyHint(text: '验收通过后，阶段记录会自动归档。')
+          : Column(
+              children: archives
+                  .take(3)
+                  .map((archive) => _ArchiveTile(archive: archive))
+                  .toList(),
+            ),
+    );
+  }
+}
+
+class _ArchiveTile extends StatelessWidget {
+  const _ArchiveTile({required this.archive});
+
+  final RenovationArchive archive;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('my-home-archive-${archive.id}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE7F6EE),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.inventory_2_rounded,
+              color: Color(0xFF1F9D55),
+              size: 18,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${archive.phaseName}阶段已归档',
+                  style: const TextStyle(
+                    color: MyHomePage._textDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${archive.workerName} · ${archive.status}',
+                  style: const TextStyle(
+                    color: MyHomePage._textMuted,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

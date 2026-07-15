@@ -544,6 +544,47 @@ class InspectionRequest {
       );
 }
 
+class RenovationArchive {
+  const RenovationArchive({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.completedAt,
+    this.status = '验收通过',
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String phaseName;
+  final int phaseIndex;
+  final DateTime completedAt;
+  final String status;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'completedAt': completedAt.toIso8601String(),
+    'status': status,
+  };
+
+  factory RenovationArchive.fromJson(Map<String, dynamic> json) =>
+      RenovationArchive(
+        id: json['id'] as String,
+        workerId: json['workerId'] as String,
+        workerName: json['workerName'] as String,
+        phaseName: json['phaseName'] as String,
+        phaseIndex: json['phaseIndex'] as int,
+        completedAt: DateTime.parse(json['completedAt'] as String),
+        status: json['status'] as String? ?? '验收通过',
+      );
+}
+
 class BookedWorker {
   const BookedWorker({
     required this.id,
