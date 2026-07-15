@@ -40,6 +40,9 @@ void main() {
 
     await _pumpMyHome(tester, state);
 
+    await tester.scrollUntilVisible(find.text('装修档案'), 300);
+    await tester.pumpAndSettle();
+
     expect(find.text('装修档案'), findsOneWidget);
     expect(find.text('拆除阶段已归档'), findsOneWidget);
     expect(find.text('李师傅 · 验收通过'), findsOneWidget);

@@ -585,6 +585,127 @@ class RenovationArchive {
       );
 }
 
+class MaterialItem {
+  const MaterialItem({
+    required this.id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    required this.unitPrice,
+  });
+
+  final String id;
+  final String name;
+  final int quantity;
+  final String unit;
+  final double unitPrice;
+
+  double get subtotal => quantity * unitPrice;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'quantity': quantity,
+    'unit': unit,
+    'unitPrice': unitPrice,
+  };
+
+  factory MaterialItem.fromJson(Map<String, dynamic> json) => MaterialItem(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    quantity: json['quantity'] as int,
+    unit: json['unit'] as String,
+    unitPrice: (json['unitPrice'] as num).toDouble(),
+  );
+}
+
+enum MaterialEstimateStatus { pending, ordered }
+
+class MaterialEstimate {
+  const MaterialEstimate({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.createdAt,
+    required this.items,
+    this.status = MaterialEstimateStatus.pending,
+    this.orderedAt,
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String phaseName;
+  final int phaseIndex;
+  final DateTime createdAt;
+  final List<MaterialItem> items;
+  final MaterialEstimateStatus status;
+  final DateTime? orderedAt;
+
+  double get totalPrice =>
+      items.fold<double>(0, (total, item) => total + item.subtotal);
+
+  MaterialEstimate copyWith({
+    String? id,
+    String? workerId,
+    String? workerName,
+    String? phaseName,
+    int? phaseIndex,
+    DateTime? createdAt,
+    List<MaterialItem>? items,
+    MaterialEstimateStatus? status,
+    DateTime? orderedAt,
+  }) => MaterialEstimate(
+    id: id ?? this.id,
+    workerId: workerId ?? this.workerId,
+    workerName: workerName ?? this.workerName,
+    phaseName: phaseName ?? this.phaseName,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    createdAt: createdAt ?? this.createdAt,
+    items: items ?? this.items,
+    status: status ?? this.status,
+    orderedAt: orderedAt ?? this.orderedAt,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'createdAt': createdAt.toIso8601String(),
+    'items': items.map((item) => item.toJson()).toList(),
+    'status': status.name,
+    if (orderedAt != null) 'orderedAt': orderedAt!.toIso8601String(),
+  };
+
+  factory MaterialEstimate.fromJson(Map<String, dynamic> json) =>
+      MaterialEstimate(
+        id: json['id'] as String,
+        workerId: json['workerId'] as String,
+        workerName: json['workerName'] as String,
+        phaseName: json['phaseName'] as String,
+        phaseIndex: json['phaseIndex'] as int,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        items: (json['items'] as List<dynamic>)
+            .map(
+              (item) => MaterialItem.fromJson(
+                Map<String, dynamic>.from(item as Map),
+              ),
+            )
+            .toList(),
+        status: MaterialEstimateStatus.values.firstWhere(
+          (item) => item.name == json['status'],
+          orElse: () => MaterialEstimateStatus.pending,
+        ),
+        orderedAt: json['orderedAt'] == null
+            ? null
+            : DateTime.parse(json['orderedAt'] as String),
+      );
+}
+
 class BookedWorker {
   const BookedWorker({
     required this.id,

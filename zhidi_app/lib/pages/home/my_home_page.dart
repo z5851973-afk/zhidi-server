@@ -19,6 +19,8 @@ class MyHomePage extends StatelessWidget {
       ..sort((a, b) => a.phaseIndex.compareTo(b.phaseIndex));
     final archives = state.archives.toList()
       ..sort((a, b) => b.completedAt.compareTo(a.completedAt));
+    final materialEstimates = state.materialEstimates.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     final completedPhases = state.completedPhases;
 
     return ColoredBox(
@@ -38,6 +40,8 @@ class MyHomePage extends StatelessWidget {
             _ProgressCard(workers: workers, completedPhases: completedPhases),
             const SizedBox(height: 14),
             _WorkerSection(workers: workers),
+            const SizedBox(height: 14),
+            _MaterialSection(estimates: materialEstimates),
             const SizedBox(height: 14),
             _ArchiveSection(archives: archives),
           ],
@@ -380,6 +384,129 @@ class _ArchiveSection extends StatelessWidget {
                   .map((archive) => _ArchiveTile(archive: archive))
                   .toList(),
             ),
+    );
+  }
+}
+
+class _MaterialSection extends StatelessWidget {
+  const _MaterialSection({required this.estimates});
+
+  final List<MaterialEstimate> estimates;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SectionCard(
+      title: '材料估算',
+      child: estimates.isEmpty
+          ? const _EmptyHint(text: '师傅提交材料清单后，会在这里确认采购。')
+          : Column(
+              children: estimates
+                  .take(3)
+                  .map((estimate) => _MaterialEstimateCard(estimate: estimate))
+                  .toList(),
+            ),
+    );
+  }
+}
+
+class _MaterialEstimateCard extends StatelessWidget {
+  const _MaterialEstimateCard({required this.estimate});
+
+  final MaterialEstimate estimate;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = OwnerAppScope.of(context);
+    final ordered = estimate.status == MaterialEstimateStatus.ordered;
+    final firstItem = estimate.items.isEmpty ? null : estimate.items.first;
+
+    return Container(
+      key: Key('my-home-material-${estimate.id}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE8ECF2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF3EA),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.shopping_bag_rounded,
+                  color: MyHomePage._primary,
+                  size: 18,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${estimate.phaseName}材料清单',
+                      style: const TextStyle(
+                        color: MyHomePage._textDark,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${estimate.workerName} · 预计 ¥${estimate.totalPrice.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: MyHomePage._textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusChip(label: ordered ? '已确认采购' : '待确认'),
+            ],
+          ),
+          if (firstItem != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              '${firstItem.name} ${firstItem.quantity}${firstItem.unit}',
+              style: const TextStyle(
+                color: MyHomePage._textMuted,
+                fontSize: 12,
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          if (!ordered)
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => state.confirmMaterialEstimate(estimate.id),
+                style: FilledButton.styleFrom(
+                  backgroundColor: MyHomePage._primary,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('确认采购'),
+              ),
+            )
+          else
+            const Text(
+              '已确认采购',
+              style: TextStyle(
+                color: Color(0xFF1F9D55),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

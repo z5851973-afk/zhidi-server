@@ -52,6 +52,7 @@ class OwnerAppState extends ChangeNotifier {
     required List<BookedWorker> bookedWorkers,
     required List<InspectionRequest> inspections,
     required List<RenovationArchive> archives,
+    required List<MaterialEstimate> materialEstimates,
     required Set<int> completedPhases,
     required this._isLoggedIn,
     // Named public-looking parameters keep seeded-data construction readable.
@@ -88,6 +89,8 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _archives = archives,
        // ignore: prefer_initializing_formals
+       _materialEstimates = materialEstimates,
+       // ignore: prefer_initializing_formals
        _completedPhases = completedPhases;
 
   static const documentKey = 'owner.appState';
@@ -111,6 +114,7 @@ class OwnerAppState extends ChangeNotifier {
   List<BookedWorker> _bookedWorkers;
   List<InspectionRequest> _inspections;
   List<RenovationArchive> _archives;
+  List<MaterialEstimate> _materialEstimates;
   Set<int> _completedPhases;
   bool _isLoggedIn;
   Future<void> _mutationQueue = Future<void>.value();
@@ -142,6 +146,8 @@ class OwnerAppState extends ChangeNotifier {
   List<BookedWorker> get bookedWorkers => List.unmodifiable(_bookedWorkers);
   List<InspectionRequest> get inspections => List.unmodifiable(_inspections);
   List<RenovationArchive> get archives => List.unmodifiable(_archives);
+  List<MaterialEstimate> get materialEstimates =>
+      List.unmodifiable(_materialEstimates);
   Set<int> get completedPhases => Set.unmodifiable(_completedPhases);
   bool get isLoggedIn => _isLoggedIn;
   int get unreadMessageCount =>
@@ -269,6 +275,7 @@ class OwnerAppState extends ChangeNotifier {
       bookedWorkers: read('bookedWorkers', BookedWorker.fromJson),
       inspections: read('inspections', InspectionRequest.fromJson),
       archives: read('archives', RenovationArchive.fromJson),
+      materialEstimates: read('materialEstimates', MaterialEstimate.fromJson),
       completedPhases: Set<int>.from(
         (json['completedPhases'] as List<dynamic>? ?? const []).map(
           (value) => value as int,
@@ -356,6 +363,7 @@ class OwnerAppState extends ChangeNotifier {
     bookedWorkers: const [],
     inspections: const [],
     archives: const [],
+    materialEstimates: const [],
     completedPhases: const {},
     isLoggedIn: false,
   );
@@ -378,6 +386,9 @@ class OwnerAppState extends ChangeNotifier {
     'bookedWorkers': _bookedWorkers.map((item) => item.toJson()).toList(),
     'inspections': _inspections.map((item) => item.toJson()).toList(),
     'archives': _archives.map((item) => item.toJson()).toList(),
+    'materialEstimates': _materialEstimates
+        .map((item) => item.toJson())
+        .toList(),
     'completedPhases': _completedPhases.toList(),
     'isLoggedIn': _isLoggedIn,
   };
@@ -403,6 +414,7 @@ class OwnerAppState extends ChangeNotifier {
       _bookedWorkers = restored._bookedWorkers;
       _inspections = restored._inspections;
       _archives = restored._archives;
+      _materialEstimates = restored._materialEstimates;
       _completedPhases = restored._completedPhases;
       _isLoggedIn = restored._isLoggedIn;
       notifyListeners();
@@ -813,6 +825,50 @@ class OwnerAppState extends ChangeNotifier {
           ].map((item) => item.toJson()).toList(),
         };
       });
+
+  Future<void> addMaterialEstimate(MaterialEstimate estimate) => _mutate(() {
+    final filtered = _materialEstimates
+        .where((item) => item.id != estimate.id)
+        .toList();
+    return {
+      ...toJson(),
+      'materialEstimates': [
+        estimate,
+        ...filtered,
+      ].map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> confirmMaterialEstimate(String estimateId) => _mutate(() {
+    final index = _materialEstimates.indexWhere(
+      (item) =>
+          item.id == estimateId &&
+          item.status == MaterialEstimateStatus.pending,
+    );
+    if (index < 0) return null;
+    final now = DateTime.now();
+    final estimate = _materialEstimates[index];
+    final nextEstimates = _materialEstimates.toList()
+      ..[index] = estimate.copyWith(
+        status: MaterialEstimateStatus.ordered,
+        orderedAt: now,
+      );
+    final message = OwnerMessage(
+      id: 'msg-material-confirm-${now.millisecondsSinceEpoch}',
+      title: '材料采购已确认',
+      content:
+          '${estimate.workerName}提交的${estimate.phaseName}材料清单已确认，预计 ¥${estimate.totalPrice.toStringAsFixed(2)}。',
+      category: '项目',
+      createdAt: now,
+    );
+    return {
+      ...toJson(),
+      'materialEstimates': nextEstimates
+          .map((item) => item.toJson())
+          .toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
+    };
+  });
 
   Future<void> completeReminder(String id) => _mutate(() {
     final index = _reminders.indexWhere(
