@@ -125,6 +125,24 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void registersAnActiveWorkerAndConsumesTheCode() {
+		SmsVerificationCode code = SmsVerificationCode.issue(
+			"13800138009", "digest", "127.0.0.1", NOW.minusSeconds(10), NOW.plusSeconds(290));
+		when(codeRepository
+			.findFirstByPhoneAndConsumedAtIsNullAndInvalidatedAtIsNullOrderByIssuedAtDesc(
+				"13800138009"))
+			.thenReturn(Optional.of(code));
+		when(hasher.matches("13800138009", "123456", "digest")).thenReturn(true);
+		when(userRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		RegistrationResult result = service.registerWorker("13800138009", "123456");
+
+		assertThat(result.phone()).isEqualTo("13800138009");
+		assertThat(result.roles()).containsExactly(UserRole.WORKER);
+		assertThat(code.getConsumedAt()).isEqualTo(NOW);
+	}
+
+	@Test
 	void invalidatesAfterFiveWrongAttempts() {
 		SmsVerificationCode code = SmsVerificationCode.issue(
 			"13800138000", "digest", "127.0.0.1", NOW.minusSeconds(10), NOW.plusSeconds(290));
@@ -167,6 +185,23 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void createsAndLogsInANewWorker() {
+		givenValidCode("16600000009", "123456");
+		when(userRepository.findByPhone("16600000009")).thenReturn(Optional.empty());
+		User persistedWorker = worker("16600000009");
+		when(userRepository.saveAndFlush(any(User.class))).thenReturn(persistedWorker);
+		when(jwtTokenService.issue(persistedWorker.getId(), persistedWorker.getPhone(),
+			persistedWorker.getRoles())).thenReturn(new JwtTokenResult("jwt-worker-new", 2_592_000));
+
+		LoginResult result = service.loginWorker("16600000009", "123456");
+
+		assertThat(result.accessToken()).isEqualTo("jwt-worker-new");
+		assertThat(result.tokenType()).isEqualTo("Bearer");
+		assertThat(result.user().phone()).isEqualTo("16600000009");
+		assertThat(result.user().roles()).containsExactly(UserRole.WORKER);
+	}
+
+	@Test
 	void logsInAnExistingActiveOwnerWithoutCreatingAnotherUser() {
 		givenValidCode("16600000002", "123456");
 		User existingOwner = owner("16600000002");
@@ -179,6 +214,22 @@ class AuthServiceTest {
 
 		assertThat(result.user().id()).isEqualTo(existingOwner.getId());
 		assertThat(result.accessToken()).isEqualTo("jwt-existing");
+		verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(any(User.class));
+	}
+
+	@Test
+	void logsInAnExistingActiveWorkerWithoutCreatingAnotherUser() {
+		givenValidCode("16600000010", "123456");
+		User existingWorker = worker("16600000010");
+		when(userRepository.findByPhone("16600000010"))
+			.thenReturn(Optional.of(existingWorker));
+		when(jwtTokenService.issue(existingWorker.getId(), existingWorker.getPhone(),
+			existingWorker.getRoles())).thenReturn(new JwtTokenResult("jwt-worker-existing", 2_592_000));
+
+		LoginResult result = service.loginWorker("16600000010", "123456");
+
+		assertThat(result.user().id()).isEqualTo(existingWorker.getId());
+		assertThat(result.accessToken()).isEqualTo("jwt-worker-existing");
 		verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(any(User.class));
 	}
 
@@ -202,6 +253,16 @@ class AuthServiceTest {
 
 		assertBusinessCode(() -> service.loginOwner("16600000004", "123456"),
 			"OWNER_ACCESS_DENIED");
+	}
+
+	@Test
+	void rejectsUsersWithoutWorkerRole() {
+		givenValidCode("16600000011", "123456");
+		User owner = user("16600000011", UserStatus.ACTIVE, Set.of(UserRole.OWNER));
+		when(userRepository.findByPhone("16600000011")).thenReturn(Optional.of(owner));
+
+		assertBusinessCode(() -> service.loginWorker("16600000011", "123456"),
+			"WORKER_ACCESS_DENIED");
 	}
 
 	@Test
@@ -240,6 +301,10 @@ class AuthServiceTest {
 		return user(phone, UserStatus.ACTIVE, Set.of(UserRole.OWNER));
 	}
 
+	private User worker(String phone) {
+		return user(phone, UserStatus.ACTIVE, Set.of(UserRole.WORKER));
+	}
+
 	private User user(String phone, UserStatus status, Set<UserRole> roles) {
 		User user = mock(User.class);
 		when(user.getId()).thenReturn(UUID.randomUUID());
@@ -247,6 +312,7 @@ class AuthServiceTest {
 		when(user.getStatus()).thenReturn(status);
 		when(user.getRoles()).thenReturn(roles);
 		when(user.hasRole(UserRole.OWNER)).thenReturn(roles.contains(UserRole.OWNER));
+		when(user.hasRole(UserRole.WORKER)).thenReturn(roles.contains(UserRole.WORKER));
 		return user;
 	}
 

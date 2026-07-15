@@ -66,40 +66,50 @@ public class AuthService {
 
 	@Transactional(noRollbackFor = BusinessException.class)
 	public RegistrationResult register(String rawPhone, String code) {
+		return register(rawPhone, code, UserRole.OWNER);
+	}
+
+	@Transactional(noRollbackFor = BusinessException.class)
+	public RegistrationResult registerWorker(String rawPhone, String code) {
+		return register(rawPhone, code, UserRole.WORKER);
+	}
+
+	@Transactional(noRollbackFor = BusinessException.class)
+	public LoginResult loginOwner(String rawPhone, String code) {
+		return login(rawPhone, code, UserRole.OWNER);
+	}
+
+	@Transactional(noRollbackFor = BusinessException.class)
+	public LoginResult loginWorker(String rawPhone, String code) {
+		return login(rawPhone, code, UserRole.WORKER);
+	}
+
+	private RegistrationResult register(String rawPhone, String code, UserRole role) {
 		String phone = User.normalizePhone(rawPhone);
 		if (userRepository.findByPhone(phone).isPresent()) {
 			throw business(HttpStatus.CONFLICT, "PHONE_ALREADY_REGISTERED", "phone is already registered");
 		}
 
 		verifyAndConsume(phone, code, clock.instant());
-		User user = User.create(phone);
-		user.grantRole(UserRole.OWNER);
-		try {
-			userRepository.saveAndFlush(user);
-		}
-		catch (DataIntegrityViolationException exception) {
-			throw business(HttpStatus.CONFLICT,
-				"PHONE_ALREADY_REGISTERED", "phone is already registered");
-		}
+		User user = create(phone, role);
 		return registrationResult(user);
 	}
 
-	@Transactional(noRollbackFor = BusinessException.class)
-	public LoginResult loginOwner(String rawPhone, String code) {
+	private LoginResult login(String rawPhone, String code, UserRole role) {
 		String phone = User.normalizePhone(rawPhone);
 		verifyAndConsume(phone, code, clock.instant());
 
-		User user = userRepository.findByPhone(phone).orElseGet(() -> createOwner(phone));
-		requireOwnerAccess(user);
+		User user = userRepository.findByPhone(phone).orElseGet(() -> create(phone, role));
+		requireRoleAccess(user, role);
 		JwtTokenResult token = jwtTokenService.issue(
 			user.getId(), user.getPhone(), user.getRoles());
 		return new LoginResult(token.accessToken(), "Bearer", token.expiresInSeconds(),
 			registrationResult(user));
 	}
 
-	private User createOwner(String phone) {
+	private User create(String phone, UserRole role) {
 		User user = User.create(phone);
-		user.grantRole(UserRole.OWNER);
+		user.grantRole(role);
 		try {
 			return userRepository.saveAndFlush(user);
 		}
@@ -108,12 +118,15 @@ public class AuthService {
 		}
 	}
 
-	private void requireOwnerAccess(User user) {
+	private void requireRoleAccess(User user, UserRole role) {
 		if (user.getStatus() == UserStatus.DISABLED) {
 			throw business(HttpStatus.FORBIDDEN, "ACCOUNT_DISABLED", "account is disabled");
 		}
-		if (!user.hasRole(UserRole.OWNER)) {
+		if (role == UserRole.OWNER && !user.hasRole(UserRole.OWNER)) {
 			throw business(HttpStatus.FORBIDDEN, "OWNER_ACCESS_DENIED", "owner access is not allowed");
+		}
+		if (role == UserRole.WORKER && !user.hasRole(UserRole.WORKER)) {
+			throw business(HttpStatus.FORBIDDEN, "WORKER_ACCESS_DENIED", "worker access is not allowed");
 		}
 	}
 

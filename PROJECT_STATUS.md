@@ -53,11 +53,12 @@ zhidi/
 - 基础框架：Java 21、Spring Boot 3.5、Maven、Spring MVC、Spring Data JPA、Spring Security、Flyway、MySQL、OpenAPI、Actuator。
 - 已有统一 API 响应、trace ID、全局异常处理和基础审计表。
 - 已完成用户、角色和短信验证码数据模型及 Flyway 迁移。
-- 已完成业主验证码请求、注册、统一登录和 30 天 JWT 签发。
+- 已完成业主/工匠验证码请求、注册、统一登录和 30 天 JWT 签发。
 - 已完成 JWT 入站认证：受保护 API 回查数据库用户状态与角色，并统一返回 JSON 401/403 错误。
 - 已实现验证码哈希保存、5 分钟有效期、错误次数限制，以及手机号/IP 发送频率限制。
 - 已有服务、控制器、JWT、仓库和 MySQL Testcontainers 测试。
 - 业主资料 MySQL 持久化、`GET /api/v1/owners/me`、`PUT /api/v1/owners/me` 已同步到主工作区，并通过后端全测试。
+- 工匠资料 MySQL 持久化、`GET /api/v1/workers/me`、`PUT /api/v1/workers/me` 已同步到主工作区，并通过对应后端测试。
 
 当前主工作区真实后端 API 包括：
 
@@ -65,8 +66,12 @@ zhidi/
 POST /api/v1/auth/sms-codes
 POST /api/v1/auth/register
 POST /api/v1/auth/login
+POST /api/v1/auth/workers/register
+POST /api/v1/auth/workers/login
 GET /api/v1/owners/me
 PUT /api/v1/owners/me
+GET /api/v1/workers/me
+PUT /api/v1/workers/me
 ```
 
 ## 4. 当前未完成
@@ -76,7 +81,7 @@ PUT /api/v1/owners/me
 - 真实短信供应商；开发环境目前返回模拟验证码。
 - Refresh Token、登出撤销、会话/设备管理和账号注销。
 - 业主资料 API 与数据库持久化已整理到主工作区提交范围；头像、地址簿、实名认证仍未实现。
-- 工匠登录、资料、工种、认证审核、可接单状态、列表和详情 API。
+- 工匠认证审核、可接单状态、列表和详情 API；当前已完成工匠短信注册/登录和当前登录工匠资料 GET/PUT。
 - 预约、派单、接单/拒单、状态历史。
 - 报价单、报价版本、明细和业主确认。
 - 施工项目、阶段、施工日报、图片、节点验收和整改。
@@ -102,7 +107,7 @@ PUT /api/v1/owners/me
 
 1. JWT 入站认证、统一当前用户身份和权限测试已完成。
 2. 业主资料 GET/PUT、Android 首次引导闭环、业主端 app shell 路由、设置退出、个人中心基础 UI、报价收藏、报价页保存入口、工人详情报价入口、完整工种工价数据映射、透明工价列表页、施工中师傅/阶段完成状态底座、“我的家”最小施工进度页、工人详情预约写入施工进度链路、工人列表进入详情预约链路、本地验收申请/通过/驳回闭环、验收通过自动归档展示和材料估算确认采购已验证；下一步继续拆分地址扩展等 Flutter 未提交改动，再推进工匠账号与资料。
-3. 完成工匠账号、资料、审核、列表和详情。
+3. 工匠短信注册/登录和当前资料 GET/PUT 已完成；下一步做工匠列表和详情，让业主端看到来自后端的工匠数据。
 4. 完成预约/派单/接单，再替换现有本地与 Firestore 订单桥接。
 5. 完成报价、施工项目、日报、验收和文件上传。
 6. 最后建设消息通知、支付、管理后台和生产部署能力。

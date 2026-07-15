@@ -1,4 +1,4 @@
-package com.zhidi.server.owner;
+package com.zhidi.server.worker;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -17,7 +17,7 @@ import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.auth.AuthService;
 import com.zhidi.server.auth.JwtTokenService;
-import com.zhidi.server.worker.WorkerProfileService;
+import com.zhidi.server.owner.OwnerProfileService;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
@@ -34,14 +34,14 @@ import org.springframework.test.web.servlet.MockMvc;
 		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
 		+ "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
 		+ "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
-	"auth.jwt.secret=owner-profile-controller-test-secret-at-least-thirty-two-bytes"
+	"auth.jwt.secret=worker-profile-controller-test-secret-at-least-thirty-two-bytes"
 })
 @AutoConfigureMockMvc
-class OwnerProfileControllerTest {
+class WorkerProfileControllerTest {
 
 	private static final UUID USER_ID =
-		UUID.fromString("01904f24-3f5b-7000-8000-000000000002");
-	private static final String PHONE = "16600000002";
+		UUID.fromString("01904f24-3f5b-7000-8000-000000000003");
+	private static final String PHONE = "16600000003";
 
 	@Autowired
 	MockMvc mvc;
@@ -50,10 +50,10 @@ class OwnerProfileControllerTest {
 	JwtTokenService tokens;
 
 	@MockitoBean
-	OwnerProfileService ownerProfileService;
+	WorkerProfileService workerProfileService;
 
 	@MockitoBean
-	WorkerProfileService workerProfileService;
+	OwnerProfileService ownerProfileService;
 
 	@MockitoBean
 	UserRepository users;
@@ -63,87 +63,87 @@ class OwnerProfileControllerTest {
 
 	@Test
 	void missingTokenReturnsUnifiedAuthenticationError() throws Exception {
-		mvc.perform(get("/api/v1/owners/me"))
+		mvc.perform(get("/api/v1/workers/me"))
 			.andExpect(status().isUnauthorized())
 			.andExpect(jsonPath("$.code").value("AUTHENTICATION_REQUIRED"));
 	}
 
 	@Test
-	void activeDatabaseOwnerCanGetProfileUsingDatabaseIdentity() throws Exception {
-		givenDatabaseUser(UserRole.OWNER);
-		when(ownerProfileService.get(USER_ID, PHONE)).thenReturn(response());
+	void activeDatabaseWorkerCanGetProfileUsingDatabaseIdentity() throws Exception {
+		givenDatabaseUser(UserRole.WORKER);
+		when(workerProfileService.get(USER_ID, PHONE)).thenReturn(response());
 
-		mvc.perform(get("/api/v1/owners/me").header("Authorization", bearerToken()))
+		mvc.perform(get("/api/v1/workers/me").header("Authorization", bearerToken()))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.code").value("OK"))
 			.andExpect(jsonPath("$.data.userId").value(USER_ID.toString()))
 			.andExpect(jsonPath("$.data.phone").value(PHONE))
-			.andExpect(jsonPath("$.data.city").value("成都"))
+			.andExpect(jsonPath("$.data.serviceCity").value("成都"))
 			.andExpect(jsonPath("$.data.profileComplete").value(true));
 
-		verify(ownerProfileService).get(USER_ID, PHONE);
+		verify(workerProfileService).get(USER_ID, PHONE);
 	}
 
 	@Test
-	void databaseWorkerIsForbiddenEvenWhenTokenClaimsOwner() throws Exception {
-		givenDatabaseUser(UserRole.WORKER);
+	void databaseOwnerIsForbiddenEvenWhenTokenClaimsWorker() throws Exception {
+		givenDatabaseUser(UserRole.OWNER);
 
-		mvc.perform(get("/api/v1/owners/me").header("Authorization", bearerToken()))
+		mvc.perform(get("/api/v1/workers/me").header("Authorization", bearerToken()))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
-		verify(ownerProfileService, never()).get(any(), any());
+		verify(workerProfileService, never()).get(any(), any());
 	}
 
 	@Test
 	void validPutUpdatesAllEditableFieldsUsingPrincipalIdentity() throws Exception {
-		givenDatabaseUser(UserRole.OWNER);
-		when(ownerProfileService.update(any(), any(), any())).thenReturn(response());
+		givenDatabaseUser(UserRole.WORKER);
+		when(workerProfileService.update(any(), any(), any())).thenReturn(response());
 
-		mvc.perform(put("/api/v1/owners/me")
+		mvc.perform(put("/api/v1/workers/me")
 				.header("Authorization", bearerToken())
 				.contentType(APPLICATION_JSON)
 				.content("""
 					{"userId":"00000000-0000-0000-0000-000000000001","phone":"13900000000",
-					 "name":"刘先生","city":"成都","decorationType":"水电",
-					 "address":"成都市高新区天府大道 1 号","area":88.50}
+					 "name":"张师傅","serviceCity":"成都","primaryTrade":"水电",
+					 "experienceYears":8,"dailyRate":180.00,"bio":"擅长旧房水电改造"}
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.code").value("OK"))
-			.andExpect(jsonPath("$.data.name").value("刘先生"))
-			.andExpect(jsonPath("$.data.area").value(88.50));
+			.andExpect(jsonPath("$.data.name").value("张师傅"))
+			.andExpect(jsonPath("$.data.dailyRate").value(180.00));
 
-		verify(ownerProfileService).update(USER_ID, PHONE,
-			new OwnerProfileRequest("刘先生", "成都", "水电", "成都市高新区天府大道 1 号",
-				new BigDecimal("88.50")));
+		verify(workerProfileService).update(USER_ID, PHONE,
+			new WorkerProfileRequest("张师傅", "成都", "水电", 8,
+				new BigDecimal("180.00"), "擅长旧房水电改造"));
 	}
 
 	@Test
-	void invalidAreaReturnsValidationError() throws Exception {
-		givenDatabaseUser(UserRole.OWNER);
+	void invalidExperienceReturnsValidationError() throws Exception {
+		givenDatabaseUser(UserRole.WORKER);
 
-		mvc.perform(put("/api/v1/owners/me")
+		mvc.perform(put("/api/v1/workers/me")
 				.header("Authorization", bearerToken())
 				.contentType(APPLICATION_JSON)
-				.content("{\"area\":0.99}"))
+				.content("{\"experienceYears\":-1}"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-		verify(ownerProfileService, never()).update(any(), any(), any());
+		verify(workerProfileService, never()).update(any(), any(), any());
 	}
 
 	@Test
 	void oversizedFieldReturnsValidationError() throws Exception {
-		givenDatabaseUser(UserRole.OWNER);
+		givenDatabaseUser(UserRole.WORKER);
 
-		mvc.perform(put("/api/v1/owners/me")
+		mvc.perform(put("/api/v1/workers/me")
 				.header("Authorization", bearerToken())
 				.contentType(APPLICATION_JSON)
 				.content("{\"name\":\"" + "人".repeat(81) + "\"}"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-		verify(ownerProfileService, never()).update(any(), any(), any());
+		verify(workerProfileService, never()).update(any(), any(), any());
 	}
 
 	private void givenDatabaseUser(UserRole role) {
@@ -155,12 +155,13 @@ class OwnerProfileControllerTest {
 	}
 
 	private String bearerToken() {
-		String token = tokens.issue(USER_ID, "19999999999", Set.of(UserRole.OWNER)).accessToken();
+		String token = tokens.issue(USER_ID, "19999999999", Set.of(UserRole.WORKER))
+			.accessToken();
 		return "Bearer " + token;
 	}
 
-	private OwnerProfileResponse response() {
-		return new OwnerProfileResponse(USER_ID, PHONE, "刘先生", "成都", "水电",
-			"成都市高新区天府大道 1 号", new BigDecimal("88.50"), true);
+	private WorkerProfileResponse response() {
+		return new WorkerProfileResponse(USER_ID, PHONE, "张师傅", "成都", "水电",
+			8, new BigDecimal("180.00"), "擅长旧房水电改造", true);
 	}
 }

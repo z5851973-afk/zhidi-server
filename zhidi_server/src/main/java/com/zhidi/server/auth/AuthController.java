@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/auth")
-@Tag(name = "认证", description = "业主手机号认证接口")
+@Tag(name = "认证", description = "业主和工匠手机号认证接口")
 public class AuthController implements EnvironmentAware {
 
 	private final AuthService authService;
@@ -56,12 +56,36 @@ public class AuthController implements EnvironmentAware {
 		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
 	}
 
+	@PostMapping("/workers/register")
+	@Operation(summary = "注册工匠", description = "使用短信验证码注册新的工匠账户")
+	public ResponseEntity<ApiResponse<RegisterResponse>> registerWorker(
+			@Valid @RequestBody RegisterRequest request) {
+		RegistrationResult result = authService.registerWorker(request.phone(), request.code());
+		RegisterResponse response = new RegisterResponse(
+			result.id(), result.phone(), result.status(), result.roles());
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
 	@PostMapping("/login")
 	@Operation(summary = "业主短信验证码登录",
 		description = "已有业主直接登录；新手机号自动创建业主账户后登录")
 	public ResponseEntity<ApiResponse<LoginResponse>> login(
 			@Valid @RequestBody LoginRequest request) {
 		LoginResult result = authService.loginOwner(request.phone(), request.code());
+		RegistrationResult user = result.user();
+		AuthUserResponse authUser = new AuthUserResponse(
+			user.id(), user.phone(), user.status(), user.roles());
+		LoginResponse response = new LoginResponse(
+			result.accessToken(), result.tokenType(), result.expiresInSeconds(), authUser);
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@PostMapping("/workers/login")
+	@Operation(summary = "工匠短信验证码登录",
+		description = "已有工匠直接登录；新手机号自动创建工匠账户后登录")
+	public ResponseEntity<ApiResponse<LoginResponse>> loginWorker(
+			@Valid @RequestBody LoginRequest request) {
+		LoginResult result = authService.loginWorker(request.phone(), request.code());
 		RegistrationResult user = result.user();
 		AuthUserResponse authUser = new AuthUserResponse(
 			user.id(), user.phone(), user.status(), user.roles());

@@ -13,6 +13,7 @@ import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.owner.OwnerProfileService;
+import com.zhidi.server.worker.WorkerProfileService;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -40,6 +41,9 @@ class AuthControllerTest {
 
 	@MockitoBean
 	OwnerProfileService ownerProfileService;
+
+	@MockitoBean
+	WorkerProfileService workerProfileService;
 
 	@MockitoBean
 	UserRepository userRepository;
@@ -81,6 +85,22 @@ class AuthControllerTest {
 	}
 
 	@Test
+	void registersAWorker() throws Exception {
+		UUID userId = UUID.fromString("01904f24-3f5b-7000-8000-000000000009");
+		when(authService.registerWorker("13800138009", "123456"))
+			.thenReturn(new RegistrationResult(userId, "13800138009",
+				UserStatus.ACTIVE, Set.of(UserRole.WORKER)));
+
+		mvc.perform(post("/api/v1/auth/workers/register")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"13800138009\",\"code\":\"123456\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.id").value(userId.toString()))
+			.andExpect(jsonPath("$.data.status").value("ACTIVE"))
+			.andExpect(jsonPath("$.data.roles[0]").value("WORKER"));
+	}
+
+	@Test
 	void logsInAnOwnerAndDocumentsTheOperationInChinese() throws Exception {
 		UUID userId = UUID.fromString("01904f24-3f5b-7000-8000-000000000002");
 		RegistrationResult user = new RegistrationResult(userId, "16600000002",
@@ -102,6 +122,30 @@ class AuthControllerTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.paths['/api/v1/auth/login'].post.summary")
 				.value("业主短信验证码登录"));
+	}
+
+	@Test
+	void logsInAWorkerAndDocumentsTheOperationInChinese() throws Exception {
+		UUID userId = UUID.fromString("01904f24-3f5b-7000-8000-000000000010");
+		RegistrationResult user = new RegistrationResult(userId, "16600000010",
+			UserStatus.ACTIVE, Set.of(UserRole.WORKER));
+		when(authService.loginWorker("16600000010", "123456"))
+			.thenReturn(new LoginResult("jwt-worker", "Bearer", 2_592_000, user));
+
+		mvc.perform(post("/api/v1/auth/workers/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000010\",\"code\":\"123456\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.accessToken").value("jwt-worker"))
+			.andExpect(jsonPath("$.data.tokenType").value("Bearer"))
+			.andExpect(jsonPath("$.data.expiresInSeconds").value(2_592_000))
+			.andExpect(jsonPath("$.data.user.id").value(userId.toString()))
+			.andExpect(jsonPath("$.data.user.roles[0]").value("WORKER"));
+
+		mvc.perform(get("/v3/api-docs"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.paths['/api/v1/auth/workers/login'].post.summary")
+				.value("工匠短信验证码登录"));
 	}
 
 	@Test
@@ -132,6 +176,24 @@ class AuthControllerTest {
 	}
 
 	@Test
+	void validatesWorkerLoginRequestsAndMapsWorkerAccessErrors() throws Exception {
+		mvc.perform(post("/api/v1/auth/workers/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000010\",\"code\":\"12\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		when(authService.loginWorker("16600000011", "123456"))
+			.thenThrow(new BusinessException(HttpStatus.FORBIDDEN,
+				"WORKER_ACCESS_DENIED", "worker access is not allowed"));
+		mvc.perform(post("/api/v1/auth/workers/login")
+				.contentType(APPLICATION_JSON)
+				.content("{\"phone\":\"16600000011\",\"code\":\"123456\"}"))
+			.andExpect(status().isForbidden())
+			.andExpect(jsonPath("$.code").value("WORKER_ACCESS_DENIED"));
+	}
+
+	@Test
 	void validatesPhoneAndMapsRateLimitErrors() throws Exception {
 		mvc.perform(post("/api/v1/auth/sms-codes")
 				.contentType(APPLICATION_JSON)
@@ -154,6 +216,8 @@ class AuthControllerTest {
 		mvc.perform(get("/v3/api-docs"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.paths['/api/v1/auth/sms-codes'].post").exists())
-			.andExpect(jsonPath("$.paths['/api/v1/auth/register'].post").exists());
+			.andExpect(jsonPath("$.paths['/api/v1/auth/register'].post").exists())
+			.andExpect(jsonPath("$.paths['/api/v1/auth/workers/register'].post").exists())
+			.andExpect(jsonPath("$.paths['/api/v1/auth/workers/login'].post").exists());
 	}
 }
