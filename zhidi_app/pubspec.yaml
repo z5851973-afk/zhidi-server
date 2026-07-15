@@ -30,19 +30,29 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:
+    sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  collection: ^1.19.1
   share_plus: ^13.2.0
   image_picker: ^1.2.2
   shared_preferences: ^2.5.3
   http: ^1.5.0
   flutter_secure_storage: ^10.3.1
+  url_launcher: ^6.3.1
+  # firebase_core / cloud_firestore 已暂时移除（缺少平台配置文件导致原生层崩溃）
+  # 恢复步骤：
+  # 1. 下载 GoogleService-Info.plist 放入 ios/Runner/ 和 macos/Runner/
+  # 2. 运行 flutterfire configure 生成 lib/firebase_options.dart
+  # 3. 取消注释下面两行并运行 flutter pub get
+  firebase_core: ^4.11.0
+  cloud_firestore: ^6.6.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -50,6 +60,12 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon.png"
+  remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -64,6 +80,9 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/trades/
+    - assets/splash_bg.png
+    - assets/logo.png
 
   # To add assets to your application, add an assets section, like this:
   # assets:
