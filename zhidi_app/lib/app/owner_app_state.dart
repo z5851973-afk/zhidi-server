@@ -49,6 +49,8 @@ class OwnerAppState extends ChangeNotifier {
     required OwnerSettings settings,
     required List<AfterSalesRequest> afterSalesRequests,
     required List<FeedbackEntry> feedbackEntries,
+    required List<BookedWorker> bookedWorkers,
+    required Set<int> completedPhases,
     required this._isLoggedIn,
     // Named public-looking parameters keep seeded-data construction readable.
     // ignore: prefer_initializing_formals
@@ -76,7 +78,11 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _afterSalesRequests = afterSalesRequests,
        // ignore: prefer_initializing_formals
-       _feedbackEntries = feedbackEntries;
+       _feedbackEntries = feedbackEntries,
+       // ignore: prefer_initializing_formals
+       _bookedWorkers = bookedWorkers,
+       // ignore: prefer_initializing_formals
+       _completedPhases = completedPhases;
 
   static const documentKey = 'owner.appState';
   final OwnerKeyValueStore _store;
@@ -96,6 +102,8 @@ class OwnerAppState extends ChangeNotifier {
   OwnerSettings _settings;
   List<AfterSalesRequest> _afterSalesRequests;
   List<FeedbackEntry> _feedbackEntries;
+  List<BookedWorker> _bookedWorkers;
+  Set<int> _completedPhases;
   bool _isLoggedIn;
   Future<void> _mutationQueue = Future<void>.value();
 
@@ -123,6 +131,8 @@ class OwnerAppState extends ChangeNotifier {
       List.unmodifiable(_afterSalesRequests);
   List<FeedbackEntry> get feedbackEntries =>
       List.unmodifiable(_feedbackEntries);
+  List<BookedWorker> get bookedWorkers => List.unmodifiable(_bookedWorkers);
+  Set<int> get completedPhases => Set.unmodifiable(_completedPhases);
   bool get isLoggedIn => _isLoggedIn;
   int get unreadMessageCount =>
       _messages.where((message) => !message.isRead).length;
@@ -246,6 +256,12 @@ class OwnerAppState extends ChangeNotifier {
         AfterSalesRequest.fromJson,
       ),
       feedbackEntries: read('feedbackEntries', FeedbackEntry.fromJson),
+      bookedWorkers: read('bookedWorkers', BookedWorker.fromJson),
+      completedPhases: Set<int>.from(
+        (json['completedPhases'] as List<dynamic>? ?? const []).map(
+          (value) => value as int,
+        ),
+      ),
       isLoggedIn: json['isLoggedIn'] as bool? ?? false,
     );
   }
@@ -325,6 +341,8 @@ class OwnerAppState extends ChangeNotifier {
     settings: const OwnerSettings(),
     afterSalesRequests: const [],
     feedbackEntries: const [],
+    bookedWorkers: const [],
+    completedPhases: const {},
     isLoggedIn: false,
   );
 
@@ -343,6 +361,8 @@ class OwnerAppState extends ChangeNotifier {
         .map((item) => item.toJson())
         .toList(),
     'feedbackEntries': _feedbackEntries.map((item) => item.toJson()).toList(),
+    'bookedWorkers': _bookedWorkers.map((item) => item.toJson()).toList(),
+    'completedPhases': _completedPhases.toList(),
     'isLoggedIn': _isLoggedIn,
   };
 
@@ -364,6 +384,8 @@ class OwnerAppState extends ChangeNotifier {
       _settings = restored._settings;
       _afterSalesRequests = restored._afterSalesRequests;
       _feedbackEntries = restored._feedbackEntries;
+      _bookedWorkers = restored._bookedWorkers;
+      _completedPhases = restored._completedPhases;
       _isLoggedIn = restored._isLoggedIn;
       notifyListeners();
     });
@@ -555,6 +577,96 @@ class OwnerAppState extends ChangeNotifier {
     return {
       ...toJson(),
       'appointments': next.map((item) => item.toJson()).toList(),
+    };
+  });
+
+  String _phaseLabel(int phaseIndex) {
+    const phaseNames = ['拆除', '水电', '防水', '泥瓦', '木工', '油漆', '安装', '清洁'];
+    if (phaseIndex >= 0 && phaseIndex < phaseNames.length) {
+      return phaseNames[phaseIndex];
+    }
+    return '待确认工序';
+  }
+
+  bool _sameServicePhase(BookedWorker a, BookedWorker b) {
+    if (a.phaseIndex >= 0 && b.phaseIndex >= 0) {
+      return a.phaseIndex == b.phaseIndex;
+    }
+    final aKey = '${a.phaseName}-${a.trade}'.trim();
+    final bKey = '${b.phaseName}-${b.trade}'.trim();
+    return aKey.isNotEmpty && aKey == bKey;
+  }
+
+  Future<void> bookWorker(BookedWorker worker) => _mutate(() {
+    final existingIndex = _bookedWorkers.indexWhere(
+      (item) => item.id == worker.id || _sameServicePhase(item, worker),
+    );
+    final now = DateTime.now();
+    final booked = worker.copyWith(bookedAt: worker.bookedAt ?? now);
+    final nextWorkers = _bookedWorkers.toList();
+    if (existingIndex >= 0) {
+      nextWorkers[existingIndex] = booked;
+    } else {
+      nextWorkers.insert(0, booked);
+    }
+    final message = OwnerMessage(
+      id: 'msg-booking-${now.millisecondsSinceEpoch}',
+      title: '预约已确认',
+      content:
+          '您已成功预约${booked.name}（${_phaseLabel(booked.phaseIndex)}·${booked.trade}）。',
+      category: '预约',
+      createdAt: now,
+    );
+    return {
+      ...toJson(),
+      'bookedWorkers': nextWorkers.map((item) => item.toJson()).toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> cancelBookedWorker(String id) => _mutate(() {
+    final existing = _bookedWorkers.where((item) => item.id == id).toList();
+    if (existing.isEmpty) return null;
+    final target = existing.first;
+    final now = DateTime.now();
+    final message = OwnerMessage(
+      id: 'msg-cancel-${now.millisecondsSinceEpoch}',
+      title: '预约已取消',
+      content: '已取消${target.name}（${target.phaseName}·${target.trade}）的预约。',
+      category: '预约',
+      createdAt: now,
+    );
+    final nextWorkers = _bookedWorkers.where((item) => item.id != id).toList();
+    return {
+      ...toJson(),
+      'bookedWorkers': nextWorkers.map((item) => item.toJson()).toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> confirmPhaseComplete(int phaseIndex) => _mutate(() {
+    if (_completedPhases.contains(phaseIndex)) return null;
+    final now = DateTime.now();
+    final nextPhases = {..._completedPhases, phaseIndex};
+    final nextWorkers = _bookedWorkers
+        .map(
+          (item) => item.phaseIndex == phaseIndex
+              ? item.copyWith(status: '已完成')
+              : item,
+        )
+        .toList();
+    final message = OwnerMessage(
+      id: 'msg-phase-complete-${now.millisecondsSinceEpoch}',
+      title: '${_phaseLabel(phaseIndex)}阶段已完成',
+      content: '业主已确认${_phaseLabel(phaseIndex)}阶段完成。',
+      category: '项目',
+      createdAt: now,
+    );
+    return {
+      ...toJson(),
+      'bookedWorkers': nextWorkers.map((item) => item.toJson()).toList(),
+      'completedPhases': nextPhases.toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
     };
   });
 

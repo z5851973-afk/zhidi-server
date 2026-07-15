@@ -471,3 +471,101 @@ class FeedbackEntry {
     createdAt: DateTime.parse(j['createdAt'] as String),
   );
 }
+
+class BookedWorker {
+  const BookedWorker({
+    required this.id,
+    required this.name,
+    required this.trade,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.rating,
+    required this.completedOrders,
+    required this.years,
+    required this.avatarEmoji,
+    required this.skills,
+    this.status = '已接单待上门',
+    this.bookedAt,
+    this.distance = 0,
+  });
+
+  final String id;
+  final String name;
+  final String trade;
+  final String phaseName;
+  final int phaseIndex;
+  final double rating;
+  final int completedOrders;
+  final int years;
+  final String avatarEmoji;
+  final List<String> skills;
+  final String status;
+  final DateTime? bookedAt;
+  final double distance;
+
+  bool get isCompleted => status == '已完成';
+
+  BookedWorker copyWith({
+    String? id,
+    String? name,
+    String? trade,
+    String? phaseName,
+    int? phaseIndex,
+    double? rating,
+    int? completedOrders,
+    int? years,
+    String? avatarEmoji,
+    List<String>? skills,
+    String? status,
+    DateTime? bookedAt,
+    double? distance,
+  }) => BookedWorker(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    trade: trade ?? this.trade,
+    phaseName: phaseName ?? this.phaseName,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    rating: rating ?? this.rating,
+    completedOrders: completedOrders ?? this.completedOrders,
+    years: years ?? this.years,
+    avatarEmoji: avatarEmoji ?? this.avatarEmoji,
+    skills: skills ?? this.skills,
+    status: status ?? this.status,
+    bookedAt: bookedAt ?? this.bookedAt,
+    distance: distance ?? this.distance,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'trade': trade,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'rating': rating,
+    'completedOrders': completedOrders,
+    'years': years,
+    'avatarEmoji': avatarEmoji,
+    'skills': skills,
+    'status': status,
+    if (bookedAt != null) 'bookedAt': bookedAt!.toIso8601String(),
+    'distance': distance,
+  };
+
+  factory BookedWorker.fromJson(Map<String, dynamic> json) => BookedWorker(
+    id: json['id'] as String,
+    name: json['name'] as String,
+    trade: json['trade'] as String,
+    phaseName: json['phaseName'] as String,
+    phaseIndex: json['phaseIndex'] as int,
+    rating: (json['rating'] as num).toDouble(),
+    completedOrders: json['completedOrders'] as int,
+    years: json['years'] as int,
+    avatarEmoji: json['avatarEmoji'] as String,
+    skills: List<String>.from(json['skills'] as List<dynamic>? ?? const []),
+    status: json['status'] as String? ?? '已接单待上门',
+    bookedAt: json['bookedAt'] == null
+        ? null
+        : DateTime.parse(json['bookedAt'] as String),
+    distance: (json['distance'] as num?)?.toDouble() ?? 0,
+  );
+}
