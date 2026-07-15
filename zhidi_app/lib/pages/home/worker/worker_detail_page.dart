@@ -3,8 +3,6 @@ import 'package:share_plus/share_plus.dart';
 import '../../../app/owner_app_scope.dart';
 import '../../../app/owner_models.dart';
 import '../../../data/price_standards.dart';
-import '../../chat/chat_page.dart';
-import '../../order/create_order_page.dart';
 import '../../price/worker_quote_page.dart';
 
 class WorkerDetailPage extends StatefulWidget {
@@ -165,6 +163,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
         ],
       ),
       bottomNavigationBar: _BottomActionBar(
+        workerId: widget.resolvedWorkerId,
         workerName: widget.name,
         workerJob: widget.workerJob,
         favoriteSelected: favoriteSelected,
@@ -2102,14 +2101,86 @@ class _ReviewCard extends StatelessWidget {
   }
 }
 
+class _WorkerBookingTarget {
+  const _WorkerBookingTarget({
+    required this.trade,
+    required this.phaseName,
+    required this.phaseIndex,
+  });
+
+  final String trade;
+  final String phaseName;
+  final int phaseIndex;
+}
+
+_WorkerBookingTarget _bookingTargetForJob(String? workerJob) {
+  final label = workerJob ?? '师傅';
+  if (label.contains('水电')) {
+    return const _WorkerBookingTarget(
+      trade: '水电工',
+      phaseName: '水电',
+      phaseIndex: 1,
+    );
+  }
+  if (label.contains('防水')) {
+    return const _WorkerBookingTarget(
+      trade: '防水工',
+      phaseName: '防水',
+      phaseIndex: 2,
+    );
+  }
+  if (label.contains('泥') || label.contains('瓦')) {
+    return const _WorkerBookingTarget(
+      trade: '泥瓦工',
+      phaseName: '泥瓦',
+      phaseIndex: 3,
+    );
+  }
+  if (label.contains('木')) {
+    return const _WorkerBookingTarget(
+      trade: '木工',
+      phaseName: '木工',
+      phaseIndex: 4,
+    );
+  }
+  if (label.contains('油漆')) {
+    return const _WorkerBookingTarget(
+      trade: '油漆工',
+      phaseName: '油漆',
+      phaseIndex: 5,
+    );
+  }
+  if (label.contains('安装')) {
+    return const _WorkerBookingTarget(
+      trade: '安装工',
+      phaseName: '安装',
+      phaseIndex: 6,
+    );
+  }
+  if (label.contains('清洁') || label.contains('保洁')) {
+    return const _WorkerBookingTarget(
+      trade: '保洁工',
+      phaseName: '清洁',
+      phaseIndex: 7,
+    );
+  }
+  return const _WorkerBookingTarget(
+    trade: '拆除工',
+    phaseName: '拆除',
+    phaseIndex: 0,
+  );
+}
+
 // ========== 底部操作栏 ==========
 class _BottomActionBar extends StatelessWidget {
+  final String workerId;
   final String workerName;
   final String? workerJob;
   final bool favoriteSelected;
   final bool favoriteSaving;
   final VoidCallback onToggleFavorite;
   const _BottomActionBar({
+    required this.workerId,
     required this.workerName,
     required this.favoriteSelected,
     required this.favoriteSaving,
@@ -2144,15 +2215,11 @@ class _BottomActionBar extends StatelessWidget {
               child: SizedBox(
                 height: 44,
                 child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatPage(
-                        workerName: workerName,
-                        avatarPath: 'assets/images/worker_avatar_default.png',
-                      ),
-                    ),
-                  ),
+                  onPressed: () {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(const SnackBar(content: Text('聊天功能正在整理中')));
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF07C160),
                     foregroundColor: Colors.white,
@@ -2207,12 +2274,30 @@ class _BottomActionBar extends StatelessWidget {
               child: SizedBox(
                 height: 44,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CreateOrderPage(workerName: workerName),
-                    ),
-                  ),
+                  onPressed: () async {
+                    final state = OwnerAppScope.of(context);
+                    final target = _bookingTargetForJob(workerJob);
+                    await state.bookWorker(
+                      BookedWorker(
+                        id: workerId,
+                        name: workerName,
+                        trade: target.trade,
+                        phaseName: target.phaseName,
+                        phaseIndex: target.phaseIndex,
+                        rating: 4.9,
+                        completedOrders: 128,
+                        years: 8,
+                        avatarEmoji: '👷',
+                        skills: [workerJob ?? target.trade],
+                        distance: 0,
+                      ),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('已预约$workerName，可在我的家查看施工进度')),
+                      );
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF9800),
                     foregroundColor: Colors.white,
