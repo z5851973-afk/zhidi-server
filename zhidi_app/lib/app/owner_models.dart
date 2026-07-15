@@ -1,21 +1,61 @@
 const _notProvided = Object();
 
 class OwnerProfile {
-  const OwnerProfile({required this.name, required this.city, this.phone = ''});
+  const OwnerProfile({
+    required this.name,
+    required this.city,
+    this.phone = '',
+    this.decorationType,
+    this.address,
+    this.area,
+  });
   final String name;
   final String city;
   final String phone;
-  OwnerProfile copyWith({String? name, String? city, String? phone}) =>
-      OwnerProfile(
-        name: name ?? this.name,
-        city: city ?? this.city,
-        phone: phone ?? this.phone,
-      );
-  Map<String, dynamic> toJson() => {'name': name, 'city': city, 'phone': phone};
+  final String? decorationType;
+  final String? address;
+  final double? area;
+
+  bool get isProfileComplete =>
+      name.isNotEmpty &&
+      (decorationType != null && decorationType!.isNotEmpty) &&
+      (address != null && address!.isNotEmpty) &&
+      area != null;
+
+  OwnerProfile copyWith({
+    String? name,
+    String? city,
+    String? phone,
+    Object? decorationType = _notProvided,
+    Object? address = _notProvided,
+    Object? area = _notProvided,
+  }) => OwnerProfile(
+    name: name ?? this.name,
+    city: city ?? this.city,
+    phone: phone ?? this.phone,
+    decorationType: identical(decorationType, _notProvided)
+        ? this.decorationType
+        : decorationType as String?,
+    address: identical(address, _notProvided)
+        ? this.address
+        : address as String?,
+    area: identical(area, _notProvided) ? this.area : area as double?,
+  );
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'city': city,
+    'phone': phone,
+    if (decorationType != null) 'decorationType': decorationType,
+    if (address != null) 'address': address,
+    if (area != null) 'area': area,
+  };
   factory OwnerProfile.fromJson(Map<String, dynamic> json) => OwnerProfile(
     name: json['name'] as String,
     city: json['city'] as String,
     phone: json['phone'] as String? ?? '',
+    decorationType: json['decorationType'] as String?,
+    address: json['address'] as String?,
+    area: (json['area'] as num?)?.toDouble(),
   );
 }
 

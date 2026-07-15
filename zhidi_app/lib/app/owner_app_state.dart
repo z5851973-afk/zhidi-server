@@ -9,6 +9,9 @@ export 'owner_models.dart';
 import 'owner_key_value_store.dart';
 import 'owner_models.dart';
 import 'owner_appointment.dart';
+import '../services/auth_api_client.dart';
+import '../services/auth_session_store.dart';
+import '../services/owner_profile_api_client.dart';
 
 List<OwnerAddress> _normalizeAddresses(
   Iterable<OwnerAddress> addresses, {
@@ -31,6 +34,8 @@ List<OwnerAddress> _normalizeAddresses(
 class OwnerAppState extends ChangeNotifier {
   OwnerAppState._({
     required OwnerKeyValueStore store,
+    required this._sessionStore,
+    required this._profileApi,
     required this.ready,
     required OwnerProfile profile,
     required List<OwnerAddress> addresses,
@@ -43,6 +48,7 @@ class OwnerAppState extends ChangeNotifier {
     required OwnerSettings settings,
     required List<AfterSalesRequest> afterSalesRequests,
     required List<FeedbackEntry> feedbackEntries,
+    required this._isLoggedIn,
     // Named public-looking parameters keep seeded-data construction readable.
     // ignore: prefer_initializing_formals
   }) : _store = store,
@@ -71,6 +77,8 @@ class OwnerAppState extends ChangeNotifier {
 
   static const documentKey = 'owner.appState';
   final OwnerKeyValueStore _store;
+  final AuthSessionStore _sessionStore;
+  final OwnerProfileApi _profileApi;
   final bool ready;
 
   OwnerProfile _profile;
@@ -84,6 +92,7 @@ class OwnerAppState extends ChangeNotifier {
   OwnerSettings _settings;
   List<AfterSalesRequest> _afterSalesRequests;
   List<FeedbackEntry> _feedbackEntries;
+  bool _isLoggedIn;
   Future<void> _mutationQueue = Future<void>.value();
 
   OwnerProfile get profile => _profile;
@@ -109,37 +118,95 @@ class OwnerAppState extends ChangeNotifier {
       List.unmodifiable(_afterSalesRequests);
   List<FeedbackEntry> get feedbackEntries =>
       List.unmodifiable(_feedbackEntries);
+  bool get isLoggedIn => _isLoggedIn;
   int get unreadMessageCount =>
       _messages.where((message) => !message.isRead).length;
 
-  factory OwnerAppState.memory({OwnerKeyValueStore? store}) {
+  static Future<OwnerAppState> memory({
+    OwnerKeyValueStore? store,
+    AuthSessionStore? sessionStore,
+    OwnerProfileApi? profileApi,
+  }) async {
     final targetStore = store ?? MemoryOwnerStore();
-    return _fromStored(targetStore);
+    return _fromStored(
+      targetStore,
+      sessionStore ?? MemoryAuthSessionStore(),
+      profileApi ?? OwnerProfileApiClient(),
+    );
   }
 
-  static Future<OwnerAppState> load() async {
+  static Future<OwnerAppState> load({
+    AuthSessionStore? sessionStore,
+    OwnerProfileApi? profileApi,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
-    return _fromStored(SharedPreferencesOwnerStore(preferences));
+    return _fromStored(
+      SharedPreferencesOwnerStore(preferences),
+      sessionStore ?? SecureAuthSessionStore(),
+      profileApi ?? OwnerProfileApiClient(),
+    );
   }
 
-  factory OwnerAppState.fromJson(Map<String, dynamic> json) =>
-      _fromMap(json, MemoryOwnerStore());
+  factory OwnerAppState.fromJson(Map<String, dynamic> json) => _fromMap(
+    json,
+    MemoryOwnerStore(),
+    MemoryAuthSessionStore(),
+    OwnerProfileApiClient(),
+  );
 
-  static OwnerAppState _fromStored(OwnerKeyValueStore store) {
+  static Future<OwnerAppState> _fromStored(
+    OwnerKeyValueStore store,
+    AuthSessionStore sessionStore,
+    OwnerProfileApi profileApi,
+  ) async {
     final encoded = store.getString(documentKey);
-    if (encoded == null) return _seeded(store);
+    final state = encoded != null
+        ? _tryDecode(encoded, store, sessionStore, profileApi)
+        : _seeded(store, sessionStore, profileApi);
+    final session = await sessionStore.read();
+    if (session == null || session.isExpiredAt(DateTime.now())) {
+      state._isLoggedIn = false;
+      if (session != null) await sessionStore.clear();
+    } else {
+      state._isLoggedIn = true;
+      state._profile = state._profile.copyWith(phone: session.phone);
+    }
+    if (state._isLoggedIn) {
+      try {
+        await state.refreshOwnerProfile();
+      } on AuthApiException {
+        // Restoring local state must remain usable while profile sync is
+        // unavailable. refreshOwnerProfile already clears an invalid session.
+      }
+    }
+    return state;
+  }
+
+  static OwnerAppState _tryDecode(
+    String encoded,
+    OwnerKeyValueStore store,
+    AuthSessionStore sessionStore,
+    OwnerProfileApi profileApi,
+  ) {
     try {
-      return _fromMap(jsonDecode(encoded) as Map<String, dynamic>, store);
+      return _fromMap(
+        jsonDecode(encoded) as Map<String, dynamic>,
+        store,
+        sessionStore,
+        profileApi,
+      );
     } on FormatException {
-      return _seeded(store);
+      return _seeded(store, sessionStore, profileApi);
     } on TypeError {
-      return _seeded(store);
+      return _seeded(store, sessionStore, profileApi);
     }
   }
 
   static OwnerAppState _fromMap(
     Map<String, dynamic> json,
     OwnerKeyValueStore store,
+    AuthSessionStore sessionStore,
+    OwnerProfileApi profileApi,
   ) {
     List<T> read<T>(String key, T Function(Map<String, dynamic>) decode) =>
         (json[key] as List<dynamic>? ?? const [])
@@ -149,6 +216,8 @@ class OwnerAppState extends ChangeNotifier {
     final storedSelectedProjectId = json['selectedProjectId'] as String?;
     return OwnerAppState._(
       store: store,
+      sessionStore: sessionStore,
+      profileApi: profileApi,
       ready: true,
       profile: OwnerProfile.fromJson(
         Map<String, dynamic>.from(json['profile'] as Map),
@@ -171,11 +240,18 @@ class OwnerAppState extends ChangeNotifier {
         AfterSalesRequest.fromJson,
       ),
       feedbackEntries: read('feedbackEntries', FeedbackEntry.fromJson),
+      isLoggedIn: json['isLoggedIn'] as bool? ?? false,
     );
   }
 
-  static OwnerAppState _seeded(OwnerKeyValueStore store) => OwnerAppState._(
+  static OwnerAppState _seeded(
+    OwnerKeyValueStore store,
+    AuthSessionStore sessionStore,
+    OwnerProfileApi profileApi,
+  ) => OwnerAppState._(
     store: store,
+    sessionStore: sessionStore,
+    profileApi: profileApi,
     ready: true,
     profile: const OwnerProfile(name: '王先生', city: '成都', phone: '13800000000'),
     addresses: const [
@@ -242,6 +318,7 @@ class OwnerAppState extends ChangeNotifier {
     settings: const OwnerSettings(),
     afterSalesRequests: const [],
     feedbackEntries: const [],
+    isLoggedIn: false,
   );
 
   Map<String, dynamic> toJson() => {
@@ -258,6 +335,7 @@ class OwnerAppState extends ChangeNotifier {
         .map((item) => item.toJson())
         .toList(),
     'feedbackEntries': _feedbackEntries.map((item) => item.toJson()).toList(),
+    'isLoggedIn': _isLoggedIn,
   };
 
   Future<void> _mutate(Map<String, dynamic>? Function() buildNext) {
@@ -265,7 +343,7 @@ class OwnerAppState extends ChangeNotifier {
       final next = buildNext();
       if (next == null) return;
       await _store.setString(documentKey, jsonEncode(next));
-      final restored = _fromMap(next, _store);
+      final restored = _fromMap(next, _store, _sessionStore, _profileApi);
       _profile = restored._profile;
       _addresses = restored._addresses;
       _projects = restored._projects;
@@ -277,20 +355,97 @@ class OwnerAppState extends ChangeNotifier {
       _settings = restored._settings;
       _afterSalesRequests = restored._afterSalesRequests;
       _feedbackEntries = restored._feedbackEntries;
+      _isLoggedIn = restored._isLoggedIn;
       notifyListeners();
     });
     _mutationQueue = operation.then<void>((_) {}, onError: (_, _) {});
     return operation;
   }
 
-  Future<void> updateProfile(OwnerProfile value) => _mutate(() {
-    if (value.name == _profile.name &&
-        value.city == _profile.city &&
-        value.phone == _profile.phone) {
-      return null;
+  Future<AuthSession?> _validSession() async {
+    final session = await _sessionStore.read();
+    if (session == null) return null;
+    if (!session.isExpiredAt(DateTime.now())) return session;
+    await _clearAuthenticatedState();
+    return null;
+  }
+
+  OwnerProfile _localProfile(RemoteOwnerProfile remote) => OwnerProfile(
+    name: remote.name ?? '',
+    city: remote.city,
+    phone: remote.phone,
+    decorationType: remote.decorationType,
+    address: remote.address,
+    area: remote.area,
+  );
+
+  Future<void> _clearAuthenticatedState() async {
+    await _sessionStore.clear();
+    await _mutate(() {
+      if (!_isLoggedIn) return null;
+      return {...toJson(), 'isLoggedIn': false};
+    });
+  }
+
+  Future<void> _handleProfileError(Object error) async {
+    if (error is AuthApiException && error.statusCode == 401) {
+      await _clearAuthenticatedState();
     }
-    return {...toJson(), 'profile': value.toJson()};
-  });
+  }
+
+  Future<void> refreshOwnerProfile() async {
+    final session = await _validSession();
+    if (session == null) return;
+    try {
+      final remote = await _profileApi.getCurrent(session.accessToken);
+      await _mutate(
+        () => {
+          ...toJson(),
+          'profile': _localProfile(remote).toJson(),
+          'isLoggedIn': true,
+        },
+      );
+    } catch (error) {
+      await _handleProfileError(error);
+      rethrow;
+    }
+  }
+
+  Future<void> updateProfile(OwnerProfile value) async {
+    final session = await _validSession();
+    if (session != null) {
+      try {
+        final remote = await _profileApi.updateCurrent(
+          session.accessToken,
+          OwnerProfileUpdate(
+            name: value.name,
+            city: value.city,
+            decorationType: value.decorationType,
+            address: value.address,
+            area: value.area,
+          ),
+        );
+        await _mutate(
+          () => {...toJson(), 'profile': _localProfile(remote).toJson()},
+        );
+        return;
+      } catch (error) {
+        await _handleProfileError(error);
+        rethrow;
+      }
+    }
+    await _mutate(() {
+      if (value.name == _profile.name &&
+          value.city == _profile.city &&
+          value.phone == _profile.phone &&
+          value.decorationType == _profile.decorationType &&
+          value.address == _profile.address &&
+          value.area == _profile.area) {
+        return null;
+      }
+      return {...toJson(), 'profile': value.toJson()};
+    });
+  }
 
   Future<void> updateProfileName(String name) {
     final normalized = name.trim();
@@ -427,6 +582,84 @@ class OwnerAppState extends ChangeNotifier {
     }
     return {...toJson(), 'settings': value.toJson()};
   });
+
+  /// 完成后端认证：安全令牌保存成功后才进入登录态。
+  Future<void> completeAuthenticatedLogin(OwnerLoginResponse response) async {
+    final session = AuthSession.fromLogin(response);
+    await _sessionStore.save(session);
+    try {
+      await _mutate(() {
+        return {
+          ...toJson(),
+          'profile': _profile.copyWith(phone: response.user.phone).toJson(),
+          'isLoggedIn': true,
+        };
+      });
+    } catch (_) {
+      await _sessionStore.clear();
+      rethrow;
+    }
+    try {
+      await refreshOwnerProfile();
+    } on AuthApiException {
+      // Login remains successful for retryable profile-fetch failures. A 401 is
+      // handled by refreshOwnerProfile and has already cleared login state.
+    }
+  }
+
+  /// 首次登录完成资料填写。
+  Future<void> completeOnboarding({
+    String? name,
+    required String decorationType,
+    required String address,
+    required double area,
+  }) async {
+    final nextProfile = _profile.copyWith(
+      name: name?.trim().isNotEmpty == true ? name!.trim() : _profile.name,
+      decorationType: decorationType,
+      address: address,
+      area: area,
+    );
+    if (!nextProfile.isProfileComplete) return;
+    final session = await _validSession();
+    if (session != null) {
+      try {
+        final remote = await _profileApi.updateCurrent(
+          session.accessToken,
+          OwnerProfileUpdate(
+            name: nextProfile.name,
+            city: nextProfile.city,
+            decorationType: nextProfile.decorationType,
+            address: nextProfile.address,
+            area: nextProfile.area,
+          ),
+        );
+        await _mutate(
+          () => {
+            ...toJson(),
+            'profile': _localProfile(remote).toJson(),
+            'isLoggedIn': true,
+          },
+        );
+        return;
+      } catch (error) {
+        await _handleProfileError(error);
+        rethrow;
+      }
+    }
+    await _mutate(
+      () => {...toJson(), 'profile': nextProfile.toJson(), 'isLoggedIn': true},
+    );
+  }
+
+  /// 退出登录：先删除安全令牌，再清理本地登录状态。
+  Future<void> logout() async {
+    await _sessionStore.clear();
+    await _mutate(() {
+      if (!_isLoggedIn) return null;
+      return {...toJson(), 'isLoggedIn': false};
+    });
+  }
 
   /// Restores notification and privacy preferences only.
   /// Owner profile, addresses, projects, and submitted records are preserved.
