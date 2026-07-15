@@ -472,6 +472,78 @@ class FeedbackEntry {
   );
 }
 
+enum InspectionStatus { pending, approved, rejected }
+
+class InspectionRequest {
+  const InspectionRequest({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.requestedAt,
+    this.status = InspectionStatus.pending,
+    this.ownerNote,
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String phaseName;
+  final int phaseIndex;
+  final DateTime requestedAt;
+  final InspectionStatus status;
+  final String? ownerNote;
+
+  InspectionRequest copyWith({
+    String? id,
+    String? workerId,
+    String? workerName,
+    String? phaseName,
+    int? phaseIndex,
+    DateTime? requestedAt,
+    InspectionStatus? status,
+    Object? ownerNote = _notProvided,
+  }) => InspectionRequest(
+    id: id ?? this.id,
+    workerId: workerId ?? this.workerId,
+    workerName: workerName ?? this.workerName,
+    phaseName: phaseName ?? this.phaseName,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    requestedAt: requestedAt ?? this.requestedAt,
+    status: status ?? this.status,
+    ownerNote: identical(ownerNote, _notProvided)
+        ? this.ownerNote
+        : ownerNote as String?,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'requestedAt': requestedAt.toIso8601String(),
+    'status': status.name,
+    if (ownerNote != null) 'ownerNote': ownerNote,
+  };
+
+  factory InspectionRequest.fromJson(Map<String, dynamic> json) =>
+      InspectionRequest(
+        id: json['id'] as String,
+        workerId: json['workerId'] as String,
+        workerName: json['workerName'] as String,
+        phaseName: json['phaseName'] as String,
+        phaseIndex: json['phaseIndex'] as int,
+        requestedAt: DateTime.parse(json['requestedAt'] as String),
+        status: InspectionStatus.values.firstWhere(
+          (item) => item.name == json['status'],
+          orElse: () => InspectionStatus.pending,
+        ),
+        ownerNote: json['ownerNote'] as String?,
+      );
+}
+
 class BookedWorker {
   const BookedWorker({
     required this.id,

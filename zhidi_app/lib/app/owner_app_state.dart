@@ -50,6 +50,7 @@ class OwnerAppState extends ChangeNotifier {
     required List<AfterSalesRequest> afterSalesRequests,
     required List<FeedbackEntry> feedbackEntries,
     required List<BookedWorker> bookedWorkers,
+    required List<InspectionRequest> inspections,
     required Set<int> completedPhases,
     required this._isLoggedIn,
     // Named public-looking parameters keep seeded-data construction readable.
@@ -82,6 +83,8 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _bookedWorkers = bookedWorkers,
        // ignore: prefer_initializing_formals
+       _inspections = inspections,
+       // ignore: prefer_initializing_formals
        _completedPhases = completedPhases;
 
   static const documentKey = 'owner.appState';
@@ -103,6 +106,7 @@ class OwnerAppState extends ChangeNotifier {
   List<AfterSalesRequest> _afterSalesRequests;
   List<FeedbackEntry> _feedbackEntries;
   List<BookedWorker> _bookedWorkers;
+  List<InspectionRequest> _inspections;
   Set<int> _completedPhases;
   bool _isLoggedIn;
   Future<void> _mutationQueue = Future<void>.value();
@@ -132,6 +136,7 @@ class OwnerAppState extends ChangeNotifier {
   List<FeedbackEntry> get feedbackEntries =>
       List.unmodifiable(_feedbackEntries);
   List<BookedWorker> get bookedWorkers => List.unmodifiable(_bookedWorkers);
+  List<InspectionRequest> get inspections => List.unmodifiable(_inspections);
   Set<int> get completedPhases => Set.unmodifiable(_completedPhases);
   bool get isLoggedIn => _isLoggedIn;
   int get unreadMessageCount =>
@@ -257,6 +262,7 @@ class OwnerAppState extends ChangeNotifier {
       ),
       feedbackEntries: read('feedbackEntries', FeedbackEntry.fromJson),
       bookedWorkers: read('bookedWorkers', BookedWorker.fromJson),
+      inspections: read('inspections', InspectionRequest.fromJson),
       completedPhases: Set<int>.from(
         (json['completedPhases'] as List<dynamic>? ?? const []).map(
           (value) => value as int,
@@ -342,6 +348,7 @@ class OwnerAppState extends ChangeNotifier {
     afterSalesRequests: const [],
     feedbackEntries: const [],
     bookedWorkers: const [],
+    inspections: const [],
     completedPhases: const {},
     isLoggedIn: false,
   );
@@ -362,6 +369,7 @@ class OwnerAppState extends ChangeNotifier {
         .toList(),
     'feedbackEntries': _feedbackEntries.map((item) => item.toJson()).toList(),
     'bookedWorkers': _bookedWorkers.map((item) => item.toJson()).toList(),
+    'inspections': _inspections.map((item) => item.toJson()).toList(),
     'completedPhases': _completedPhases.toList(),
     'isLoggedIn': _isLoggedIn,
   };
@@ -385,6 +393,7 @@ class OwnerAppState extends ChangeNotifier {
       _afterSalesRequests = restored._afterSalesRequests;
       _feedbackEntries = restored._feedbackEntries;
       _bookedWorkers = restored._bookedWorkers;
+      _inspections = restored._inspections;
       _completedPhases = restored._completedPhases;
       _isLoggedIn = restored._isLoggedIn;
       notifyListeners();
@@ -669,6 +678,113 @@ class OwnerAppState extends ChangeNotifier {
       'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
     };
   });
+
+  Future<void> requestInspection(String workerId) => _mutate(() {
+    final workerIndex = _bookedWorkers.indexWhere((item) => item.id == workerId);
+    if (workerIndex < 0) return null;
+    final worker = _bookedWorkers[workerIndex];
+    if (_completedPhases.contains(worker.phaseIndex) || worker.isCompleted) {
+      return null;
+    }
+    final pending = _inspections.any(
+      (item) =>
+          item.workerId == worker.id &&
+          item.status == InspectionStatus.pending,
+    );
+    if (pending) return null;
+    final now = DateTime.now();
+    final inspection = InspectionRequest(
+      id: 'inspection-${worker.id}-${now.millisecondsSinceEpoch}',
+      workerId: worker.id,
+      workerName: worker.name,
+      phaseName: worker.phaseName,
+      phaseIndex: worker.phaseIndex,
+      requestedAt: now,
+    );
+    final message = OwnerMessage(
+      id: 'msg-inspection-request-${now.millisecondsSinceEpoch}',
+      title: '验收申请已提交',
+      content: '${worker.name}的${worker.phaseName}阶段已进入待验收。',
+      category: '项目',
+      createdAt: now,
+    );
+    return {
+      ...toJson(),
+      'inspections': [
+        inspection,
+        ..._inspections,
+      ].map((item) => item.toJson()).toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> approveInspection(String inspectionId) => _mutate(() {
+    final index = _inspections.indexWhere(
+      (item) =>
+          item.id == inspectionId && item.status == InspectionStatus.pending,
+    );
+    if (index < 0) return null;
+    final inspection = _inspections[index];
+    final now = DateTime.now();
+    final nextInspections = _inspections.toList()
+      ..[index] = inspection.copyWith(status: InspectionStatus.approved);
+    final nextPhases = {..._completedPhases, inspection.phaseIndex};
+    final nextWorkers = _bookedWorkers
+        .map(
+          (item) => item.phaseIndex == inspection.phaseIndex
+              ? item.copyWith(status: '已完成')
+              : item,
+        )
+        .toList();
+    final message = OwnerMessage(
+      id: 'msg-inspection-approved-${now.millisecondsSinceEpoch}',
+      title: '验收已通过',
+      content: '${inspection.workerName}的${inspection.phaseName}阶段验收已通过。',
+      category: '项目',
+      createdAt: now,
+    );
+    return {
+      ...toJson(),
+      'inspections': nextInspections.map((item) => item.toJson()).toList(),
+      'bookedWorkers': nextWorkers.map((item) => item.toJson()).toList(),
+      'completedPhases': nextPhases.toList(),
+      'messages': [message, ..._messages].map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> rejectInspection(String inspectionId, {String? note}) =>
+      _mutate(() {
+        final index = _inspections.indexWhere(
+          (item) =>
+              item.id == inspectionId &&
+              item.status == InspectionStatus.pending,
+        );
+        if (index < 0) return null;
+        final inspection = _inspections[index];
+        final now = DateTime.now();
+        final nextInspections = _inspections.toList()
+          ..[index] = inspection.copyWith(
+            status: InspectionStatus.rejected,
+            ownerNote: note,
+          );
+        final message = OwnerMessage(
+          id: 'msg-inspection-rejected-${now.millisecondsSinceEpoch}',
+          title: '验收已驳回',
+          content: note == null || note.trim().isEmpty
+              ? '${inspection.workerName}的${inspection.phaseName}阶段需要整改。'
+              : '${inspection.workerName}的${inspection.phaseName}阶段需要整改：${note.trim()}',
+          category: '项目',
+          createdAt: now,
+        );
+        return {
+          ...toJson(),
+          'inspections': nextInspections.map((item) => item.toJson()).toList(),
+          'messages': [
+            message,
+            ..._messages,
+          ].map((item) => item.toJson()).toList(),
+        };
+      });
 
   Future<void> completeReminder(String id) => _mutate(() {
     final index = _reminders.indexWhere(

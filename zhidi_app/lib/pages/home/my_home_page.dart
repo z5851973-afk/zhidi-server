@@ -245,11 +245,27 @@ class _WorkerCard extends StatelessWidget {
 
   final BookedWorker worker;
 
+  InspectionRequest? _latestInspection(List<InspectionRequest> inspections) {
+    final matched = inspections
+        .where((item) => item.workerId == worker.id)
+        .toList()
+      ..sort((a, b) => b.requestedAt.compareTo(a.requestedAt));
+    return matched.isEmpty ? null : matched.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = OwnerAppScope.of(context);
     final isCompleted =
         state.completedPhases.contains(worker.phaseIndex) || worker.isCompleted;
+    final inspection = _latestInspection(state.inspections);
+    final statusLabel = isCompleted
+        ? '已完成'
+        : inspection?.status == InspectionStatus.pending
+        ? '待验收'
+        : inspection?.status == InspectionStatus.rejected
+        ? '验收未通过'
+        : '进行中';
 
     return Container(
       key: Key('my-home-worker-${worker.id}'),
@@ -290,22 +306,52 @@ class _WorkerCard extends StatelessWidget {
                   ],
                 ),
               ),
-              _StatusChip(label: isCompleted ? '已完成' : '进行中'),
+              _StatusChip(label: statusLabel),
             ],
           ),
           if (!isCompleted) ...[
             const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => state.confirmPhaseComplete(worker.phaseIndex),
-                style: FilledButton.styleFrom(
-                  backgroundColor: MyHomePage._primary,
-                  foregroundColor: Colors.white,
+            if (inspection?.status == InspectionStatus.pending)
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => state.rejectInspection(
+                        inspection!.id,
+                        note: '业主要求整改',
+                      ),
+                      child: const Text('驳回'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => state.approveInspection(inspection!.id),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: MyHomePage._primary,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('通过验收'),
+                    ),
+                  ),
+                ],
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => state.requestInspection(worker.id),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: MyHomePage._primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text(
+                    inspection?.status == InspectionStatus.rejected
+                        ? '重新申请验收'
+                        : '申请验收',
+                  ),
                 ),
-                child: const Text('确认完成'),
               ),
-            ),
           ],
         ],
       ),
@@ -321,16 +367,25 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final done = label == '已完成';
+    final pending = label == '待验收';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
-        color: done ? const Color(0xFFE7F6EE) : const Color(0xFFFFF3EA),
+        color: done
+            ? const Color(0xFFE7F6EE)
+            : pending
+            ? const Color(0xFFEAF2FF)
+            : const Color(0xFFFFF3EA),
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: done ? const Color(0xFF1F9D55) : MyHomePage._primary,
+          color: done
+              ? const Color(0xFF1F9D55)
+              : pending
+              ? const Color(0xFF2563EB)
+              : MyHomePage._primary,
           fontSize: 12,
           fontWeight: FontWeight.w800,
         ),

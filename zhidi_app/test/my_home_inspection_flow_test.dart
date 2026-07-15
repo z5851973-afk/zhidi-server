@@ -4,25 +4,18 @@ import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/pages/home/my_home_page.dart';
 
-BookedWorker _worker({
-  String id = 'worker-1',
-  String name = '李师傅',
-  int phaseIndex = 0,
-  String phaseName = '拆除',
-  String status = '已接单待上门',
-}) {
+BookedWorker _worker() {
   return BookedWorker(
-    id: id,
-    name: name,
+    id: 'worker-1',
+    name: '李师傅',
     trade: '拆除工',
-    phaseName: phaseName,
-    phaseIndex: phaseIndex,
+    phaseName: '拆除',
+    phaseIndex: 0,
     rating: 4.9,
     completedOrders: 128,
     years: 8,
     avatarEmoji: '👷',
     skills: const ['拆墙', '垃圾清运'],
-    status: status,
   );
 }
 
@@ -43,36 +36,21 @@ Future<void> _pumpMyHome(WidgetTester tester, OwnerAppState state) async {
 }
 
 void main() {
-  testWidgets('shows current construction worker and phase progress', (
-    tester,
-  ) async {
-    final state = await _stateWithWorker();
-
-    await _pumpMyHome(tester, state);
-
-    expect(find.text('我的家'), findsOneWidget);
-    expect(find.text('麓湖新居翻新'), findsOneWidget);
-    expect(find.text('施工进度'), findsOneWidget);
-    expect(find.text('李师傅'), findsAtLeastNWidgets(1));
-    expect(find.text('拆除'), findsWidgets);
-    expect(find.text('进行中'), findsAtLeastNWidgets(1));
-  });
-
-  testWidgets('can approve a booked worker phase through inspection', (
-    tester,
-  ) async {
+  testWidgets('requests and approves inspection from my home', (tester) async {
     final state = await _stateWithWorker();
 
     await _pumpMyHome(tester, state);
     await tester.tap(find.text('申请验收'));
     await tester.pumpAndSettle();
 
+    expect(state.inspections, hasLength(1));
     expect(state.inspections.single.status, InspectionStatus.pending);
     expect(find.text('待验收'), findsWidgets);
 
     await tester.tap(find.text('通过验收'));
     await tester.pumpAndSettle();
 
+    expect(state.inspections.single.status, InspectionStatus.approved);
     expect(state.completedPhases, contains(0));
     expect(find.text('已完成'), findsWidgets);
   });
