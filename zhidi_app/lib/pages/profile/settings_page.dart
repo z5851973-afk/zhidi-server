@@ -80,6 +80,19 @@ class _SettingsPageState extends State<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _sheet('隐私说明', '我们仅在提供服务所需范围内保存本地资料与设置；手机号可选择脱敏展示。'),
           ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+            title: const Text(
+              '退出登录',
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            subtitle: const Text('退出后需要重新使用手机号登录'),
+            onTap: _writing ? null : _logout,
+          ),
         ],
       ),
     );
@@ -144,4 +157,43 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
     ),
   );
+
+  Future<void> _logout() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('退出登录？'),
+        content: const Text('将清除本机登录状态，下次进入“我的”等页面需要重新验证手机号。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('确认退出'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _writing = true);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await OwnerAppScope.of(context).logout();
+      if (!mounted) return;
+      navigator.popUntil((route) => route.isFirst);
+      messenger.showSnackBar(const SnackBar(content: Text('已退出登录')));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('退出失败，请重试')));
+      }
+    } finally {
+      if (mounted) setState(() => _writing = false);
+    }
+  }
 }
