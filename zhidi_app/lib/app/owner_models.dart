@@ -278,6 +278,83 @@ class FavoriteWorker {
   );
 }
 
+/// 报价行项目（保存时的快照）
+class QuoteLineItem {
+  const QuoteLineItem({
+    required this.name,
+    required this.categoryName,
+    required this.unitPrice,
+    required this.unit,
+    required this.quantity,
+  });
+
+  final String name;
+  final String categoryName;
+  final String unit;
+  final double unitPrice;
+  final double quantity;
+
+  double get subtotal => unitPrice * quantity;
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'categoryName': categoryName,
+    'unitPrice': unitPrice,
+    'unit': unit,
+    'quantity': quantity,
+  };
+
+  factory QuoteLineItem.fromJson(Map<String, dynamic> json) => QuoteLineItem(
+    name: json['name'] as String,
+    categoryName: json['categoryName'] as String,
+    unitPrice: (json['unitPrice'] as num).toDouble(),
+    unit: json['unit'] as String,
+    quantity: (json['quantity'] as num).toDouble(),
+  );
+}
+
+/// 收藏的报价单快照。
+class SavedQuote {
+  const SavedQuote({
+    required this.id,
+    required this.workerName,
+    required this.tradeName,
+    required this.items,
+    required this.grandTotal,
+    required this.savedAt,
+  });
+
+  final String id;
+  final String workerName;
+  final String tradeName;
+  final List<QuoteLineItem> items;
+  final double grandTotal;
+  final DateTime savedAt;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerName': workerName,
+    'tradeName': tradeName,
+    'items': items.map((item) => item.toJson()).toList(),
+    'grandTotal': grandTotal,
+    'savedAt': savedAt.toIso8601String(),
+  };
+
+  factory SavedQuote.fromJson(Map<String, dynamic> json) => SavedQuote(
+    id: json['id'] as String,
+    workerName: json['workerName'] as String,
+    tradeName: json['tradeName'] as String,
+    items: (json['items'] as List<dynamic>)
+        .map(
+          (item) =>
+              QuoteLineItem.fromJson(Map<String, dynamic>.from(item as Map)),
+        )
+        .toList(),
+    grandTotal: (json['grandTotal'] as num).toDouble(),
+    savedAt: DateTime.parse(json['savedAt'] as String),
+  );
+}
+
 class OwnerSettings {
   const OwnerSettings({
     this.pushNotifications = true,

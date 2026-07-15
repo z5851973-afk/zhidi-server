@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
+import '../../app/owner_app_state.dart';
 import 'edit_profile_page.dart';
 import 'address_page.dart';
 import 'feedback_page.dart';
@@ -79,6 +80,9 @@ class ProfilePage extends StatelessWidget {
                     icon: item.$1,
                     label: item.$2,
                     onTap: () => _open(context, item.$2),
+                    badge: item.$2 == '我的收藏'
+                        ? _FavoritesBadge(state: state)
+                        : null,
                   ),
               ],
             ),
@@ -221,6 +225,33 @@ class _ProfileHeader extends StatelessWidget {
         const SizedBox(width: 4),
         _editButton,
       ],
+    );
+  }
+}
+
+class _FavoritesBadge extends StatelessWidget {
+  const _FavoritesBadge({required this.state});
+
+  final OwnerAppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = state.savedQuotes.length + state.favoriteWorkers.length;
+    if (count == 0) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: ZdColors.primaryDark,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }

@@ -44,6 +44,7 @@ class OwnerAppState extends ChangeNotifier {
     required List<OwnerReminder> reminders,
     required List<OwnerMessage> messages,
     required List<FavoriteWorker> favoriteWorkers,
+    required List<SavedQuote> savedQuotes,
     required List<OrderItem> appointments,
     required OwnerSettings settings,
     required List<AfterSalesRequest> afterSalesRequests,
@@ -67,6 +68,8 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _favoriteWorkers = favoriteWorkers,
        // ignore: prefer_initializing_formals
+       _savedQuotes = savedQuotes,
+       // ignore: prefer_initializing_formals
        _appointments = appointments,
        // ignore: prefer_initializing_formals
        _settings = settings,
@@ -88,6 +91,7 @@ class OwnerAppState extends ChangeNotifier {
   List<OwnerReminder> _reminders;
   List<OwnerMessage> _messages;
   List<FavoriteWorker> _favoriteWorkers;
+  List<SavedQuote> _savedQuotes;
   List<OrderItem> _appointments;
   OwnerSettings _settings;
   List<AfterSalesRequest> _afterSalesRequests;
@@ -112,6 +116,7 @@ class OwnerAppState extends ChangeNotifier {
   List<OwnerMessage> get messages => List.unmodifiable(_messages);
   List<FavoriteWorker> get favoriteWorkers =>
       List.unmodifiable(_favoriteWorkers);
+  List<SavedQuote> get savedQuotes => List.unmodifiable(_savedQuotes);
   List<OrderItem> get appointments => List.unmodifiable(_appointments);
   OwnerSettings get settings => _settings;
   List<AfterSalesRequest> get afterSalesRequests =>
@@ -231,6 +236,7 @@ class OwnerAppState extends ChangeNotifier {
       reminders: read('reminders', OwnerReminder.fromJson),
       messages: read('messages', OwnerMessage.fromJson),
       favoriteWorkers: read('favoriteWorkers', FavoriteWorker.fromJson),
+      savedQuotes: read('savedQuotes', SavedQuote.fromJson),
       appointments: read('appointments', OrderItem.fromJson),
       settings: OwnerSettings.fromJson(
         Map<String, dynamic>.from(json['settings'] as Map? ?? const {}),
@@ -314,6 +320,7 @@ class OwnerAppState extends ChangeNotifier {
       ),
     ],
     favoriteWorkers: const [],
+    savedQuotes: const [],
     appointments: const [],
     settings: const OwnerSettings(),
     afterSalesRequests: const [],
@@ -329,6 +336,7 @@ class OwnerAppState extends ChangeNotifier {
     'reminders': _reminders.map((item) => item.toJson()).toList(),
     'messages': _messages.map((item) => item.toJson()).toList(),
     'favoriteWorkers': _favoriteWorkers.map((item) => item.toJson()).toList(),
+    'savedQuotes': _savedQuotes.map((item) => item.toJson()).toList(),
     'appointments': _appointments.map((item) => item.toJson()).toList(),
     'settings': _settings.toJson(),
     'afterSalesRequests': _afterSalesRequests
@@ -351,6 +359,7 @@ class OwnerAppState extends ChangeNotifier {
       _reminders = restored._reminders;
       _messages = restored._messages;
       _favoriteWorkers = restored._favoriteWorkers;
+      _savedQuotes = restored._savedQuotes;
       _appointments = restored._appointments;
       _settings = restored._settings;
       _afterSalesRequests = restored._afterSalesRequests;
@@ -514,6 +523,30 @@ class OwnerAppState extends ChangeNotifier {
     return {
       ...toJson(),
       'favoriteWorkers': next.map((e) => e.toJson()).toList(),
+    };
+  });
+
+  Future<void> addSavedQuote(SavedQuote quote) => _mutate(() {
+    final filtered = _savedQuotes
+        .where(
+          (item) =>
+              !(item.workerName == quote.workerName &&
+                  item.tradeName == quote.tradeName),
+        )
+        .toList();
+    final next = [quote, ...filtered];
+    return {
+      ...toJson(),
+      'savedQuotes': next.map((item) => item.toJson()).toList(),
+    };
+  });
+
+  Future<void> removeSavedQuote(String id) => _mutate(() {
+    final next = _savedQuotes.where((item) => item.id != id).toList();
+    if (next.length == _savedQuotes.length) return null;
+    return {
+      ...toJson(),
+      'savedQuotes': next.map((item) => item.toJson()).toList(),
     };
   });
 

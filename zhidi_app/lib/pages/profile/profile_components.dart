@@ -24,17 +24,25 @@ class ProfileMenuTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.badge,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final Widget? badge;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
       leading: Icon(icon, color: ZdColors.primary),
-      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (badge != null) ...[const SizedBox(width: 8), badge!],
+        ],
+      ),
       trailing: const Icon(
         Icons.chevron_right_rounded,
         color: Color(0xFFB8B8B8),
