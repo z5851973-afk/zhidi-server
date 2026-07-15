@@ -9,6 +9,7 @@ import 'settings_page.dart';
 import 'support_page.dart';
 import '../order/my_orders_page.dart';
 import 'favorites_page.dart';
+import '../../design/tokens.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -50,7 +51,7 @@ class ProfilePage extends StatelessWidget {
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFFFF6B35), Color(0xFFFF914D)],
+                colors: [ZdColors.primary, Color(0xFFFF914D)],
               ),
               borderRadius: BorderRadius.circular(20),
             ),

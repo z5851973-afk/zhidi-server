@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../design/tokens.dart';
+
 class ProfileSectionCard extends StatelessWidget {
   const ProfileSectionCard({super.key, required this.child});
 
@@ -31,13 +33,14 @@ class ProfileMenuTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: Icon(icon, color: const Color(0xFFFF6B35)),
+      leading: Icon(icon, color: ZdColors.primary),
       title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
       trailing: const Icon(
         Icons.chevron_right_rounded,
         color: Color(0xFFB8B8B8),
       ),
       onTap: onTap,
+      splashColor: ZdColors.primary.withValues(alpha: 0.08),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
 import '../../app/owner_models.dart';
+import '../../design/tokens.dart';
 
 class AddressPage extends StatelessWidget {
   const AddressPage({super.key});
@@ -19,6 +20,7 @@ class AddressPage extends StatelessWidget {
                 for (final address in state.addresses)
                   Card(
                     child: ListTile(
+                      splashColor: ZdColors.primary.withValues(alpha: 0.08),
                       title: Text('${address.recipient}  ${address.phone}'),
                       subtitle: Text(
                         '${address.city}${address.district}\n${address.detail}',

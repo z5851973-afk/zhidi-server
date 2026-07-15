@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
+import '../../design/tokens.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -87,7 +88,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
             FilledButton(
               onPressed: _saving ? null : _save,
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFFF6B35),
+                backgroundColor: ZdColors.primary,
                 minimumSize: const Size.fromHeight(48),
               ),
               child: Text(_saving ? '保存中…' : '保存'),

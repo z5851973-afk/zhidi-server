@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
 import '../../app/owner_models.dart';
+import '../../design/tokens.dart';
 
 class SupportPage extends StatelessWidget {
   const SupportPage({super.key});
@@ -42,6 +43,7 @@ class SupportPage extends StatelessWidget {
                 title: Text(item.issueType),
                 subtitle: Text(item.description),
                 trailing: Text(item.status),
+                splashColor: ZdColors.primary.withValues(alpha: 0.08),
               ),
             ),
         ],
