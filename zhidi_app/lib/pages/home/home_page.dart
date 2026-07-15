@@ -2,6 +2,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../../design/tokens.dart';
 import '../../app/owner_app_scope.dart';
+import '../../app/owner_app_state.dart';
 import '../../app/owner_models.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
@@ -26,6 +27,30 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentTab = 0;
+  OwnerAppState? _appState;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextState = OwnerAppScope.of(context);
+    if (_appState == nextState) return;
+    _appState?.removeListener(_handleOwnerStateChanged);
+    _appState = nextState..addListener(_handleOwnerStateChanged);
+  }
+
+  @override
+  void dispose() {
+    _appState?.removeListener(_handleOwnerStateChanged);
+    super.dispose();
+  }
+
+  void _handleOwnerStateChanged() {
+    final appState = _appState;
+    if (!mounted || appState == null) return;
+    if (!appState.isLoggedIn && _currentTab != 0) {
+      setState(() => _currentTab = 0);
+    }
+  }
 
   void _onTabTapped(int index) async {
     // 首页以外的 tab 需要登录
@@ -35,9 +60,10 @@ class _HomePageState extends State<HomePage> {
         final loggedIn = await Navigator.of(
           context,
         ).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
-        if (loggedIn != true) return;
+        if (!mounted || loggedIn != true) return;
       }
     }
+    if (!mounted || index == _currentTab) return;
     setState(() => _currentTab = index);
   }
 
@@ -137,7 +163,10 @@ class _HomePageState extends State<HomePage> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final tabWidth = constraints.maxWidth / 4;
-          final unreadCount = OwnerAppScope.of(context).unreadMessageCount;
+          final appState = OwnerAppScope.of(context);
+          final unreadCount = appState.isLoggedIn
+              ? appState.unreadMessageCount
+              : 0;
           return Stack(
             clipBehavior: Clip.none,
             children: [
