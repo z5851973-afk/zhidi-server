@@ -674,6 +674,20 @@ class _WorkerListPageState extends State<WorkerListPage> {
   @override
   void initState() {
     super.initState();
+    _selectedJob = _initialSelectedJob;
+  }
+
+  String get _initialSelectedJob {
+    switch (widget.serviceType) {
+      case 'demolition':
+        return '拆除师傅';
+      case 'painter':
+        return '油漆师傅';
+      case 'caulking':
+        return '美缝师傅';
+      default:
+        return '全部工种';
+    }
   }
 
   @override
