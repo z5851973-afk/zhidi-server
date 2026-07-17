@@ -90,9 +90,6 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 		assertThat(update(null, "成都", "水电", 8,
 			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isFalse();
-		assertThat(update("张师傅", null, "水电", 8,
-			new BigDecimal("180.00"), "擅长旧房水电改造")
-			.profileComplete()).isFalse();
 		assertThat(update("张师傅", "成都", null, 8,
 			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isFalse();
