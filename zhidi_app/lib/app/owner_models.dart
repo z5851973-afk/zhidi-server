@@ -29,18 +29,18 @@ class OwnerProfile {
     Object? decorationType = _notProvided,
     Object? address = _notProvided,
     Object? area = _notProvided,
-  }) => OwnerProfile(
-    name: name ?? this.name,
-    city: city ?? this.city,
-    phone: phone ?? this.phone,
-    decorationType: identical(decorationType, _notProvided)
-        ? this.decorationType
-        : decorationType as String?,
-    address: identical(address, _notProvided)
-        ? this.address
-        : address as String?,
-    area: identical(area, _notProvided) ? this.area : area as double?,
-  );
+  }) =>
+      OwnerProfile(
+        name: name ?? this.name,
+        city: city ?? this.city,
+        phone: phone ?? this.phone,
+        decorationType: identical(decorationType, _notProvided)
+            ? this.decorationType
+            : decorationType as String?,
+        address:
+            identical(address, _notProvided) ? this.address : address as String?,
+        area: identical(area, _notProvided) ? this.area : area as double?,
+      );
   Map<String, dynamic> toJson() => {
     'name': name,
     'city': city,
@@ -287,33 +287,24 @@ class QuoteLineItem {
     required this.unit,
     required this.quantity,
   });
-
-  final String name;
-  final String categoryName;
-  final String unit;
-  final double unitPrice;
-  final double quantity;
-
+  final String name, categoryName, unit;
+  final double unitPrice, quantity;
   double get subtotal => unitPrice * quantity;
 
   Map<String, dynamic> toJson() => {
-    'name': name,
-    'categoryName': categoryName,
-    'unitPrice': unitPrice,
-    'unit': unit,
-    'quantity': quantity,
+    'name': name, 'categoryName': categoryName,
+    'unitPrice': unitPrice, 'unit': unit, 'quantity': quantity,
   };
-
-  factory QuoteLineItem.fromJson(Map<String, dynamic> json) => QuoteLineItem(
-    name: json['name'] as String,
-    categoryName: json['categoryName'] as String,
-    unitPrice: (json['unitPrice'] as num).toDouble(),
-    unit: json['unit'] as String,
-    quantity: (json['quantity'] as num).toDouble(),
+  factory QuoteLineItem.fromJson(Map<String, dynamic> j) => QuoteLineItem(
+    name: j['name'] as String,
+    categoryName: j['categoryName'] as String,
+    unitPrice: (j['unitPrice'] as num).toDouble(),
+    unit: j['unit'] as String,
+    quantity: (j['quantity'] as num).toDouble(),
   );
 }
 
-/// 收藏的报价单快照。
+/// 收藏的报价单
 class SavedQuote {
   const SavedQuote({
     required this.id,
@@ -323,35 +314,26 @@ class SavedQuote {
     required this.grandTotal,
     required this.savedAt,
   });
-
-  final String id;
-  final String workerName;
-  final String tradeName;
+  final String id, workerName, tradeName;
   final List<QuoteLineItem> items;
   final double grandTotal;
   final DateTime savedAt;
 
   Map<String, dynamic> toJson() => {
-    'id': id,
-    'workerName': workerName,
-    'tradeName': tradeName,
-    'items': items.map((item) => item.toJson()).toList(),
+    'id': id, 'workerName': workerName, 'tradeName': tradeName,
+    'items': items.map((e) => e.toJson()).toList(),
     'grandTotal': grandTotal,
     'savedAt': savedAt.toIso8601String(),
   };
-
-  factory SavedQuote.fromJson(Map<String, dynamic> json) => SavedQuote(
-    id: json['id'] as String,
-    workerName: json['workerName'] as String,
-    tradeName: json['tradeName'] as String,
-    items: (json['items'] as List<dynamic>)
-        .map(
-          (item) =>
-              QuoteLineItem.fromJson(Map<String, dynamic>.from(item as Map)),
-        )
+  factory SavedQuote.fromJson(Map<String, dynamic> j) => SavedQuote(
+    id: j['id'] as String,
+    workerName: j['workerName'] as String,
+    tradeName: j['tradeName'] as String,
+    items: (j['items'] as List<dynamic>)
+        .map((e) => QuoteLineItem.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList(),
-    grandTotal: (json['grandTotal'] as num).toDouble(),
-    savedAt: DateTime.parse(json['savedAt'] as String),
+    grandTotal: (j['grandTotal'] as num).toDouble(),
+    savedAt: DateTime.parse(j['savedAt'] as String),
   );
 }
 
@@ -438,6 +420,59 @@ class AfterSalesRequest {
       );
 }
 
+class ChatMessage {
+  const ChatMessage({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.text,
+    required this.isMe,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String text;
+  final bool isMe;
+  final DateTime createdAt;
+
+  ChatMessage copyWith({
+    String? id,
+    String? workerId,
+    String? workerName,
+    String? text,
+    bool? isMe,
+    DateTime? createdAt,
+  }) =>
+      ChatMessage(
+        id: id ?? this.id,
+        workerId: workerId ?? this.workerId,
+        workerName: workerName ?? this.workerName,
+        text: text ?? this.text,
+        isMe: isMe ?? this.isMe,
+        createdAt: createdAt ?? this.createdAt,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'text': text,
+    'isMe': isMe,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory ChatMessage.fromJson(Map<String, dynamic> j) => ChatMessage(
+    id: j['id'] as String,
+    workerId: j['workerId'] as String,
+    workerName: j['workerName'] as String,
+    text: j['text'] as String,
+    isMe: j['isMe'] as bool,
+    createdAt: DateTime.parse(j['createdAt'] as String),
+  );
+}
+
 class FeedbackEntry {
   const FeedbackEntry({
     required this.id,
@@ -472,240 +507,7 @@ class FeedbackEntry {
   );
 }
 
-enum InspectionStatus { pending, approved, rejected }
-
-class InspectionRequest {
-  const InspectionRequest({
-    required this.id,
-    required this.workerId,
-    required this.workerName,
-    required this.phaseName,
-    required this.phaseIndex,
-    required this.requestedAt,
-    this.status = InspectionStatus.pending,
-    this.ownerNote,
-  });
-
-  final String id;
-  final String workerId;
-  final String workerName;
-  final String phaseName;
-  final int phaseIndex;
-  final DateTime requestedAt;
-  final InspectionStatus status;
-  final String? ownerNote;
-
-  InspectionRequest copyWith({
-    String? id,
-    String? workerId,
-    String? workerName,
-    String? phaseName,
-    int? phaseIndex,
-    DateTime? requestedAt,
-    InspectionStatus? status,
-    Object? ownerNote = _notProvided,
-  }) => InspectionRequest(
-    id: id ?? this.id,
-    workerId: workerId ?? this.workerId,
-    workerName: workerName ?? this.workerName,
-    phaseName: phaseName ?? this.phaseName,
-    phaseIndex: phaseIndex ?? this.phaseIndex,
-    requestedAt: requestedAt ?? this.requestedAt,
-    status: status ?? this.status,
-    ownerNote: identical(ownerNote, _notProvided)
-        ? this.ownerNote
-        : ownerNote as String?,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'workerId': workerId,
-    'workerName': workerName,
-    'phaseName': phaseName,
-    'phaseIndex': phaseIndex,
-    'requestedAt': requestedAt.toIso8601String(),
-    'status': status.name,
-    if (ownerNote != null) 'ownerNote': ownerNote,
-  };
-
-  factory InspectionRequest.fromJson(Map<String, dynamic> json) =>
-      InspectionRequest(
-        id: json['id'] as String,
-        workerId: json['workerId'] as String,
-        workerName: json['workerName'] as String,
-        phaseName: json['phaseName'] as String,
-        phaseIndex: json['phaseIndex'] as int,
-        requestedAt: DateTime.parse(json['requestedAt'] as String),
-        status: InspectionStatus.values.firstWhere(
-          (item) => item.name == json['status'],
-          orElse: () => InspectionStatus.pending,
-        ),
-        ownerNote: json['ownerNote'] as String?,
-      );
-}
-
-class RenovationArchive {
-  const RenovationArchive({
-    required this.id,
-    required this.workerId,
-    required this.workerName,
-    required this.phaseName,
-    required this.phaseIndex,
-    required this.completedAt,
-    this.status = '验收通过',
-  });
-
-  final String id;
-  final String workerId;
-  final String workerName;
-  final String phaseName;
-  final int phaseIndex;
-  final DateTime completedAt;
-  final String status;
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'workerId': workerId,
-    'workerName': workerName,
-    'phaseName': phaseName,
-    'phaseIndex': phaseIndex,
-    'completedAt': completedAt.toIso8601String(),
-    'status': status,
-  };
-
-  factory RenovationArchive.fromJson(Map<String, dynamic> json) =>
-      RenovationArchive(
-        id: json['id'] as String,
-        workerId: json['workerId'] as String,
-        workerName: json['workerName'] as String,
-        phaseName: json['phaseName'] as String,
-        phaseIndex: json['phaseIndex'] as int,
-        completedAt: DateTime.parse(json['completedAt'] as String),
-        status: json['status'] as String? ?? '验收通过',
-      );
-}
-
-class MaterialItem {
-  const MaterialItem({
-    required this.id,
-    required this.name,
-    required this.quantity,
-    required this.unit,
-    required this.unitPrice,
-  });
-
-  final String id;
-  final String name;
-  final int quantity;
-  final String unit;
-  final double unitPrice;
-
-  double get subtotal => quantity * unitPrice;
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'quantity': quantity,
-    'unit': unit,
-    'unitPrice': unitPrice,
-  };
-
-  factory MaterialItem.fromJson(Map<String, dynamic> json) => MaterialItem(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    quantity: json['quantity'] as int,
-    unit: json['unit'] as String,
-    unitPrice: (json['unitPrice'] as num).toDouble(),
-  );
-}
-
-enum MaterialEstimateStatus { pending, ordered }
-
-class MaterialEstimate {
-  const MaterialEstimate({
-    required this.id,
-    required this.workerId,
-    required this.workerName,
-    required this.phaseName,
-    required this.phaseIndex,
-    required this.createdAt,
-    required this.items,
-    this.status = MaterialEstimateStatus.pending,
-    this.orderedAt,
-  });
-
-  final String id;
-  final String workerId;
-  final String workerName;
-  final String phaseName;
-  final int phaseIndex;
-  final DateTime createdAt;
-  final List<MaterialItem> items;
-  final MaterialEstimateStatus status;
-  final DateTime? orderedAt;
-
-  double get totalPrice =>
-      items.fold<double>(0, (total, item) => total + item.subtotal);
-
-  MaterialEstimate copyWith({
-    String? id,
-    String? workerId,
-    String? workerName,
-    String? phaseName,
-    int? phaseIndex,
-    DateTime? createdAt,
-    List<MaterialItem>? items,
-    MaterialEstimateStatus? status,
-    DateTime? orderedAt,
-  }) => MaterialEstimate(
-    id: id ?? this.id,
-    workerId: workerId ?? this.workerId,
-    workerName: workerName ?? this.workerName,
-    phaseName: phaseName ?? this.phaseName,
-    phaseIndex: phaseIndex ?? this.phaseIndex,
-    createdAt: createdAt ?? this.createdAt,
-    items: items ?? this.items,
-    status: status ?? this.status,
-    orderedAt: orderedAt ?? this.orderedAt,
-  );
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'workerId': workerId,
-    'workerName': workerName,
-    'phaseName': phaseName,
-    'phaseIndex': phaseIndex,
-    'createdAt': createdAt.toIso8601String(),
-    'items': items.map((item) => item.toJson()).toList(),
-    'status': status.name,
-    if (orderedAt != null) 'orderedAt': orderedAt!.toIso8601String(),
-  };
-
-  factory MaterialEstimate.fromJson(Map<String, dynamic> json) =>
-      MaterialEstimate(
-        id: json['id'] as String,
-        workerId: json['workerId'] as String,
-        workerName: json['workerName'] as String,
-        phaseName: json['phaseName'] as String,
-        phaseIndex: json['phaseIndex'] as int,
-        createdAt: DateTime.parse(json['createdAt'] as String),
-        items: (json['items'] as List<dynamic>)
-            .map(
-              (item) => MaterialItem.fromJson(
-                Map<String, dynamic>.from(item as Map),
-              ),
-            )
-            .toList(),
-        status: MaterialEstimateStatus.values.firstWhere(
-          (item) => item.name == json['status'],
-          orElse: () => MaterialEstimateStatus.pending,
-        ),
-        orderedAt: json['orderedAt'] == null
-            ? null
-            : DateTime.parse(json['orderedAt'] as String),
-      );
-}
-
+// ── 业主预约的师傅（工序管理核心模型）──
 class BookedWorker {
   const BookedWorker({
     required this.id,
@@ -722,21 +524,17 @@ class BookedWorker {
     this.bookedAt,
     this.distance = 0,
   });
-
-  final String id;
-  final String name;
-  final String trade;
-  final String phaseName;
+  final String id, name, trade, phaseName;
   final int phaseIndex;
   final double rating;
-  final int completedOrders;
-  final int years;
+  final int completedOrders, years;
   final String avatarEmoji;
   final List<String> skills;
   final String status;
   final DateTime? bookedAt;
   final double distance;
 
+  /// 师傅已完成施工
   bool get isCompleted => status == '已完成';
 
   BookedWorker copyWith({
@@ -753,21 +551,22 @@ class BookedWorker {
     String? status,
     DateTime? bookedAt,
     double? distance,
-  }) => BookedWorker(
-    id: id ?? this.id,
-    name: name ?? this.name,
-    trade: trade ?? this.trade,
-    phaseName: phaseName ?? this.phaseName,
-    phaseIndex: phaseIndex ?? this.phaseIndex,
-    rating: rating ?? this.rating,
-    completedOrders: completedOrders ?? this.completedOrders,
-    years: years ?? this.years,
-    avatarEmoji: avatarEmoji ?? this.avatarEmoji,
-    skills: skills ?? this.skills,
-    status: status ?? this.status,
-    bookedAt: bookedAt ?? this.bookedAt,
-    distance: distance ?? this.distance,
-  );
+  }) =>
+      BookedWorker(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        trade: trade ?? this.trade,
+        phaseName: phaseName ?? this.phaseName,
+        phaseIndex: phaseIndex ?? this.phaseIndex,
+        rating: rating ?? this.rating,
+        completedOrders: completedOrders ?? this.completedOrders,
+        years: years ?? this.years,
+        avatarEmoji: avatarEmoji ?? this.avatarEmoji,
+        skills: skills ?? this.skills,
+        status: status ?? this.status,
+        bookedAt: bookedAt ?? this.bookedAt,
+        distance: distance ?? this.distance,
+      );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -781,25 +580,431 @@ class BookedWorker {
     'avatarEmoji': avatarEmoji,
     'skills': skills,
     'status': status,
-    if (bookedAt != null) 'bookedAt': bookedAt!.toIso8601String(),
+    'bookedAt': bookedAt?.toIso8601String(),
     'distance': distance,
   };
 
-  factory BookedWorker.fromJson(Map<String, dynamic> json) => BookedWorker(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    trade: json['trade'] as String,
-    phaseName: json['phaseName'] as String,
-    phaseIndex: json['phaseIndex'] as int,
-    rating: (json['rating'] as num).toDouble(),
-    completedOrders: json['completedOrders'] as int,
-    years: json['years'] as int,
-    avatarEmoji: json['avatarEmoji'] as String,
-    skills: List<String>.from(json['skills'] as List<dynamic>? ?? const []),
-    status: json['status'] as String? ?? '已接单待上门',
-    bookedAt: json['bookedAt'] == null
-        ? null
-        : DateTime.parse(json['bookedAt'] as String),
-    distance: (json['distance'] as num?)?.toDouble() ?? 0,
+  factory BookedWorker.fromJson(Map<String, dynamic> j) => BookedWorker(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    trade: j['trade'] as String,
+    phaseName: j['phaseName'] as String,
+    phaseIndex: j['phaseIndex'] as int,
+    rating: (j['rating'] as num).toDouble(),
+    completedOrders: j['completedOrders'] as int,
+    years: j['years'] as int,
+    avatarEmoji: j['avatarEmoji'] as String,
+    skills: List<String>.from(j['skills'] as List),
+    status: j['status'] as String? ?? '已接单待上门',
+    bookedAt: j['bookedAt'] != null ? DateTime.parse(j['bookedAt'] as String) : null,
+    distance: (j['distance'] as num?)?.toDouble() ?? 0,
+  );
+}
+
+// ── 施工日报（师傅每日完工上传）──
+class DailyReport {
+  const DailyReport({
+    required this.id,
+    required this.workerId,
+    required this.date,
+    required this.imagePaths,
+    required this.note,
+    required this.phaseIndex,
+  });
+
+  final String id;
+  final String workerId;
+  final DateTime? date;
+  final List<String> imagePaths;
+  final String note;
+  final int phaseIndex;
+
+  DailyReport copyWith({
+    String? id,
+    String? workerId,
+    DateTime? date,
+    bool clearDate = false,
+    List<String>? imagePaths,
+    String? note,
+    int? phaseIndex,
+  }) =>
+      DailyReport(
+        id: id ?? this.id,
+        workerId: workerId ?? this.workerId,
+        date: clearDate ? null : (date ?? this.date),
+        imagePaths: imagePaths ?? this.imagePaths,
+        note: note ?? this.note,
+        phaseIndex: phaseIndex ?? this.phaseIndex,
+      );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'date': date?.toIso8601String(),
+    'imagePaths': imagePaths,
+    'note': note,
+    'phaseIndex': phaseIndex,
+  };
+
+  factory DailyReport.fromJson(Map<String, dynamic> j) => DailyReport(
+    id: j['id'] as String,
+    workerId: j['workerId'] as String,
+    date: j['date'] != null ? DateTime.parse(j['date'] as String) : null,
+    imagePaths: List<String>.from(j['imagePaths'] as List),
+    note: j['note'] as String? ?? '',
+    phaseIndex: j['phaseIndex'] as int,
+  );
+}
+
+// ── 验收请求 ──
+enum InspectionStatus { pending, accepted, rejected }
+
+class InspectionRequest {
+  const InspectionRequest({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.requestedAt,
+    this.status = InspectionStatus.pending,
+    this.inspectorNote,
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String phaseName;
+  final int phaseIndex;
+  final DateTime requestedAt;
+  final InspectionStatus status;
+  final String? inspectorNote;
+
+  InspectionRequest copyWith({
+    String? id,
+    String? workerId,
+    String? workerName,
+    String? phaseName,
+    int? phaseIndex,
+    DateTime? requestedAt,
+    InspectionStatus? status,
+    bool clearInspectorNote = false,
+    String? inspectorNote,
+  }) =>
+      InspectionRequest(
+        id: id ?? this.id,
+        workerId: workerId ?? this.workerId,
+        workerName: workerName ?? this.workerName,
+        phaseName: phaseName ?? this.phaseName,
+        phaseIndex: phaseIndex ?? this.phaseIndex,
+        requestedAt: requestedAt ?? this.requestedAt,
+        status: status ?? this.status,
+        inspectorNote: clearInspectorNote ? null : (inspectorNote ?? this.inspectorNote),
+      );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'requestedAt': requestedAt.toIso8601String(),
+    'status': status.name,
+    'inspectorNote': inspectorNote,
+  };
+
+  factory InspectionRequest.fromJson(Map<String, dynamic> j) => InspectionRequest(
+    id: j['id'] as String,
+    workerId: j['workerId'] as String,
+    workerName: j['workerName'] as String,
+    phaseName: j['phaseName'] as String,
+    phaseIndex: j['phaseIndex'] as int,
+    requestedAt: DateTime.parse(j['requestedAt'] as String),
+    status: InspectionStatus.values.firstWhere(
+      (s) => s.name == j['status'],
+      orElse: () => InspectionStatus.pending,
+    ),
+    inspectorNote: j['inspectorNote'] as String?,
+  );
+}
+
+// ── 装修档案 ──
+class RenovationArchive {
+  const RenovationArchive({
+    required this.id,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.workerName,
+    required this.trade,
+    required this.completedAt,
+    this.startedAt,
+    this.rating,
+    this.skills = const [],
+    this.photoUrls = const [],
+    this.dailyNotes = const [],
+    this.inspectionNote,
+    this.avatarEmoji,
+  });
+
+  final String id;
+  final String phaseName;
+  final int phaseIndex;
+  final String workerName;
+  final String trade;
+  final DateTime completedAt;
+  final DateTime? startedAt;
+  final double? rating;
+  final List<String> skills;
+  final List<String> photoUrls;
+  final List<String> dailyNotes;
+  final String? inspectionNote;
+  final String? avatarEmoji;
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'workerName': workerName,
+    'trade': trade,
+    'completedAt': completedAt.toIso8601String(),
+    'startedAt': startedAt?.toIso8601String(),
+    'rating': rating,
+    'skills': skills,
+    'photoUrls': photoUrls,
+    'dailyNotes': dailyNotes,
+    'inspectionNote': inspectionNote,
+    'avatarEmoji': avatarEmoji,
+  };
+
+  factory RenovationArchive.fromJson(Map<String, dynamic> j) => RenovationArchive(
+    id: j['id'] as String,
+    phaseName: j['phaseName'] as String,
+    phaseIndex: j['phaseIndex'] as int,
+    workerName: j['workerName'] as String,
+    trade: j['trade'] as String,
+    completedAt: DateTime.parse(j['completedAt'] as String),
+    startedAt: j['startedAt'] != null ? DateTime.parse(j['startedAt'] as String) : null,
+    rating: (j['rating'] as num?)?.toDouble(),
+    skills: List<String>.from((j['skills'] as List<dynamic>?) ?? []),
+    photoUrls: List<String>.from((j['photoUrls'] as List<dynamic>?) ?? []),
+    dailyNotes: List<String>.from((j['dailyNotes'] as List<dynamic>?) ?? []),
+    inspectionNote: j['inspectionNote'] as String?,
+    avatarEmoji: j['avatarEmoji'] as String?,
+  );
+}
+
+// ============================================================
+// 材料清单
+// ============================================================
+
+enum MaterialCategory { auxiliary, main }
+
+enum EstimateStatus { pending, ordered, delivering, delivered, rejected }
+
+class MaterialItem {
+  const MaterialItem({
+    required this.id,
+    required this.name,
+    required this.category,
+    required this.unit,
+    required this.quantity,
+    required this.unitPrice,
+    this.imageUrl,
+    this.spec,
+    this.model,
+    this.brand,
+  });
+
+  final String id;
+  final String name;
+  final MaterialCategory category;
+  final String unit;
+  final int quantity;
+  final double unitPrice;
+  final String? imageUrl;
+  final String? spec;
+  final String? model;
+  final String? brand;
+
+  double get totalPrice => quantity * unitPrice;
+
+  String get categoryLabel => category == MaterialCategory.auxiliary ? '辅料' : '主材';
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'category': category.name,
+    'unit': unit,
+    'quantity': quantity,
+    'unitPrice': unitPrice,
+    if (imageUrl != null) 'imageUrl': imageUrl,
+    if (spec != null) 'spec': spec,
+    if (model != null) 'model': model,
+    if (brand != null) 'brand': brand,
+  };
+
+  factory MaterialItem.fromJson(Map<String, dynamic> j) => MaterialItem(
+    id: j['id'] as String,
+    name: j['name'] as String,
+    category: MaterialCategory.values.byName(j['category'] as String),
+    unit: j['unit'] as String,
+    quantity: j['quantity'] as int,
+    unitPrice: (j['unitPrice'] as num).toDouble(),
+    imageUrl: j['imageUrl'] as String?,
+    spec: j['spec'] as String?,
+    model: j['model'] as String?,
+    brand: j['brand'] as String?,
+  );
+
+  MaterialItem copyWith({int? quantity}) => MaterialItem(
+    id: id,
+    name: name,
+    category: category,
+    unit: unit,
+    quantity: quantity ?? this.quantity,
+    unitPrice: unitPrice,
+    imageUrl: imageUrl,
+    spec: spec,
+    model: model,
+    brand: brand,
+  );
+}
+
+class MaterialEstimate {
+  const MaterialEstimate({
+    required this.id,
+    required this.workerId,
+    required this.workerName,
+    required this.workerTrade,
+    required this.phaseName,
+    required this.phaseIndex,
+    required this.createdAt,
+    required this.items,
+    this.status = EstimateStatus.pending,
+    this.selectedItemIds = const <String>{},
+    this.orderedAt,
+    this.estimatedDelivery,
+  });
+
+  final String id;
+  final String workerId;
+  final String workerName;
+  final String workerTrade;
+  final String phaseName;
+  final int phaseIndex;
+  final DateTime createdAt;
+  final List<MaterialItem> items;
+  final EstimateStatus status;
+  final Set<String> selectedItemIds;
+  final DateTime? orderedAt;
+  final DateTime? estimatedDelivery;
+
+  List<MaterialItem> get auxiliaryItems =>
+      items.where((it) => it.category == MaterialCategory.auxiliary).toList();
+
+  List<MaterialItem> get mainItems =>
+      items.where((it) => it.category == MaterialCategory.main).toList();
+
+  double get selectedTotal {
+    double t = 0;
+    for (final item in items) {
+      if (selectedItemIds.contains(item.id)) t += item.totalPrice;
+    }
+    return t;
+  }
+
+  int get selectedCount => selectedItemIds.length;
+
+  String get statusLabel => switch (status) {
+    EstimateStatus.pending => '待确认',
+    EstimateStatus.ordered => '已下单',
+    EstimateStatus.delivering => '配送中',
+    EstimateStatus.delivered => '已送达',
+    EstimateStatus.rejected => '已拒绝',
+  };
+
+  String get deliveryInfo {
+    if (estimatedDelivery == null) return '';
+    final now = DateTime.now();
+    if (status == EstimateStatus.delivered) return '已签收';
+    if (status == EstimateStatus.delivering) {
+      final remain = estimatedDelivery!.difference(now);
+      if (remain.inMinutes <= 0) return '即将送达';
+      if (remain.inMinutes < 60) return '预计 ${remain.inMinutes} 分钟送达';
+      if (remain.inHours < 24) return '预计 ${remain.inHours} 小时后送达';
+      return '预计 ${estimatedDelivery!.month}月${estimatedDelivery!.day}日送达';
+    }
+    return '预计 ${estimatedDelivery!.month}月${estimatedDelivery!.day}日送达';
+  }
+
+  String get deliveryProgressLabel {
+    switch (status) {
+      case EstimateStatus.pending:
+        return '待确认';
+      case EstimateStatus.ordered:
+        return '商家备货中';
+      case EstimateStatus.delivering:
+        return '配送中';
+      case EstimateStatus.delivered:
+        return '已签收';
+      case EstimateStatus.rejected:
+        return '已取消';
+    }
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'workerId': workerId,
+    'workerName': workerName,
+    'workerTrade': workerTrade,
+    'phaseName': phaseName,
+    'phaseIndex': phaseIndex,
+    'createdAt': createdAt.toIso8601String(),
+    'items': items.map((it) => it.toJson()).toList(),
+    'status': status.name,
+    'selectedItemIds': selectedItemIds.toList(),
+    if (orderedAt != null) 'orderedAt': orderedAt!.toIso8601String(),
+    if (estimatedDelivery != null) 'estimatedDelivery': estimatedDelivery!.toIso8601String(),
+  };
+
+  factory MaterialEstimate.fromJson(Map<String, dynamic> j) => MaterialEstimate(
+    id: j['id'] as String,
+    workerId: j['workerId'] as String,
+    workerName: j['workerName'] as String,
+    workerTrade: j['workerTrade'] as String,
+    phaseName: j['phaseName'] as String,
+    phaseIndex: j['phaseIndex'] as int,
+    createdAt: DateTime.parse(j['createdAt'] as String),
+    items: (j['items'] as List<dynamic>)
+        .map((e) => MaterialItem.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList(),
+    status: EstimateStatus.values.byName(j['status'] as String),
+    selectedItemIds: Set<String>.from(
+      (j['selectedItemIds'] as List<dynamic>?)?.map((e) => e as String) ?? [],
+    ),
+    orderedAt: j['orderedAt'] != null ? DateTime.parse(j['orderedAt'] as String) : null,
+    estimatedDelivery: j['estimatedDelivery'] != null
+        ? DateTime.parse(j['estimatedDelivery'] as String)
+        : null,
+  );
+
+  MaterialEstimate copyWith({
+    EstimateStatus? status,
+    Set<String>? selectedItemIds,
+    DateTime? orderedAt,
+    DateTime? estimatedDelivery,
+  }) => MaterialEstimate(
+    id: id,
+    workerId: workerId,
+    workerName: workerName,
+    workerTrade: workerTrade,
+    phaseName: phaseName,
+    phaseIndex: phaseIndex,
+    createdAt: createdAt,
+    items: items,
+    status: status ?? this.status,
+    selectedItemIds: selectedItemIds ?? this.selectedItemIds,
+    orderedAt: orderedAt ?? this.orderedAt,
+    estimatedDelivery: estimatedDelivery ?? this.estimatedDelivery,
   );
 }

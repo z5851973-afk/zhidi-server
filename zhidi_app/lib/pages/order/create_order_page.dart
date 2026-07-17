@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../app/owner_app_scope.dart';
 import '../../app/owner_appointment.dart';
 import 'order_success_page.dart';
+import '../../design/tokens.dart';
 
 class CreateOrderPage extends StatefulWidget {
   final String workerName;
@@ -37,7 +38,9 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final now = DateTime.now();
     final order = OrderItem(
+      id: 'order-${now.millisecondsSinceEpoch}-${widget.workerName.hashCode.toRadixString(36)}',
       workerName: widget.workerName,
       customerName: _nameController.text.trim(),
       phone: _phoneController.text.trim(),
@@ -46,7 +49,7 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
       description: _descController.text.trim(),
       visitTime: _selectedTime,
       status: '待师傅确认',
-      createdAt: DateTime.now(),
+      createdAt: now,
     );
 
     setState(() => _submitting = true);
@@ -57,7 +60,8 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
         context,
         MaterialPageRoute(builder: (_) => OrderSuccessPage(order: order)),
       );
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('[CreateOrderPage] addAppointment failed: $e\n$st');
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -76,7 +80,7 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF222222),
+        foregroundColor: ZdColors.textPrimary,
         elevation: 0,
       ),
       body: ListView(
@@ -167,7 +171,7 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
           child: FilledButton(
             onPressed: _submitting ? null : _submit,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFFF6A1A),
+              backgroundColor: const Color(0xFFFF7A2F),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(26),
@@ -223,7 +227,7 @@ class _WorkerInfoCard extends StatelessWidget {
             ),
             child: const Icon(
               Icons.person_rounded,
-              color: Color(0xFFFF6A1A),
+              color: Color(0xFFFF7A2F),
               size: 38,
             ),
           ),
@@ -237,7 +241,7 @@ class _WorkerInfoCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF222222),
+                    color: ZdColors.textPrimary,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -293,10 +297,10 @@ class _InputCard extends StatelessWidget {
           hintText: hint,
           border: InputBorder.none,
           labelStyle: const TextStyle(
-            color: Color(0xFF222222),
+            color: ZdColors.textPrimary,
             fontWeight: FontWeight.w900,
           ),
-          hintStyle: const TextStyle(color: Color(0xFFAAAAAA), fontSize: 13),
+          hintStyle: const TextStyle(color: ZdColors.textHint, fontSize: 13),
         ),
       ),
     );
@@ -327,7 +331,7 @@ class _TimeCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF222222),
+              color: ZdColors.textPrimary,
             ),
           ),
           const SizedBox(height: 14),
@@ -340,10 +344,10 @@ class _TimeCard extends StatelessWidget {
                 label: Text(time),
                 selected: active,
                 onSelected: (_) => onChanged(time),
-                selectedColor: const Color(0xFFFF6A1A),
+                selectedColor: const Color(0xFFFF7A2F),
                 backgroundColor: const Color(0xFFFFF1E8),
                 labelStyle: TextStyle(
-                  color: active ? Colors.white : const Color(0xFFFF6A1A),
+                  color: active ? Colors.white : const Color(0xFFFF7A2F),
                   fontWeight: FontWeight.w900,
                 ),
                 side: BorderSide.none,

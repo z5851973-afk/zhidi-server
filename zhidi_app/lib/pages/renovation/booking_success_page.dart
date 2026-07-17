@@ -44,33 +44,33 @@ class BookingSuccessPage extends StatelessWidget {
         if (!didPop) Navigator.of(context).pop(true);
       },
       child: Scaffold(
-      backgroundColor: _bg,
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  const SizedBox(height: 60),
-                  _buildSuccessHeader(),
-                  const SizedBox(height: 16),
-                  _buildTipBar(),
-                  const SizedBox(height: 16),
-                  _buildWorkerInfoCard(),
-                  const SizedBox(height: 12),
-                  _buildProgressCard(),
-                  const SizedBox(height: 12),
-                  _buildGuaranteeCard(),
-                  const SizedBox(height: 12),
-                  _buildBookingInfoCard(),
-                  const SizedBox(height: 24),
-                ],
+        backgroundColor: _bg,
+        body: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 60),
+                    _buildSuccessHeader(),
+                    const SizedBox(height: 16),
+                    _buildTipBar(),
+                    const SizedBox(height: 16),
+                    _buildWorkerInfoCard(),
+                    const SizedBox(height: 12),
+                    _buildProgressCard(),
+                    const SizedBox(height: 12),
+                    _buildGuaranteeCard(),
+                    const SizedBox(height: 12),
+                    _buildBookingInfoCard(),
+                    const SizedBox(height: 24),
+                  ],
+                ),
               ),
             ),
-          ),
-          _buildBottomBar(context),
-        ],
-      ),
+            _buildBottomBar(context),
+          ],
+        ),
       ),
     );
   }
@@ -90,7 +90,7 @@ class BookingSuccessPage extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          '预约成功',
+          '预约已提交',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
@@ -99,7 +99,7 @@ class BookingSuccessPage extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          '师傅已接单，将尽快与您联系',
+          '等待师傅确认，确认后将尽快与您联系',
           style: TextStyle(fontSize: 14, color: _textLight),
         ),
       ],
@@ -145,7 +145,10 @@ class BookingSuccessPage extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: _orangeLight,
                         borderRadius: BorderRadius.circular(4),
@@ -186,8 +189,12 @@ class BookingSuccessPage extends StatelessWidget {
                 Icon(Icons.circle, size: 7, color: _green),
                 SizedBox(width: 5),
                 Text(
-                  '已接单·正在联系您',
-                  style: TextStyle(fontSize: 11, color: _green, fontWeight: FontWeight.w500),
+                  '待确认·等待师傅响应',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: _green,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ],
             ),
@@ -211,7 +218,11 @@ class BookingSuccessPage extends StatelessWidget {
         children: [
           const Text(
             '平台服务进度',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _textDark,
+            ),
           ),
           const SizedBox(height: 16),
           _TimelineStep(
@@ -219,14 +230,8 @@ class BookingSuccessPage extends StatelessWidget {
             status: TimelineStatus.completed,
             isFirst: true,
           ),
-          _TimelineStep(
-            title: '师傅已确认接单',
-            status: TimelineStatus.completed,
-          ),
-          _TimelineStep(
-            title: '预计30分钟内联系',
-            status: TimelineStatus.inProgress,
-          ),
+          _TimelineStep(title: '等待师傅确认', status: TimelineStatus.inProgress),
+          _TimelineStep(title: '预计30分钟内联系', status: TimelineStatus.pending),
           _TimelineStep(
             title: '上门服务中',
             status: TimelineStatus.pending,
@@ -251,22 +256,43 @@ class BookingSuccessPage extends StatelessWidget {
         children: [
           const Text(
             '平台保障',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _textDark,
+            ),
           ),
           const SizedBox(height: 16),
           Row(
             children: const [
-              Expanded(child: _GuaranteeItem(icon: Icons.lock_outline, label: '工价已锁定')),
+              Expanded(
+                child: _GuaranteeItem(icon: Icons.lock_outline, label: '工价已锁定'),
+              ),
               SizedBox(width: 12),
-              Expanded(child: _GuaranteeItem(icon: Icons.verified_user_outlined, label: '师傅实名可查')),
+              Expanded(
+                child: _GuaranteeItem(
+                  icon: Icons.verified_user_outlined,
+                  label: '师傅实名可查',
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 12),
           Row(
             children: const [
-              Expanded(child: _GuaranteeItem(icon: Icons.shield_outlined, label: '服务全程托管')),
+              Expanded(
+                child: _GuaranteeItem(
+                  icon: Icons.shield_outlined,
+                  label: '服务全程托管',
+                ),
+              ),
               SizedBox(width: 12),
-              Expanded(child: _GuaranteeItem(icon: Icons.support_agent_outlined, label: '异常平台介入')),
+              Expanded(
+                child: _GuaranteeItem(
+                  icon: Icons.support_agent_outlined,
+                  label: '异常平台介入',
+                ),
+              ),
             ],
           ),
         ],
@@ -288,7 +314,11 @@ class BookingSuccessPage extends StatelessWidget {
         children: [
           const Text(
             '预约信息',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _textDark),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: _textDark,
+            ),
           ),
           const SizedBox(height: 16),
           _InfoRow(label: '装修阶段', value: renovationStage),
@@ -329,8 +359,11 @@ class BookingSuccessPage extends StatelessWidget {
               color: ZdColors.primary.withAlpha(12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.warning_amber_rounded,
-                size: 20, color: ZdColors.primary),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              size: 20,
+              color: ZdColors.primary,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -393,7 +426,11 @@ class BookingSuccessPage extends StatelessWidget {
                   alignment: Alignment.center,
                   child: const Text(
                     '联系师傅',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: _green),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: _green,
+                    ),
                   ),
                 ),
               ),
@@ -404,7 +441,9 @@ class BookingSuccessPage extends StatelessWidget {
               child: GestureDetector(
                 onTap: () {
                   Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const ConstructionStandardsPage()),
+                    MaterialPageRoute(
+                      builder: (_) => const ConstructionStandardsPage(),
+                    ),
                   );
                 },
                 child: Container(
@@ -418,7 +457,11 @@ class BookingSuccessPage extends StatelessWidget {
                   alignment: Alignment.center,
                   child: const Text(
                     '查看施工标准',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ),
@@ -454,7 +497,8 @@ class _TimelineStep extends StatefulWidget {
   State<_TimelineStep> createState() => _TimelineStepState();
 }
 
-class _TimelineStepState extends State<_TimelineStep> with SingleTickerProviderStateMixin {
+class _TimelineStepState extends State<_TimelineStep>
+    with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
 
   @override
@@ -481,7 +525,9 @@ class _TimelineStepState extends State<_TimelineStep> with SingleTickerProviderS
     final isInProgress = widget.status == TimelineStatus.inProgress;
     final isPending = widget.status == TimelineStatus.pending;
 
-    final dotColor = isPending ? _textDisabled : (isInProgress ? _orange : _green);
+    final dotColor = isPending
+        ? _textDisabled
+        : (isInProgress ? _orange : _green);
     final lineColor = isPending ? _textDisabled : _green;
     final textColor = isPending ? _textDisabled : _textDark;
     final fontWeight = isPending ? FontWeight.normal : FontWeight.w600;
@@ -524,7 +570,11 @@ class _TimelineStepState extends State<_TimelineStep> with SingleTickerProviderS
                 children: [
                   Text(
                     widget.title,
-                    style: TextStyle(fontSize: 14, fontWeight: fontWeight, color: textColor),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: fontWeight,
+                      color: textColor,
+                    ),
                   ),
                   if (isInProgress) ...[
                     const SizedBox(width: 8),
@@ -559,20 +609,14 @@ class _TimelineStepState extends State<_TimelineStep> with SingleTickerProviderS
       return Container(
         width: 16,
         height: 16,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-        ),
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         child: const Icon(Icons.check, size: 10, color: Colors.white),
       );
     }
     return Container(
       width: 12,
       height: 12,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: color, shape: BoxShape.circle),
     );
   }
 }
@@ -590,10 +634,7 @@ class _GuaranteeItem extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: _green),
         const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 13, color: _textMid),
-        ),
+        Text(label, style: const TextStyle(fontSize: 13, color: _textMid)),
       ],
     );
   }

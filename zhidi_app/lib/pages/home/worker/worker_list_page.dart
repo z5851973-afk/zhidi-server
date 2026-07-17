@@ -3,12 +3,13 @@ import '../../../models/renovation.dart';
 import '../../../design/tokens.dart';
 import '../../../services/shared_worker_bridge.dart' as shared_workers;
 import '../../../services/worker_directory_api_client.dart';
+import '../../../services/worker_case_api_client.dart';
 import '../../renovation/worker_detail_page.dart';
 
 /// 工人列表页
 /// 链路：工种(TradeSelectPage) → 工价(PriceListPage) → 工人列表(本页) → 工人详情(WorkerDetailPage)
 class WorkerListPage extends StatefulWidget {
-  /// 当前工种（用于筛选 mockWorkers 与动态标题）
+  /// 当前工种（用于动态标题）
   final Trade trade;
 
   /// 可选：分类名（如从 PriceListPage 传入更友好的展示名）
@@ -16,12 +17,14 @@ class WorkerListPage extends StatefulWidget {
 
   /// 可选：用于测试或替换后端实现；默认请求 Spring Boot 工匠公开目录。
   final WorkerDirectoryApi? workerDirectoryApi;
+  final WorkerCaseApi? workerCaseApi;
 
   const WorkerListPage({
     super.key,
     required this.trade,
     this.categoryName,
     this.workerDirectoryApi,
+    this.workerCaseApi,
   });
 
   /// 工序名称列表（与 _PhaseEngine.phaseNames 保持同步）
@@ -92,10 +95,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
 
   // ── 当前工种下的工人（按排序方式实时排序）──
   List<Worker> get _workers {
-    final byId = <String, Worker>{
-      for (final worker in mockWorkers[widget.trade] ?? const [])
-        worker.id: worker,
-    };
+    final byId = <String, Worker>{};
     for (final worker in _sharedWorkers) {
       byId[worker.id] = worker;
     }
@@ -154,7 +154,8 @@ class _WorkerListPageState extends State<WorkerListPage> {
   void _confirmSelection(BuildContext context) async {
     if (_selectedIndex < 0) return;
     final worker = _workers[_selectedIndex];
-    final remoteProfile = _remoteWorkers.cast<RemoteWorkerDirectoryProfile?>()
+    final remoteProfile = _remoteWorkers
+        .cast<RemoteWorkerDirectoryProfile?>()
         .firstWhere(
           (remote) => remote != null && _remoteWorkerId(remote) == worker.id,
           orElse: () => null,
@@ -167,6 +168,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
           trade: worker.trade,
           distance: worker.distance,
           remoteProfile: remoteProfile,
+          caseApi: widget.workerCaseApi,
         ),
       ),
     );
@@ -279,6 +281,11 @@ String _remoteWorkerId(RemoteWorkerDirectoryProfile remote) =>
 
 Trade? _remoteTrade(String primaryTrade) {
   final value = primaryTrade.trim();
+  // 优先按枚举名匹配（后端返回英文）
+  for (final t in Trade.values) {
+    if (t.name == value) return t;
+  }
+  // 兜底中文
   if (value.contains('拆')) return Trade.demolition;
   if (value.contains('水电')) return Trade.plumbing;
   if (value.contains('防水')) return Trade.waterproof;

@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
 import '../../app/owner_appointment.dart';
 import '../../app/owner_app_scope.dart';
-import '../home/worker/worker_list_page.dart';
+import '../renovation/trade_select_page.dart';
+import '../../design/tokens.dart';
 
-class MyOrdersPage extends StatelessWidget {
+class MyOrdersPage extends StatefulWidget {
   const MyOrdersPage({super.key});
 
   @override
+  State<MyOrdersPage> createState() => _MyOrdersPageState();
+}
+
+class _MyOrdersPageState extends State<MyOrdersPage> {
+  bool _fetched = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_fetched) return;
+    _fetched = true;
+    OwnerAppScope.of(context).fetchRemoteBookings();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final orders = OwnerAppScope.of(context).appointments;
+    final state = OwnerAppScope.of(context);
+    final orders = state.appointments;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F5F2),
@@ -18,21 +35,108 @@ class MyOrdersPage extends StatelessWidget {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF222222),
+        foregroundColor: ZdColors.textPrimary,
         elevation: 0,
       ),
-      body: orders.isEmpty
+      body: state.isFetchingRemoteBookings && orders.isEmpty
+          ? const Center(child: CircularProgressIndicator())
+          : state.remoteBookingError != null && orders.isEmpty
+          ? _RemoteBookingError(
+              message: state.remoteBookingError!,
+              onRetry: state.fetchRemoteBookings,
+            )
+          : orders.isEmpty
           ? const _EmptyOrders()
           : ListView.separated(
               padding: const EdgeInsets.all(20),
               itemCount: orders.length,
               separatorBuilder: (_, _) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
-                return _OrderCard(order: orders[index]);
+                final order = orders[index];
+                return Dismissible(
+                  key: ValueKey(order.id),
+                  direction: DismissDirection.endToStart,
+                  background: Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      width: 80,
+                      alignment: Alignment.center,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE53935),
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                  confirmDismiss: (_) async {
+                    final isRemote = order.id.startsWith('rm-');
+                    final dialogTitle = isRemote ? '确认取消预约' : '确认删除';
+                    final dialogContent = isRemote
+                        ? '确定要取消「${order.workerName}」的预约吗？取消后不可恢复。'
+                        : '确定要删除「${order.workerName}」的预约吗？';
+                    final actionLabel = isRemote ? '取消预约' : '删除';
+                    return await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: Text(dialogTitle),
+                        content: Text(dialogContent),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('取消'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFFE53935),
+                            ),
+                            child: Text(actionLabel),
+                          ),
+                        ],
+                      ),
+                    ) ?? false;
+                  },
+                  onDismissed: (_) {
+                    if (order.id.startsWith('rm-')) {
+                      OwnerAppScope.of(context)
+                          .cancelRemoteBooking(order.id);
+                    } else {
+                      OwnerAppScope.of(context).removeAppointment(order.id);
+                    }
+                  },
+                  child: _OrderCard(order: order),
+                );
               },
             ),
     );
   }
+}
+
+class _RemoteBookingError extends StatelessWidget {
+  const _RemoteBookingError({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, textAlign: TextAlign.center),
+          const SizedBox(height: 16),
+          FilledButton(onPressed: onRetry, child: const Text('重试')),
+        ],
+      ),
+    ),
+  );
 }
 
 class _EmptyOrders extends StatelessWidget {
@@ -62,7 +166,7 @@ class _EmptyOrders extends StatelessWidget {
           FilledButton(
             onPressed: () => Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const WorkerListPage()),
+              MaterialPageRoute(builder: (_) => const TradeSelectPage()),
             ),
             child: const Text('去发现师傅'),
           ),
@@ -99,7 +203,7 @@ class _OrderCard extends StatelessWidget {
             children: [
               const Icon(
                 Icons.assignment_turned_in_rounded,
-                color: Color(0xFFFF6A1A),
+                color: Color(0xFFFF7A2F),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -108,7 +212,7 @@ class _OrderCard extends StatelessWidget {
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF222222),
+                    color: ZdColors.textPrimary,
                   ),
                 ),
               ),
@@ -169,7 +273,7 @@ class _RowText extends StatelessWidget {
         Text(
           title,
           style: const TextStyle(
-            color: Color(0xFF888888),
+            color: ZdColors.textSecondary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -179,7 +283,7 @@ class _RowText extends StatelessWidget {
             value,
             textAlign: TextAlign.right,
             style: const TextStyle(
-              color: Color(0xFF222222),
+              color: ZdColors.textPrimary,
               fontWeight: FontWeight.w900,
             ),
           ),

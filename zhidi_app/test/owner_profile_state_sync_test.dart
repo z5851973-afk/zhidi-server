@@ -3,6 +3,7 @@ import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/services/auth_api_client.dart';
 import 'package:zhidi_app/services/auth_session_store.dart';
 import 'package:zhidi_app/services/owner_profile_api_client.dart';
+import 'package:zhidi_app/services/owner_booking_api_client.dart';
 
 void main() {
   group('OwnerAppState profile synchronization', () {
@@ -15,6 +16,7 @@ void main() {
           store: store,
           sessionStore: MemoryAuthSessionStore(validSession()),
           profileApi: api,
+          bookingApi: _NoopBookingApi(),
         );
 
         expect(api.getTokens, ['token']);
@@ -62,10 +64,13 @@ void main() {
 
     test('refresh performs GET only and never uploads local data', () async {
       final api = FakeOwnerProfileApi(getResult: remoteProfile());
+      final sessionStore = MemoryAuthSessionStore(validSession());
       final state = await OwnerAppState.memory(
-        sessionStore: MemoryAuthSessionStore(validSession()),
+        sessionStore: sessionStore,
         profileApi: api,
+        bookingApi: _NoopBookingApi(),
       );
+      expect(await sessionStore.read(), isNotNull);
       api.getTokens.clear();
 
       await state.refreshOwnerProfile();
@@ -84,6 +89,7 @@ void main() {
         final state = await OwnerAppState.memory(
           sessionStore: MemoryAuthSessionStore(validSession()),
           profileApi: api,
+          bookingApi: _NoopBookingApi(),
         );
         await state.completeOnboarding(
           decorationType: '请求类型',
@@ -138,6 +144,7 @@ void main() {
         final state = await OwnerAppState.memory(
           sessionStore: MemoryAuthSessionStore(validSession()),
           profileApi: api,
+          bookingApi: _NoopBookingApi(),
         );
 
         await state.completeOnboarding(
@@ -159,6 +166,7 @@ void main() {
         final state = await OwnerAppState.memory(
           sessionStore: MemoryAuthSessionStore(validSession()),
           profileApi: api,
+          bookingApi: _NoopBookingApi(),
         );
         await state.updateProfile(state.profile.copyWith(name: '请求姓名'));
         expect(api.updates.single.name, '请求姓名');
@@ -192,6 +200,7 @@ void main() {
           store: ownerStore,
           sessionStore: sessionStore,
           profileApi: api,
+          bookingApi: _NoopBookingApi(),
         );
 
         await expectLater(
@@ -302,6 +311,24 @@ final class FakeOwnerProfileApi implements OwnerProfileApi {
     if (updateError case final error?) throw error;
     return updateResult;
   }
+}
+
+final class _NoopBookingApi implements OwnerBookingApi {
+  @override
+  Future<List<RemoteOwnerBooking>> listOwnerBookings(String accessToken) async =>
+      const [];
+
+  @override
+  Future<RemoteOwnerBooking> createBooking(
+    String accessToken,
+    OwnerBookingCreateRequest request,
+  ) => throw UnsupportedError('not used by profile tests');
+
+  @override
+  Future<RemoteOwnerBooking> cancelBooking(
+    String accessToken,
+    String bookingId,
+  ) => throw UnsupportedError('not used by profile tests');
 }
 
 AuthSession validSession({DateTime? expiresAt}) => AuthSession(

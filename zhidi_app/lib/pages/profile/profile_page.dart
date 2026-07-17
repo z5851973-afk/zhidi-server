@@ -9,6 +9,7 @@ import 'profile_components.dart';
 import 'settings_page.dart';
 import 'support_page.dart';
 import '../order/my_orders_page.dart';
+import '../chat/chat_page.dart';
 import 'favorites_page.dart';
 import '../../design/tokens.dart';
 
@@ -36,6 +37,7 @@ class ProfilePage extends StatelessWidget {
       '设置' => const SettingsPage(),
       '我的预约' => const MyOrdersPage(),
       '我的收藏' => const FavoritesPage(),
+      '在线咨询' => const ChatPage(workerName: '平台客服'),
       _ => ProfilePlaceholderPage(title: title),
     };
     Navigator.push(context, MaterialPageRoute(builder: (_) => destination));
@@ -81,7 +83,7 @@ class ProfilePage extends StatelessWidget {
                     label: item.$2,
                     onTap: () => _open(context, item.$2),
                     badge: item.$2 == '我的收藏'
-                        ? _FavoritesBadge(state: state)
+                        ? (_FavoritesBadge(state: state))
                         : null,
                   ),
               ],
@@ -231,9 +233,7 @@ class _ProfileHeader extends StatelessWidget {
 
 class _FavoritesBadge extends StatelessWidget {
   const _FavoritesBadge({required this.state});
-
   final OwnerAppState state;
-
   @override
   Widget build(BuildContext context) {
     final count = state.savedQuotes.length + state.favoriteWorkers.length;
@@ -241,7 +241,7 @@ class _FavoritesBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: ZdColors.primaryDark,
+        color: const Color(0xFFFF5A00),
         borderRadius: BorderRadius.circular(10),
       ),
       child: Text(

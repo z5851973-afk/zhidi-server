@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../app/owner_models.dart';
+import '../../design/tokens.dart';
 
 class NotificationDetailPage extends StatelessWidget {
   const NotificationDetailPage({super.key, required this.message});
@@ -11,7 +12,7 @@ class NotificationDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('通知详情')),
-      backgroundColor: const Color(0xFFF7F7FB),
+      backgroundColor: ZdColors.background,
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -28,7 +29,7 @@ class NotificationDetailPage extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     _formatTime(message.createdAt),
-                    style: const TextStyle(color: Color(0xFF888888)),
+                    style: const TextStyle(color: ZdColors.textSecondary),
                   ),
                   const Divider(height: 28),
                   Text(
@@ -42,9 +43,10 @@ class NotificationDetailPage extends StatelessWidget {
           const SizedBox(height: 12),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.task_alt, color: Color(0xFFFF6B35)),
+              leading: const Icon(Icons.task_alt, color: ZdColors.primary),
               title: const Text('相关操作'),
               subtitle: Text(_actionSummary(message.category)),
+              splashColor: ZdColors.primary.withValues(alpha: 0.08),
             ),
           ),
         ],

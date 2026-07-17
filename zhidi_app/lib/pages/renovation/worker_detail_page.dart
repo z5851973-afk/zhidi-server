@@ -6,7 +6,9 @@ import '../../app/owner_models.dart';
 import 'worker_chat_page.dart';
 import 'booking_success_page.dart';
 import '../../design/tokens.dart';
+import '../../services/auth_api_client.dart';
 import '../../services/worker_directory_api_client.dart';
+import '../../services/worker_case_api_client.dart';
 
 // ── 主颜色 ──
 const _primary = ZdColors.primary;
@@ -98,440 +100,7 @@ class Review {
 }
 
 // ── 师傅库存（数据来源：首页施工团队「更多师傅」）──
-const _allWorkers = <String, WorkerDetail>{
-  '何师傅': WorkerDetail(
-    name: '何师傅',
-    trades: ['拆除师傅'],
-    rating: 4.8,
-    completedOrders: 312,
-    years: 14,
-    positiveRate: 98,
-    distanceKm: 0.95,
-    avatarEmoji: '👷',
-    skills: ['墙体拆除', '旧装修拆除', '铲墙皮', '垃圾清运', '地面破除', '门窗拆除'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长墙体拆除、旧装修拆除、铲墙皮、垃圾清运、地面破除、门窗拆除，从业14年经验丰富，累计完成312单，好评率98%，距离您0.95km。',
-    reviews: [
-      Review(
-        userName: '宝安刘先生',
-        city: '深圳',
-        rating: 4.9,
-        text: '何师傅干活麻利，两天就把旧装修拆得干干净净，垃圾也清得很彻底！',
-        photos: ['🏠', '🔨', '🧹'],
-      ),
-    ],
-  ),
-  '黄师傅': WorkerDetail(
-    name: '黄师傅',
-    trades: ['拆除师傅'],
-    rating: 4.7,
-    completedOrders: 215,
-    years: 10,
-    positiveRate: 96,
-    distanceKm: 1.8,
-    avatarEmoji: '👷',
-    skills: ['拆墙', '铲墙皮', '拆吊顶', '拆地板', '门窗拆除', '垃圾清运'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长拆墙、铲墙皮、拆吊顶、拆地板、门窗拆除、垃圾清运，从业10年经验丰富，累计完成215单，好评率96%，距离您1.8km。',
-    reviews: [
-      Review(
-        userName: '南山赵女士',
-        city: '深圳',
-        rating: 4.8,
-        text: '拆墙很专业，承重墙一眼就认出来了，帮我们避开了大坑！',
-        photos: ['🏗️', '🧹'],
-      ),
-    ],
-  ),
-  '赵师傅': WorkerDetail(
-    name: '赵师傅',
-    trades: ['拆除师傅'],
-    rating: 4.8,
-    completedOrders: 298,
-    years: 11,
-    positiveRate: 98,
-    distanceKm: 1.2,
-    avatarEmoji: '👷',
-    skills: ['墙体拆除', '旧装修拆除', '铲墙皮', '垃圾清运', '地面破除', '门窗拆除'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长墙体拆除、旧装修拆除、铲墙皮、垃圾清运、地面破除、门窗拆除，从业11年经验丰富，累计完成298单，好评率98%，距离您1.2km。',
-    reviews: [
-      Review(
-        userName: '龙华王女士',
-        city: '深圳',
-        rating: 4.8,
-        text: '赵师傅价格透明，干活利索，拆完还帮我们把地面扫得干干净净，很满意！',
-        photos: ['🔨', '🧹'],
-      ),
-    ],
-  ),
-  '陈师傅': WorkerDetail(
-    name: '陈师傅',
-    trades: ['拆除师傅'],
-    rating: 4.6,
-    completedOrders: 178,
-    years: 7,
-    positiveRate: 96,
-    distanceKm: 2.5,
-    avatarEmoji: '👷',
-    skills: ['铲墙皮', '拆地砖', '拆吊顶', '垃圾清运', '门窗拆除'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长铲墙皮、拆地砖、拆吊顶、垃圾清运、门窗拆除，从业7年经验丰富，累计完成178单，好评率96%，距离您2.5km。',
-    reviews: [
-      Review(
-        userName: '龙岗钱先生',
-        city: '深圳',
-        rating: 4.6,
-        text: '陈师傅年轻但手艺不错，拆得干净价格也实惠，推荐给预算有限的朋友！',
-        photos: ['🛠️', '🧹'],
-      ),
-    ],
-  ),
-  '杨工': WorkerDetail(
-    name: '杨工',
-    trades: ['拆除师傅'],
-    rating: 4.9,
-    completedOrders: 340,
-    years: 13,
-    positiveRate: 99,
-    distanceKm: 0.82,
-    avatarEmoji: '👷',
-    skills: ['墙体拆除', '旧装修拆除', '铲墙皮', '门窗拆除', '吊顶拆除', '垃圾清运'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长墙体拆除、旧装修拆除、铲墙皮、门窗拆除、吊顶拆除、垃圾清运，从业13年经验丰富，累计完成340单，好评率99%，距离您0.82km。',
-    reviews: [
-      Review(
-        userName: '福田陈先生',
-        city: '深圳',
-        rating: 5.0,
-        text: '杨工经验太丰富了，一眼就认出哪面是承重墙，帮我们避免了大麻烦！强烈推荐！',
-        photos: ['🏗️', '🔨', '🧹'],
-      ),
-    ],
-  ),
-  '周师傅': WorkerDetail(
-    name: '周师傅',
-    trades: ['拆除师傅'],
-    rating: 4.7,
-    completedOrders: 232,
-    years: 9,
-    positiveRate: 97,
-    distanceKm: 3.1,
-    avatarEmoji: '👷',
-    skills: ['旧装修拆除', '铲墙皮', '门窗拆除', '吊顶拆除', '垃圾清运'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长旧装修拆除、铲墙皮、门窗拆除、吊顶拆除、垃圾清运，从业9年经验丰富，累计完成232单，好评率97%，距离您3.1km。',
-    reviews: [
-      Review(
-        userName: '南山林女士',
-        city: '深圳',
-        rating: 4.7,
-        text: '周师傅做保护性拆除很到位，能用的材料都帮我们保留下来了，省了不少钱！',
-        photos: ['🛠️', '✨'],
-      ),
-    ],
-  ),
-  '吴师傅': WorkerDetail(
-    name: '吴师傅',
-    trades: ['拆除师傅'],
-    rating: 4.8,
-    completedOrders: 568,
-    years: 16,
-    positiveRate: 98,
-    distanceKm: 1.5,
-    avatarEmoji: '👷',
-    skills: ['墙体拆除', '旧装修拆除', '地面破除', '垃圾清运', '门窗拆除', '吊顶拆除'],
-    matchReason:
-        '拆除工负责装修第一步的拆旧工作，需要丰富的施工经验。该师傅与您的装修需求高度匹配，擅长墙体拆除、旧装修拆除、地面破除、垃圾清运、门窗拆除、吊顶拆除，从业16年经验丰富，累计完成568单，好评率98%，距离您1.5km。',
-    reviews: [
-      Review(
-        userName: '宝安周总',
-        city: '深圳',
-        rating: 4.9,
-        text: '吴师傅带团队来的，200平的办公室一天半拆完清完，效率惊人，而且零安全事故！',
-        photos: ['🏢', '🔨', '🧹'],
-      ),
-    ],
-  ),
-  '李师傅': WorkerDetail(
-    name: '李师傅',
-    trades: ['水电师傅'],
-    rating: 4.9,
-    completedOrders: 326,
-    years: 18,
-    positiveRate: 98,
-    distanceKm: 1.6,
-    avatarEmoji: '🔌',
-    skills: ['水电改造', '管道维修', '电路布线'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长水电改造、管道维修、电路布线，从业18年经验丰富，累计完成326单，好评率98%，距离您1.6km。',
-    reviews: [
-      Review(
-        userName: '南山张先生',
-        city: '深圳',
-        rating: 5.0,
-        text: '李师傅干活特别细致，我家老房子水电全改，走线横平竖直，比之前装修公司强太多了！',
-        photos: ['🔌', '⚡', '📏'],
-      ),
-    ],
-  ),
-  '张师傅': WorkerDetail(
-    name: '张师傅',
-    trades: ['泥工师傅', '泥瓦工师傅'],
-    rating: 4.7,
-    completedOrders: 198,
-    years: 12,
-    positiveRate: 97,
-    distanceKm: 2.3,
-    avatarEmoji: '🧱',
-    skills: ['地砖铺贴', '墙砖铺贴', '地面找平', '砌墙抹灰'],
-    matchReason:
-        '系统根据您的泥瓦需求和装修阶段，为您推荐该师傅。擅长地砖铺贴、墙砖铺贴、地面找平、砌墙抹灰，从业12年经验丰富，累计完成198单，好评率97%，距离您2.3km。',
-    reviews: [
-      Review(
-        userName: '宝安王先生',
-        city: '深圳',
-        rating: 4.8,
-        text: '瓷砖贴得特别平整，阴阳角处理得非常好，地面找平精度很高，很放心的师傅！',
-        photos: ['🧱', '📐', '✨'],
-      ),
-    ],
-  ),
-  '吴建国': WorkerDetail(
-    name: '吴建国',
-    trades: ['泥工师傅', '泥瓦工师傅'],
-    rating: 4.8,
-    completedOrders: 310,
-    years: 9,
-    positiveRate: 98,
-    distanceKm: 1.2,
-    avatarEmoji: '🧱',
-    skills: ['地砖铺贴', '墙砖铺贴', '地面找平', '砌墙抹灰'],
-    matchReason:
-        '系统根据您的泥瓦需求和装修阶段，为您推荐该师傅。专做大户型，地面找平精度高，擅长地砖铺贴、墙砖铺贴、地面找平、砌墙抹灰，从业9年经验丰富，累计完成310单，好评率98%，距离您1.2km。',
-    reviews: [
-      Review(
-        userName: '南山刘先生',
-        city: '深圳',
-        rating: 4.9,
-        text: '吴师傅地面找平做得真准，大户型铺砖一丝不苟，手艺没得说！',
-        photos: ['🧱', '📏', '✨'],
-      ),
-      Review(
-        userName: '福田李女士',
-        city: '深圳',
-        rating: 4.8,
-        text: '墙砖贴得整齐漂亮，砌墙抹灰也很到位，很靠谱的师傅。',
-        photos: ['🏗️', '🧱'],
-      ),
-    ],
-  ),
-  '周建平': WorkerDetail(
-    name: '周建平',
-    trades: ['泥工师傅', '泥瓦工师傅'],
-    rating: 4.9,
-    completedOrders: 520,
-    years: 14,
-    positiveRate: 99,
-    distanceKm: 0.85,
-    avatarEmoji: '🧱',
-    skills: ['地砖铺贴', '墙砖铺贴', '地面找平', '砌墙抹灰'],
-    matchReason:
-        '系统根据您的泥瓦需求和装修阶段，为您推荐该师傅。贴砖14年，阳角对角精准，空鼓率低于行业标准，擅长地砖铺贴、墙砖铺贴、地面找平、砌墙抹灰，从业14年经验丰富，累计完成520单，好评率99%，距离您0.85km。',
-    reviews: [
-      Review(
-        userName: '罗湖张女士',
-        city: '深圳',
-        rating: 5.0,
-        text: '周师傅手艺是真好，阳角对角做得一点缝都看不出来，质检说空鼓率几乎为零！',
-        photos: ['🧱', '📐', '✨'],
-      ),
-      Review(
-        userName: '龙华陈先生',
-        city: '深圳',
-        rating: 4.9,
-        text: '14年老师傅确实不一样，铺砖又快又平整，非常专业。',
-        photos: ['🏗️', '🧱'],
-      ),
-    ],
-  ),
-  '郑守义': WorkerDetail(
-    name: '郑守义',
-    trades: ['泥工师傅', '泥瓦工师傅'],
-    rating: 4.7,
-    completedOrders: 780,
-    years: 20,
-    positiveRate: 96,
-    distanceKm: 3.5,
-    avatarEmoji: '🧱',
-    skills: ['地砖铺贴', '墙砖铺贴', '地面找平', '砌墙抹灰'],
-    matchReason:
-        '系统根据您的泥瓦需求和装修阶段，为您推荐该师傅。二十年的老把式，什么砖都能贴，擅长地砖铺贴、墙砖铺贴、地面找平、砌墙抹灰，从业20年经验丰富，累计完成780单，好评率96%，距离您3.5km。',
-    reviews: [
-      Review(
-        userName: '宝安许先生',
-        city: '深圳',
-        rating: 4.8,
-        text: '老郑干了半辈子泥瓦，技术没话说，20年经验不是白给的！',
-        photos: ['🧱', '✨'],
-      ),
-    ],
-  ),
-  '杨师傅': WorkerDetail(
-    name: '杨师傅',
-    trades: ['防水师傅'],
-    rating: 4.8,
-    completedOrders: 245,
-    years: 11,
-    positiveRate: 98,
-    distanceKm: 1.4,
-    avatarEmoji: '💧',
-    skills: ['厨卫防水', '阳台防水', '屋面防水', '地下室防潮'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长厨卫防水、阳台防水、屋面防水、地下室防潮，从业11年经验丰富，累计完成245单，好评率98%，距离您1.4km。',
-    reviews: [
-      Review(
-        userName: '福田孙先生',
-        city: '深圳',
-        rating: 4.9,
-        text: '杨师傅做防水很专业，闭水试验48小时滴水不漏，以后再也不担心楼下投诉了！',
-        photos: ['🚿', '🧹'],
-      ),
-    ],
-  ),
-  '谭师傅': WorkerDetail(
-    name: '谭师傅',
-    trades: ['防水师傅'],
-    rating: 4.7,
-    completedOrders: 167,
-    years: 8,
-    positiveRate: 96,
-    distanceKm: 2.9,
-    avatarEmoji: '💧',
-    skills: ['卫生间防水', '厨房防水', '外墙防水', '堵漏'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长卫生间防水、厨房防水、外墙防水、堵漏，从业8年经验丰富，累计完成167单，好评率96%，距离您2.9km。',
-    reviews: [
-      Review(
-        userName: '宝安廖女士',
-        city: '深圳',
-        rating: 4.8,
-        text: '老房子漏水找谭师傅修的，查得准、修得快，价格也合理！',
-        photos: ['🛠️', '💧'],
-      ),
-    ],
-  ),
-  '王师傅': WorkerDetail(
-    name: '王师傅',
-    trades: ['木工师傅'],
-    rating: 4.8,
-    completedOrders: 278,
-    years: 15,
-    positiveRate: 96,
-    distanceKm: 0.68,
-    avatarEmoji: '🪚',
-    skills: ['全屋定制', '衣柜橱柜', '吊顶安装'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长全屋定制、衣柜橱柜、吊顶安装，从业15年经验丰富，累计完成278单，好评率96%，距离您0.68km。',
-    reviews: [
-      Review(
-        userName: '福田李女士',
-        city: '深圳',
-        rating: 4.9,
-        text: '衣柜和橱柜都是王师傅做的，封边处理得很好，细节到位，邻居来看了都说要找他。',
-        photos: ['🪵', '📐', '✨'],
-      ),
-    ],
-  ),
-  '宋师傅': WorkerDetail(
-    name: '宋师傅',
-    trades: ['油漆师傅'],
-    rating: 4.8,
-    completedOrders: 267,
-    years: 13,
-    positiveRate: 97,
-    distanceKm: 1.2,
-    avatarEmoji: '🎨',
-    skills: ['墙面刷漆', '木器漆', '艺术漆', '硅藻泥'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长墙面刷漆、木器漆、艺术漆、硅藻泥，从业13年经验丰富，累计完成267单，好评率97%，距离您1.2km。',
-    reviews: [
-      Review(
-        userName: '福田王先生',
-        city: '深圳',
-        rating: 4.9,
-        text: '宋师傅刷的墙面特别平整，颜色调得跟效果图一模一样，很满意！',
-        photos: ['🎨', '🖌️', '✨'],
-      ),
-    ],
-  ),
-  '郑师傅': WorkerDetail(
-    name: '郑师傅',
-    trades: ['油漆师傅'],
-    rating: 4.7,
-    completedOrders: 178,
-    years: 9,
-    positiveRate: 95,
-    distanceKm: 3.5,
-    avatarEmoji: '🎨',
-    skills: ['乳胶漆', '艺术涂料', '旧墙翻新', '补墙'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长乳胶漆、艺术涂料、旧墙翻新、补墙，从业9年经验丰富，累计完成178单，好评率95%，距离您3.5km。',
-    reviews: [
-      Review(
-        userName: '罗湖钟女士',
-        city: '深圳',
-        rating: 4.7,
-        text: '老房子墙面发霉全铲了重做，郑师傅做得很细致，半年了没出问题。',
-        photos: ['🖼️', '🖌️'],
-      ),
-    ],
-  ),
-  '彭师傅': WorkerDetail(
-    name: '彭师傅',
-    trades: ['美缝师傅'],
-    rating: 4.9,
-    completedOrders: 332,
-    years: 7,
-    positiveRate: 99,
-    distanceKm: 0.72,
-    avatarEmoji: '✨',
-    skills: ['瓷砖美缝', '环氧彩砂', '马贝填缝', '美容胶收边'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长瓷砖美缝、环氧彩砂、马贝填缝、美容胶收边，从业7年经验丰富，累计完成332单，好评率99%，距离您0.72km。',
-    reviews: [
-      Review(
-        userName: '龙华林女士',
-        city: '深圳',
-        rating: 5.0,
-        text: '彭师傅美缝做得太漂亮了，环氧彩砂颜色配得绝了，朋友都问哪家做的！',
-        photos: ['✨', '🧹'],
-      ),
-    ],
-  ),
-  '丁师傅': WorkerDetail(
-    name: '丁师傅',
-    trades: ['美缝师傅'],
-    rating: 4.7,
-    completedOrders: 198,
-    years: 5,
-    positiveRate: 96,
-    distanceKm: 4.2,
-    avatarEmoji: '✨',
-    skills: ['美缝', '填缝', '防水胶收边', '厨房台面美容'],
-    matchReason:
-        '该师傅与您的装修需求高度匹配，擅长美缝、填缝、防水胶收边、厨房台面美容，从业5年经验丰富，累计完成198单，好评率96%，距离您4.2km。',
-    reviews: [
-      Review(
-        userName: '宝安黄女士',
-        city: '深圳',
-        rating: 4.8,
-        text: '小丁师傅年轻但手艺好，做活认真，价格也实惠，推荐！',
-        photos: ['🛠️', '✨'],
-      ),
-    ],
-  ),
-};
+const _allWorkers = <String, WorkerDetail>{};
 
 // ══════════════════════════════════════════
 // 师傅详情页
@@ -541,6 +110,7 @@ class WorkerDetailPage extends StatefulWidget {
   final Trade? trade;
   final double? distance;
   final RemoteWorkerDirectoryProfile? remoteProfile;
+  final WorkerCaseApi? caseApi;
 
   const WorkerDetailPage({
     super.key,
@@ -548,6 +118,7 @@ class WorkerDetailPage extends StatefulWidget {
     this.trade,
     this.distance,
     this.remoteProfile,
+    this.caseApi,
   });
 
   @override
@@ -556,6 +127,55 @@ class WorkerDetailPage extends StatefulWidget {
 
 class _WorkerDetailPageState extends State<WorkerDetailPage> {
   bool _savingFavorite = false;
+  bool _booking = false;
+  bool _casesLoading = false;
+  String? _casesError;
+  List<RemoteWorkerCase> _remoteCases = const [];
+
+  WorkerCaseApi get _caseApi => widget.caseApi ?? WorkerCaseApiClient();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.remoteProfile != null) {
+      _casesLoading = true;
+      Future<void>.microtask(_loadRemoteCases);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant WorkerDetailPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.remoteProfile?.userId != widget.remoteProfile?.userId ||
+        oldWidget.caseApi != widget.caseApi) {
+      _remoteCases = const [];
+      _casesError = null;
+      _casesLoading = widget.remoteProfile != null;
+      if (widget.remoteProfile != null) {
+        Future<void>.microtask(_loadRemoteCases);
+      }
+    }
+  }
+
+  Future<void> _loadRemoteCases() async {
+    final workerId = widget.remoteProfile?.userId;
+    if (workerId == null) return;
+    try {
+      final values = await _caseApi.listPublicCases(workerId);
+      if (!mounted || widget.remoteProfile?.userId != workerId) return;
+      setState(() {
+        _remoteCases = values;
+        _casesError = null;
+      });
+    } catch (_) {
+      if (!mounted || widget.remoteProfile?.userId != workerId) return;
+      setState(() => _casesError = '施工案例加载失败');
+    } finally {
+      if (mounted && widget.remoteProfile?.userId == workerId) {
+        setState(() => _casesLoading = false);
+      }
+    }
+  }
 
   // Trade.label → _allWorkers trades 字符串映射
   static const _labelToTrade = <String, String>{
@@ -633,63 +253,22 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   /// 从 mockWorkers 中动态构建 WorkerDetail
   WorkerDetail _buildFromMock(String workerName, String tradeKey) {
-    final tradeLabel = _labelToTrade.entries
-        .firstWhere(
-          (e) => e.value == tradeKey,
-          orElse: () => const MapEntry('', ''),
-        )
-        .key;
-    final trade = tradeLabel.isNotEmpty
-        ? Trade.values.firstWhere((t) => t.label == tradeLabel)
-        : null;
-    if (trade == null) return _fallbackFirst();
-
-    final workers = mockWorkers[trade] ?? [];
-    Worker? match;
-    // 先精确匹配姓名，再模糊
-    match = workers.cast<Worker?>().firstWhere(
-      (w) => w!.name == workerName,
-      orElse: () => null,
-    );
-    match ??= workers.isNotEmpty ? workers.first : null;
-    if (match == null) return _fallbackFirst();
-
-    return _workerToDetail(match, tradeKey);
+    return _fallbackFirst();
   }
 
-  WorkerDetail _workerToDetail(Worker w, String tradeKey) {
-    final skills = _defaultSkills[tradeKey] ?? ['基础施工'];
-    return WorkerDetail(
-      name: w.name,
-      trades: [tradeKey],
-      rating: w.rating,
-      completedOrders: w.completedProjects,
-      years: w.experienceYears,
-      positiveRate: w.creditScore > 0 ? w.creditScore.round() : 97,
-      distanceKm: w.distance,
-      avatarEmoji: _tradeEmoji[tradeKey] ?? '👷',
-      skills: skills,
-      matchReason:
-          '系统根据您的装修需求和阶段为您推荐该师傅。${w.intro}，擅长${skills.join('、')}，从业${w.experienceYears}年经验丰富，累计完成${w.completedProjects}单，好评率${w.creditScore > 0 ? w.creditScore.round() : 97}%，距离您${w.distance}km。',
-      reviews: _mockReviews(
-        WorkerDetail(
-          name: w.name,
-          trades: [tradeKey],
-          rating: w.rating,
-          completedOrders: w.completedProjects,
-          years: w.experienceYears,
-          positiveRate: w.creditScore > 0 ? w.creditScore.round() : 97,
-          distanceKm: w.distance,
-          avatarEmoji: _tradeEmoji[tradeKey] ?? '👷',
-          skills: skills,
-          matchReason: '',
-          reviews: const [],
-        ),
-      ),
-    );
-  }
-
-  WorkerDetail _fallbackFirst() => _allWorkers.values.first;
+  WorkerDetail _fallbackFirst() => WorkerDetail(
+    name: widget.workerName,
+    trades: const [],
+    rating: 0.0,
+    completedOrders: 0,
+    years: 0,
+    positiveRate: 0,
+    distanceKm: 0.0,
+    avatarEmoji: '👷',
+    skills: const [],
+    matchReason: '',
+    reviews: const [],
+  );
 
   WorkerDetail _buildFromRemote(RemoteWorkerDirectoryProfile remote) {
     final tradeKey = _remoteTradeLabel(remote.primaryTrade);
@@ -758,7 +337,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
       }
     }
 
-    direct ??= _allWorkers.values.first;
+    direct ??= _fallbackFirst();
     if (widget.distance != null) {
       direct = direct.copyWith(distanceKm: widget.distance!);
     }
@@ -799,7 +378,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
         FavoriteWorker(
           id: id,
           name: detail.name,
-          trade: detail.trades.first,
+          trade: detail.trades.isEmpty ? '施工' : detail.trades.first,
           city: state.profile.city,
         ),
       );
@@ -818,6 +397,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   }
 
   String _getTradeTag(WorkerDetail w) {
+    if (w.trades.isEmpty) return '施工';
     final t = w.trades.first;
     if (t.contains('泥')) return '泥工';
     if (t.contains('拆除')) return '拆旧';
@@ -1279,8 +859,10 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   // ── 施工案例 ──
   Widget _buildCasesSection(WorkerDetail w) {
+    if (widget.remoteProfile != null) return _buildRemoteCasesSection();
     final images = _caseImages(w);
     return Container(
+      key: const Key('worker-case-mock-gallery'),
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -1341,6 +923,125 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRemoteCasesSection() {
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.all(Radius.circular(12)),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.photo_library_outlined,
+                size: 18,
+                color: _primary,
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                '施工案例',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _textDark,
+                ),
+              ),
+              const Spacer(),
+              if (!_casesLoading && _casesError == null)
+                Text(
+                  '共${_remoteCases.length}组',
+                  style: const TextStyle(fontSize: 12, color: _textLight),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_casesLoading)
+            const Center(child: CircularProgressIndicator())
+          else if (_casesError != null)
+            Center(
+              child: TextButton.icon(
+                onPressed: () {
+                  setState(() => _casesLoading = true);
+                  _loadRemoteCases();
+                },
+                icon: const Icon(Icons.refresh),
+                label: Text(_casesError!),
+              ),
+            )
+          else if (_remoteCases.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Text('暂无施工案例', style: TextStyle(color: _textLight)),
+              ),
+            )
+          else
+            SizedBox(
+              height: 230,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _remoteCases.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final item = _remoteCases[index];
+                  return SizedBox(
+                    width: 250,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.network(
+                            item.imageUrls.first,
+                            key: Key('worker-case-image-${item.id}'),
+                            width: 250,
+                            height: 140,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Container(
+                              width: 250,
+                              height: 140,
+                              color: const Color(0xFFF0EDE8),
+                              alignment: Alignment.center,
+                              child: const Icon(Icons.broken_image_outlined),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          item.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${item.serviceCity} · ${item.completionYear}年 · ${item.description}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, color: _textMid),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
         ],
       ),
     );
@@ -1777,33 +1478,57 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                   flex: 2,
                   child: GestureDetector(
                     onTap: () async {
+                      if (_booking) return;
                       final d = _resolveDetail();
-                      final phaseIndex = _tradeToPhaseIndex(d.trades.first);
+                      final trade = d.trades.isEmpty ? '施工' : d.trades.first;
+                      final phaseIndex = _tradeToPhaseIndex(trade);
                       final appState = OwnerAppScope.of(context);
-                      appState.bookWorker(
-                        BookedWorker(
-                          id: 'wrk-${d.name}',
-                          name: d.name,
-                          trade: d.trades.first,
-                          phaseName: _phaseNames[phaseIndex],
-                          phaseIndex: phaseIndex,
-                          rating: d.rating,
-                          completedOrders: d.completedOrders,
-                          years: d.years,
-                          avatarEmoji: d.avatarEmoji,
-                          skills: d.skills,
-                          distance: d.distanceKm,
-                        ),
+                      final remoteProfile = widget.remoteProfile;
+                      final bookedWorker = BookedWorker(
+                        id: remoteProfile?.userId ?? 'wrk-${d.name}',
+                        name: d.name,
+                        trade: trade,
+                        phaseName: _phaseNames[phaseIndex],
+                        phaseIndex: phaseIndex,
+                        rating: d.rating,
+                        completedOrders: d.completedOrders,
+                        years: d.years,
+                        avatarEmoji: d.avatarEmoji,
+                        skills: d.skills,
+                        distance: d.distanceKm,
                       );
+                      setState(() => _booking = true);
+                      try {
+                        await appState.bookWorker(
+                          bookedWorker,
+                          remoteWorkerUserId: remoteProfile?.userId,
+                          serviceCity: remoteProfile?.serviceCity,
+                        );
+                      } on AuthApiException catch (error) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(error.message)));
+                        return;
+                      } catch (_) {
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('预约失败，请稍后重试')),
+                        );
+                        return;
+                      } finally {
+                        if (mounted) setState(() => _booking = false);
+                      }
+                      if (!mounted) return;
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => BookingSuccessPage(
                             workerName: d.name,
-                            workerJob: d.trades.first,
+                            workerJob: trade,
                             rating: d.rating,
                             renovationStage: '基础施工',
-                            tradeType: d.trades.first,
+                            tradeType: trade,
                             serviceAddress: '您提交的服务地址',
                             estimatedTime: '下单后30分钟内',
                           ),
@@ -1829,9 +1554,9 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                         ],
                       ),
                       alignment: Alignment.center,
-                      child: const Text(
-                        '立即预约师傅',
-                        style: TextStyle(
+                      child: Text(
+                        _booking ? '预约中...' : '立即预约师傅',
+                        style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,

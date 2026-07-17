@@ -43,37 +43,31 @@ Future<void> _pumpMyHome(WidgetTester tester, OwnerAppState state) async {
 }
 
 void main() {
-  testWidgets('shows current construction worker and phase progress', (
-    tester,
-  ) async {
+  testWidgets(
+    'shows the current single-trade service without whole-home timeline',
+    (tester) async {
+      final state = await _stateWithWorker();
+
+      await _pumpMyHome(tester, state);
+
+      expect(find.text('我的家'), findsOneWidget);
+      expect(find.text('正在服务'), findsOneWidget);
+      expect(find.text('装修进度'), findsNothing);
+      expect(find.text('李师傅'), findsAtLeastNWidgets(1));
+      expect(find.text('拆除'), findsWidgets);
+      expect(find.text('查看详情'), findsOneWidget);
+    },
+  );
+
+  testWidgets('opens the current trade service detail', (tester) async {
     final state = await _stateWithWorker();
 
     await _pumpMyHome(tester, state);
+    await tester.tap(find.text('查看详情'));
+    await tester.pumpAndSettle();
 
-    expect(find.text('我的家'), findsOneWidget);
-    expect(find.text('麓湖新居翻新'), findsOneWidget);
-    expect(find.text('施工进度'), findsOneWidget);
+    expect(find.text('拆除服务详情'), findsOneWidget);
+    expect(find.text('师傅详情'), findsOneWidget);
     expect(find.text('李师傅'), findsAtLeastNWidgets(1));
-    expect(find.text('拆除'), findsWidgets);
-    expect(find.text('进行中'), findsAtLeastNWidgets(1));
-  });
-
-  testWidgets('can approve a booked worker phase through inspection', (
-    tester,
-  ) async {
-    final state = await _stateWithWorker();
-
-    await _pumpMyHome(tester, state);
-    await tester.tap(find.text('申请验收'));
-    await tester.pumpAndSettle();
-
-    expect(state.inspections.single.status, InspectionStatus.pending);
-    expect(find.text('待验收'), findsWidgets);
-
-    await tester.tap(find.text('通过验收'));
-    await tester.pumpAndSettle();
-
-    expect(state.completedPhases, contains(0));
-    expect(find.text('已完成'), findsWidgets);
   });
 }

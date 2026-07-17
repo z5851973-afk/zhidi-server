@@ -40,13 +40,13 @@ void main() {
 
     await restored.approveInspection(restored.inspections.single.id);
 
-    expect(restored.inspections.single.status, InspectionStatus.approved);
+    expect(restored.inspections.single.status, InspectionStatus.accepted);
     expect(restored.completedPhases, contains(0));
     expect(
       restored.bookedWorkers.firstWhere((item) => item.id == 'worker-1').status,
       '已完成',
     );
-    expect(restored.messages.first.title, '验收已通过');
+    expect(restored.messages.first.title, '验收合格');
   });
 
   test('rejects inspection without completing phase', () async {
@@ -57,12 +57,12 @@ void main() {
     await state.rejectInspection(state.inspections.single.id, note: '墙面未清理');
 
     expect(state.inspections.single.status, InspectionStatus.rejected);
-    expect(state.inspections.single.ownerNote, '墙面未清理');
+    expect(state.inspections.single.inspectorNote, '墙面未清理');
     expect(state.completedPhases, isNot(contains(0)));
     expect(
       state.bookedWorkers.firstWhere((item) => item.id == 'worker-1').status,
       isNot('已完成'),
     );
-    expect(state.messages.first.title, '验收已驳回');
+    expect(state.messages.first.title, '验收不合格');
   });
 }

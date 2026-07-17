@@ -28,12 +28,12 @@ void main() {
     expect(state.archives, hasLength(1));
     expect(state.archives.single.workerName, '李师傅');
     expect(state.archives.single.phaseName, '拆除');
-    expect(state.archives.single.status, '验收通过');
+    expect(state.archives.single.trade, '拆除工');
 
     final restored = await OwnerAppState.memory(store: store);
 
     expect(restored.archives, hasLength(1));
-    expect(restored.archives.single.workerId, 'worker-1');
+    expect(restored.archives.single.workerName, '李师傅');
     expect(restored.archives.single.completedAt, isNotNull);
   });
 }

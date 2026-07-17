@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../models/renovation.dart';
 
 /// 工价标准 — 完整数据定义
 /// 7个工种，每个工种包含多个分类，每个分类包含多个项目
@@ -39,6 +40,7 @@ class PriceCategory {
 }
 
 class TradePriceData {
+  final Trade trade; // 对应工种枚举（用于跳转工人列表）
   final String tradeName; // 工种名，如 "拆除"
   final IconData icon;
   final String bannerTitle; // Banner 大标题
@@ -46,6 +48,7 @@ class TradePriceData {
   final List<PriceCategory> categories;
 
   const TradePriceData({
+    required this.trade,
     required this.tradeName,
     required this.icon,
     required this.bannerTitle,
@@ -70,8 +73,8 @@ const List<TradePriceData> allTrades = [
   cleaningTrade,
 ];
 
-/// 将工种 serviceType 映射到新工价标准页面的 TradePriceData
-/// 未识别的 serviceType 默认回到拆除工价，保持旧入口可用。
+/// 将后端 Trade 枚举映射到新工价标准页面的 TradePriceData
+/// 注意：旧枚举中的 Trade.waterproof 合并到 masonryTrade（泥瓦包含防水分类）
 TradePriceData tradeToPriceData(String tradeServiceType) {
   switch (tradeServiceType) {
     case 'demolition':
@@ -99,6 +102,7 @@ TradePriceData tradeToPriceData(String tradeServiceType) {
 // ---- 1. 拆除工价 ----
 
 const demolitionTrade = TradePriceData(
+  trade: Trade.demolition,
   tradeName: '拆除',
   icon: Icons.handyman,
   bannerTitle: '平台统一工价 透明不加价',
@@ -171,6 +175,7 @@ const demolitionTrade = TradePriceData(
 // ---- 2. 水电工价 ----
 
 const plumbingElectricTrade = TradePriceData(
+  trade: Trade.plumbing,
   tradeName: '水电',
   icon: Icons.water_drop,
   bannerTitle: '平台统一工价 透明不加价',
@@ -226,6 +231,7 @@ const plumbingElectricTrade = TradePriceData(
 // ---- 3. 泥瓦工价 ----
 
 const masonryTrade = TradePriceData(
+  trade: Trade.masonry,
   tradeName: '泥瓦',
   icon: Icons.format_paint,
   bannerTitle: '平台统一工价 透明不加价',
@@ -284,6 +290,7 @@ const masonryTrade = TradePriceData(
 // ---- 3.5 防水工价 ----
 
 const waterproofTrade = TradePriceData(
+  trade: Trade.waterproof,
   tradeName: '防水',
   icon: Icons.water,
   bannerTitle: '平台统一工价 透明不加价',
@@ -335,6 +342,7 @@ const waterproofTrade = TradePriceData(
 // ---- 4. 木工工价 ----
 
 const carpentryTrade = TradePriceData(
+  trade: Trade.carpentry,
   tradeName: '木工',
   icon: Icons.carpenter,
   bannerTitle: '平台统一工价 透明不加价',
@@ -379,6 +387,7 @@ const carpentryTrade = TradePriceData(
 // ---- 5. 油漆工价 ----
 
 const paintingTrade = TradePriceData(
+  trade: Trade.painting,
   tradeName: '油漆',
   icon: Icons.brush,
   bannerTitle: '平台统一工价 透明不加价',
@@ -422,6 +431,7 @@ const paintingTrade = TradePriceData(
 // ---- 6. 安装工价 ----
 
 const installationTrade = TradePriceData(
+  trade: Trade.installation,
   tradeName: '安装',
   icon: Icons.build,
   bannerTitle: '平台统一工价 透明不加价',
@@ -467,6 +477,7 @@ const installationTrade = TradePriceData(
 // ---- 7. 保洁工价 ----
 
 const cleaningTrade = TradePriceData(
+  trade: Trade.cleaning,
   tradeName: '保洁',
   icon: Icons.clean_hands,
   bannerTitle: '平台统一工价 透明不加价',

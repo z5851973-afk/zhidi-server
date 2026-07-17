@@ -172,4 +172,27 @@ final class _FakeOwnerAuthApi implements OwnerAuthApi {
       ),
     );
   }
+
+  @override
+  Future<OwnerLoginResponse> loginWorker(String phone, String code) async {
+    return const OwnerLoginResponse(
+      accessToken: 'jwt-worker',
+      tokenType: 'Bearer',
+      expiresInSeconds: 2_592_000,
+      user: AuthUser(
+        id: '01904f24-3f5b-7000-8000-000000000002',
+        phone: '16600000003',
+        status: 'ACTIVE',
+        roles: ['WORKER'],
+      ),
+    );
+  }
+
+  @override
+  Future<RemoteWorkerProfile> getWorkerProfile(String token) async {
+    return const RemoteWorkerProfile(phone: '16600000003');
+  }
+
+  @override
+  Future<void> updateWorkerProfile(String token, Map<String, dynamic> body) async {}
 }

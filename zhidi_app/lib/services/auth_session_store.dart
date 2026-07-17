@@ -14,10 +14,17 @@ abstract interface class AuthSessionStore {
 
 final class SecureAuthSessionStore implements AuthSessionStore {
   SecureAuthSessionStore([FlutterSecureStorage? storage])
-    : _storage = storage ?? const FlutterSecureStorage();
+    : _storage = storage ?? const FlutterSecureStorage(),
+      _sessionKey = _ownerSessionKey;
 
-  static const _sessionKey = 'owner.auth.session';
+  SecureAuthSessionStore.worker([FlutterSecureStorage? storage])
+    : _storage = storage ?? const FlutterSecureStorage(),
+      _sessionKey = _workerSessionKey;
+
+  static const _ownerSessionKey = 'owner.auth.session';
+  static const _workerSessionKey = 'worker.auth.session';
   final FlutterSecureStorage _storage;
+  final String _sessionKey;
 
   @override
   Future<AuthSession?> read() async {

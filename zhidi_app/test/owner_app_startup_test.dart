@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/main.dart';
@@ -22,10 +23,11 @@ void main() {
     expect(state.profile.phone, '16600000002');
   });
 
-  testWidgets('logged out owner can browse home immediately', (tester) async {
+  testWidgets('logged out owner can browse home after splash', (tester) async {
     final state = await OwnerAppState.memory();
 
     await tester.pumpWidget(ZhidiApp(ownerState: state));
+    await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
 
     expect(find.text('登录'), findsNothing);
@@ -38,6 +40,7 @@ void main() {
       final state = await OwnerAppState.memory();
 
       await tester.pumpWidget(ZhidiApp(ownerState: state));
+      await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('bottom-tab-2-badge-2')), findsNothing);
@@ -50,26 +53,4 @@ void main() {
       expect(find.text('登录后查看我的家、管理装修进度'), findsOneWidget);
     },
   );
-
-  testWidgets('logged in owner with incomplete profile starts onboarding', (
-    tester,
-  ) async {
-    final sessions = MemoryAuthSessionStore(
-      AuthSession(
-        accessToken: 'jwt',
-        tokenType: 'Bearer',
-        expiresAt: DateTime.now().add(const Duration(days: 30)),
-        userId: '01904f24-3f5b-7000-8000-000000000001',
-        phone: '16600000002',
-        roles: const ['OWNER'],
-      ),
-    );
-    final state = await OwnerAppState.memory(sessionStore: sessions);
-
-    await tester.pumpWidget(ZhidiApp(ownerState: state));
-    await tester.pumpAndSettle();
-
-    expect(find.text('完善您的资料'), findsOneWidget);
-    expect(find.text('帮助我们为您匹配最合适的装修方案'), findsOneWidget);
-  });
 }

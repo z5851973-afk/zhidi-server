@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "23383503824",
+    "project_id": "zhidi-54c38",
+    "storage_bucket": "zhidi-54c38.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:23383503824:android:a548b8cb0a56e1219abfd5",
+        "android_client_info": {
+          "package_name": "com.example.zhidi_app.worker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWY9LWUZhF6N3RTdu8b4d7eFoVTtmZuC4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

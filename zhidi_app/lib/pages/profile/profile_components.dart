@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import '../../design/tokens.dart';
 
 class ProfileSectionCard extends StatelessWidget {

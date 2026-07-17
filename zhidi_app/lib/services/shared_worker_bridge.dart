@@ -140,7 +140,7 @@ Future<SharedWorkerPublishResult> publishWorkerProfile({
     updatedAt: DateTime.now(),
   );
   try {
-    await col.doc(shared.id).set(shared.toJson());
+    await col.doc(shared.id).set(shared.toJson()).timeout(const Duration(seconds: 5));
     return SharedWorkerPublishResult(
       success: true,
       message: '师傅池发布成功：${shared.name} · ${shared.trade.label}',
@@ -171,7 +171,8 @@ Future<SharedWorkerReadResult> readWorkersByTrade(Trade trade) async {
     final snap = await col
         .where('trade', isEqualTo: trade.name)
         .where('acceptOrders', isEqualTo: true)
-        .get();
+        .get()
+        .timeout(const Duration(seconds: 5));
     final workers = snap.docs
         .map((doc) => SharedWorkerProfile.fromJson(doc.data()))
         .toList();

@@ -45,7 +45,7 @@ void main() {
     expect(find.text('服务端返回的瓷砖铺贴师傅'), findsOneWidget);
   });
 
-  testWidgets('worker list keeps mock workers when Spring Boot workers fail', (
+  testWidgets('worker list does not fake workers when Spring Boot fails', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -60,8 +60,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('张国强'), findsOneWidget);
-    expect(find.textContaining('12年经验'), findsOneWidget);
+    expect(find.text('暂无该工种师傅'), findsOneWidget);
+    expect(find.text('张国强'), findsNothing);
   });
 }
 

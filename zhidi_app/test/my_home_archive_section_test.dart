@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/pages/home/my_home_page.dart';
+import 'package:zhidi_app/pages/home/renovation_archive_page.dart';
 
 BookedWorker _worker() {
   return BookedWorker(
@@ -30,7 +31,7 @@ Future<void> _pumpMyHome(WidgetTester tester, OwnerAppState state) async {
 }
 
 void main() {
-  testWidgets('shows completed phase in renovation archive section', (
+  testWidgets('opens renovation archive from inspection records', (
     tester,
   ) async {
     final state = await OwnerAppState.memory(store: MemoryOwnerStore());
@@ -40,11 +41,19 @@ void main() {
 
     await _pumpMyHome(tester, state);
 
-    await tester.scrollUntilVisible(find.text('装修档案'), 300);
+    await tester.scrollUntilVisible(
+      find.text('验收记录'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('验收记录'));
     await tester.pumpAndSettle();
 
+    expect(find.byType(RenovationArchivePage), findsOneWidget);
     expect(find.text('装修档案'), findsOneWidget);
-    expect(find.text('拆除阶段已归档'), findsOneWidget);
-    expect(find.text('李师傅 · 验收通过'), findsOneWidget);
+    expect(find.text('拆除'), findsAtLeastNWidgets(1));
+    expect(find.text('李师傅 · 拆除工'), findsOneWidget);
+    expect(find.text('验收合格'), findsOneWidget);
   });
 }

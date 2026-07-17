@@ -14,7 +14,10 @@ class WorkerProfile {
     this.phone = '',
     this.avatar = '',
     required this.trade,
+    this.tradeSelected = false,
+    this.serviceCity = '',
     this.experienceYears = 0,
+    this.dailyRate = 0,
     this.rating = 0.0,
     this.totalOrders = 0,
     this.certifications = const [],
@@ -28,7 +31,10 @@ class WorkerProfile {
   final String phone;
   final String avatar;
   final Trade trade;
+  final bool tradeSelected;
+  final String serviceCity;
   final int experienceYears;
+  final double dailyRate;
   final double rating;
   final int totalOrders;
   final List<String> certifications;
@@ -39,12 +45,23 @@ class WorkerProfile {
 
   String get tradeLabel => trade.label;
 
+  bool get isProfileComplete =>
+      name.trim().isNotEmpty &&
+      serviceCity.trim().isNotEmpty &&
+      tradeSelected &&
+      experienceYears >= 0 &&
+      dailyRate >= 1 &&
+      bio.trim().isNotEmpty;
+
   WorkerProfile copyWith({
     String? name,
     String? phone,
     String? avatar,
     Trade? trade,
+    bool? tradeSelected,
+    String? serviceCity,
     int? experienceYears,
+    double? dailyRate,
     double? rating,
     int? totalOrders,
     List<String>? certifications,
@@ -52,28 +69,33 @@ class WorkerProfile {
     String? bio,
     String? idCard,
     bool? isVerified,
-  }) =>
-      WorkerProfile(
-        name: name ?? this.name,
-        phone: phone ?? this.phone,
-        avatar: avatar ?? this.avatar,
-        trade: trade ?? this.trade,
-        experienceYears: experienceYears ?? this.experienceYears,
-        rating: rating ?? this.rating,
-        totalOrders: totalOrders ?? this.totalOrders,
-        certifications: certifications ?? this.certifications,
-        serviceAreas: serviceAreas ?? this.serviceAreas,
-        bio: bio ?? this.bio,
-        idCard: idCard ?? this.idCard,
-        isVerified: isVerified ?? this.isVerified,
-      );
+  }) => WorkerProfile(
+    name: name ?? this.name,
+    phone: phone ?? this.phone,
+    avatar: avatar ?? this.avatar,
+    trade: trade ?? this.trade,
+    tradeSelected: tradeSelected ?? this.tradeSelected,
+    serviceCity: serviceCity ?? this.serviceCity,
+    experienceYears: experienceYears ?? this.experienceYears,
+    dailyRate: dailyRate ?? this.dailyRate,
+    rating: rating ?? this.rating,
+    totalOrders: totalOrders ?? this.totalOrders,
+    certifications: certifications ?? this.certifications,
+    serviceAreas: serviceAreas ?? this.serviceAreas,
+    bio: bio ?? this.bio,
+    idCard: idCard ?? this.idCard,
+    isVerified: isVerified ?? this.isVerified,
+  );
 
   Map<String, dynamic> toJson() => {
     'name': name,
     'phone': phone,
     'avatar': avatar,
     'trade': trade.name,
+    'tradeSelected': tradeSelected,
+    'serviceCity': serviceCity,
     'experienceYears': experienceYears,
+    'dailyRate': dailyRate,
     'rating': rating,
     'totalOrders': totalOrders,
     'certifications': certifications,
@@ -88,11 +110,18 @@ class WorkerProfile {
     phone: j['phone'] as String? ?? '',
     avatar: j['avatar'] as String? ?? '',
     trade: Trade.values.byName(j['trade'] as String),
+    tradeSelected: j['tradeSelected'] as bool? ?? false,
+    serviceCity: j['serviceCity'] as String? ?? '',
     experienceYears: j['experienceYears'] as int? ?? 0,
+    dailyRate: (j['dailyRate'] as num?)?.toDouble() ?? 0,
     rating: (j['rating'] as num?)?.toDouble() ?? 0.0,
     totalOrders: j['totalOrders'] as int? ?? 0,
-    certifications: List<String>.from((j['certifications'] as List<dynamic>?) ?? []),
-    serviceAreas: List<String>.from((j['serviceAreas'] as List<dynamic>?) ?? []),
+    certifications: List<String>.from(
+      (j['certifications'] as List<dynamic>?) ?? [],
+    ),
+    serviceAreas: List<String>.from(
+      (j['serviceAreas'] as List<dynamic>?) ?? [],
+    ),
     bio: j['bio'] as String? ?? '',
     idCard: j['idCard'] as String? ?? '',
     isVerified: j['isVerified'] as bool? ?? false,
@@ -101,9 +130,9 @@ class WorkerProfile {
 
 // ── 工匠订单状态枚举 ──
 enum WorkerOrderStatus {
-  pending,   // 待接单
-  accepted,  // 已接单
-  inProgress,// 施工中
+  pending, // 待接单
+  accepted, // 已接单
+  inProgress, // 施工中
   completed, // 已完成
   cancelled, // 已取消
 }
@@ -176,25 +205,24 @@ class WorkerOrder {
     String? phaseName,
     bool clearPhaseName = false,
     List<String>? images,
-  }) =>
-      WorkerOrder(
-        id: id ?? this.id,
-        ownerName: ownerName ?? this.ownerName,
-        ownerPhone: ownerPhone ?? this.ownerPhone,
-        ownerAddress: ownerAddress ?? this.ownerAddress,
-        area: area ?? this.area,
-        requirement: requirement ?? this.requirement,
-        description: description ?? this.description,
-        trade: trade ?? this.trade,
-        status: status ?? this.status,
-        quotedPrice: clearQuotedPrice ? null : (quotedPrice ?? this.quotedPrice),
-        visitTime: clearVisitTime ? null : (visitTime ?? this.visitTime),
-        hasVisited: hasVisited ?? this.hasVisited,
-        createdAt: clearCreatedAt ? null : (createdAt ?? this.createdAt),
-        phaseIndex: clearPhaseIndex ? null : (phaseIndex ?? this.phaseIndex),
-        phaseName: clearPhaseName ? null : (phaseName ?? this.phaseName),
-        images: images ?? this.images,
-      );
+  }) => WorkerOrder(
+    id: id ?? this.id,
+    ownerName: ownerName ?? this.ownerName,
+    ownerPhone: ownerPhone ?? this.ownerPhone,
+    ownerAddress: ownerAddress ?? this.ownerAddress,
+    area: area ?? this.area,
+    requirement: requirement ?? this.requirement,
+    description: description ?? this.description,
+    trade: trade ?? this.trade,
+    status: status ?? this.status,
+    quotedPrice: clearQuotedPrice ? null : (quotedPrice ?? this.quotedPrice),
+    visitTime: clearVisitTime ? null : (visitTime ?? this.visitTime),
+    hasVisited: hasVisited ?? this.hasVisited,
+    createdAt: clearCreatedAt ? null : (createdAt ?? this.createdAt),
+    phaseIndex: clearPhaseIndex ? null : (phaseIndex ?? this.phaseIndex),
+    phaseName: clearPhaseName ? null : (phaseName ?? this.phaseName),
+    images: images ?? this.images,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -226,9 +254,13 @@ class WorkerOrder {
     trade: j['trade'] as String,
     status: WorkerOrderStatus.values.byName(j['status'] as String),
     quotedPrice: (j['quotedPrice'] as num?)?.toDouble(),
-    visitTime: j['visitTime'] != null ? DateTime.parse(j['visitTime'] as String) : null,
+    visitTime: j['visitTime'] != null
+        ? DateTime.parse(j['visitTime'] as String)
+        : null,
     hasVisited: (j['hasVisited'] as bool?) ?? false,
-    createdAt: j['createdAt'] != null ? DateTime.parse(j['createdAt'] as String) : null,
+    createdAt: j['createdAt'] != null
+        ? DateTime.parse(j['createdAt'] as String)
+        : null,
     phaseIndex: j['phaseIndex'] as int?,
     phaseName: j['phaseName'] as String?,
     images: List<String>.from((j['images'] as List<dynamic>?) ?? []),
@@ -268,15 +300,14 @@ class WorkerPhaseProgress {
     DateTime? completedAt,
     bool clearCompletedAt = false,
     int? dailyReportCount,
-  }) =>
-      WorkerPhaseProgress(
-        phaseIndex: phaseIndex ?? this.phaseIndex,
-        phaseName: phaseName ?? this.phaseName,
-        status: status ?? this.status,
-        startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
-        completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
-        dailyReportCount: dailyReportCount ?? this.dailyReportCount,
-      );
+  }) => WorkerPhaseProgress(
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    phaseName: phaseName ?? this.phaseName,
+    status: status ?? this.status,
+    startedAt: clearStartedAt ? null : (startedAt ?? this.startedAt),
+    completedAt: clearCompletedAt ? null : (completedAt ?? this.completedAt),
+    dailyReportCount: dailyReportCount ?? this.dailyReportCount,
+  );
 
   Map<String, dynamic> toJson() => {
     'phaseIndex': phaseIndex,
@@ -305,7 +336,7 @@ class WorkerPhaseProgress {
 // ── 施工日报（工匠每日完工上传）──
 enum WorkerReportStatus {
   submitted, // 已提交
-  read,      // 已读（业主已查看）
+  read, // 已读（业主已查看）
 }
 
 class WorkerDailyReport {
@@ -340,16 +371,15 @@ class WorkerDailyReport {
     String? content,
     List<String>? images,
     WorkerReportStatus? status,
-  }) =>
-      WorkerDailyReport(
-        id: id ?? this.id,
-        orderId: orderId ?? this.orderId,
-        date: date ?? this.date,
-        title: title ?? this.title,
-        content: content ?? this.content,
-        images: images ?? this.images,
-        status: status ?? this.status,
-      );
+  }) => WorkerDailyReport(
+    id: id ?? this.id,
+    orderId: orderId ?? this.orderId,
+    date: date ?? this.date,
+    title: title ?? this.title,
+    content: content ?? this.content,
+    images: images ?? this.images,
+    status: status ?? this.status,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -376,8 +406,8 @@ class WorkerDailyReport {
 // ── 验收状态枚举 ──
 enum WorkerInspectionStatus {
   pending, // 待验收
-  passed,  // 已通过
-  failed,  // 未通过
+  passed, // 已通过
+  failed, // 未通过
 }
 
 // ── 验收请求（工匠端视角）──
@@ -415,16 +445,15 @@ class WorkerInspectionRequest {
     String? comment,
     bool clearComment = false,
     List<String>? images,
-  }) =>
-      WorkerInspectionRequest(
-        id: id ?? this.id,
-        orderId: orderId ?? this.orderId,
-        phaseName: phaseName ?? this.phaseName,
-        requestTime: requestTime ?? this.requestTime,
-        status: status ?? this.status,
-        comment: clearComment ? null : (comment ?? this.comment),
-        images: images ?? this.images,
-      );
+  }) => WorkerInspectionRequest(
+    id: id ?? this.id,
+    orderId: orderId ?? this.orderId,
+    phaseName: phaseName ?? this.phaseName,
+    requestTime: requestTime ?? this.requestTime,
+    status: status ?? this.status,
+    comment: clearComment ? null : (comment ?? this.comment),
+    images: images ?? this.images,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -450,15 +479,15 @@ class WorkerInspectionRequest {
 
 // ── 收入类型枚举 ──
 enum EarningType {
-  deposit,  // 定金
-  balance,  // 尾款
-  bonus,    // 奖励
+  deposit, // 定金
+  balance, // 尾款
+  bonus, // 奖励
 }
 
 // ── 收入结算状态枚举 ──
 enum EarningSettlementStatus {
-  pending,   // 待结算
-  settled,   // 已到账
+  pending, // 待结算
+  settled, // 已到账
 }
 
 // ── 收入记录 ──
@@ -500,16 +529,15 @@ class EarningRecord {
     DateTime? time,
     String? orderTitle,
     EarningSettlementStatus? status,
-  }) =>
-      EarningRecord(
-        id: id ?? this.id,
-        orderId: orderId ?? this.orderId,
-        amount: amount ?? this.amount,
-        type: type ?? this.type,
-        time: time ?? this.time,
-        orderTitle: orderTitle ?? this.orderTitle,
-        status: status ?? this.status,
-      );
+  }) => EarningRecord(
+    id: id ?? this.id,
+    orderId: orderId ?? this.orderId,
+    amount: amount ?? this.amount,
+    type: type ?? this.type,
+    time: time ?? this.time,
+    orderTitle: orderTitle ?? this.orderTitle,
+    status: status ?? this.status,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -561,16 +589,15 @@ class WorkerMessage {
     bool? isRead,
     String? orderId,
     bool clearOrderId = false,
-  }) =>
-      WorkerMessage(
-        id: id ?? this.id,
-        title: title ?? this.title,
-        content: content ?? this.content,
-        category: category ?? this.category,
-        createdAt: createdAt ?? this.createdAt,
-        isRead: isRead ?? this.isRead,
-        orderId: clearOrderId ? null : (orderId ?? this.orderId),
-      );
+  }) => WorkerMessage(
+    id: id ?? this.id,
+    title: title ?? this.title,
+    content: content ?? this.content,
+    category: category ?? this.category,
+    createdAt: createdAt ?? this.createdAt,
+    isRead: isRead ?? this.isRead,
+    orderId: clearOrderId ? null : (orderId ?? this.orderId),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -615,15 +642,14 @@ class WorkerSettings {
     bool? orderNotifications,
     bool? inspectionNotifications,
     List<String>? serviceAreas,
-  }) =>
-      WorkerSettings(
-        acceptOrders: acceptOrders ?? this.acceptOrders,
-        pushNotifications: pushNotifications ?? this.pushNotifications,
-        orderNotifications: orderNotifications ?? this.orderNotifications,
-        inspectionNotifications:
-            inspectionNotifications ?? this.inspectionNotifications,
-        serviceAreas: serviceAreas ?? this.serviceAreas,
-      );
+  }) => WorkerSettings(
+    acceptOrders: acceptOrders ?? this.acceptOrders,
+    pushNotifications: pushNotifications ?? this.pushNotifications,
+    orderNotifications: orderNotifications ?? this.orderNotifications,
+    inspectionNotifications:
+        inspectionNotifications ?? this.inspectionNotifications,
+    serviceAreas: serviceAreas ?? this.serviceAreas,
+  );
 
   Map<String, dynamic> toJson() => {
     'acceptOrders': acceptOrders,
@@ -638,7 +664,9 @@ class WorkerSettings {
     pushNotifications: j['pushNotifications'] as bool? ?? true,
     orderNotifications: j['orderNotifications'] as bool? ?? true,
     inspectionNotifications: j['inspectionNotifications'] as bool? ?? true,
-    serviceAreas: List<String>.from((j['serviceAreas'] as List<dynamic>?) ?? []),
+    serviceAreas: List<String>.from(
+      (j['serviceAreas'] as List<dynamic>?) ?? [],
+    ),
   );
 }
 
@@ -681,15 +709,14 @@ class QuotationItem {
     double? unitPrice,
     double? quantity,
     String? unit,
-  }) =>
-      QuotationItem(
-        name: name ?? this.name,
-        category: category ?? this.category,
-        spec: spec ?? this.spec,
-        unitPrice: unitPrice ?? this.unitPrice,
-        quantity: quantity ?? this.quantity,
-        unit: unit ?? this.unit,
-      );
+  }) => QuotationItem(
+    name: name ?? this.name,
+    category: category ?? this.category,
+    spec: spec ?? this.spec,
+    unitPrice: unitPrice ?? this.unitPrice,
+    quantity: quantity ?? this.quantity,
+    unit: unit ?? this.unit,
+  );
 
   Map<String, dynamic> toJson() => {
     'name': name,
@@ -751,16 +778,15 @@ class Quotation {
     DateTime? createdAt,
     Object clearConfirmed = _notProvided,
     DateTime? confirmedAt,
-  }) =>
-      Quotation(
-        id: id ?? this.id,
-        orderId: orderId ?? this.orderId,
-        items: items ?? this.items,
-        createdAt: createdAt ?? this.createdAt,
-        confirmedAt: clearConfirmed == _notProvided
-            ? (confirmedAt ?? this.confirmedAt)
-            : (clearConfirmed is DateTime ? clearConfirmed : null),
-      );
+  }) => Quotation(
+    id: id ?? this.id,
+    orderId: orderId ?? this.orderId,
+    items: items ?? this.items,
+    createdAt: createdAt ?? this.createdAt,
+    confirmedAt: clearConfirmed == _notProvided
+        ? (confirmedAt ?? this.confirmedAt)
+        : (clearConfirmed is DateTime ? clearConfirmed : null),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,

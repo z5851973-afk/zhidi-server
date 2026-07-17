@@ -1,20 +1,22 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import '../../design/tokens.dart';
 import '../../app/owner_app_scope.dart';
 import '../../app/owner_app_state.dart';
-import '../../app/owner_models.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
 import 'my_home_page.dart';
 import '../chat/chat_page.dart';
 import '../message/message_page.dart';
+import '../renovation/renovation_budget_report_page.dart';
 import '../renovation/trade_select_page.dart';
 import 'worker/worker_list_page.dart';
 import 'master_selection_page.dart';
 import '../price/price_transparency_page.dart';
 import '../renovation/construction_guarantee_page.dart';
 import '../renovation/fund_bank_escrow_page.dart';
+import '../renovation/construction_standards_page.dart';
 import '../profile/profile_page.dart';
 import '../auth/login_page.dart';
 
@@ -53,18 +55,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onTabTapped(int index) async {
+    final appState = OwnerAppScope.of(context);
     // 首页以外的 tab 需要登录
     if (index != 0) {
-      final appState = OwnerAppScope.of(context);
       if (!appState.isLoggedIn) {
         final loggedIn = await Navigator.of(
           context,
         ).push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
-        if (!mounted || loggedIn != true) return;
+        if (!mounted) return;
+        if (loggedIn != true) return;
       }
     }
-    if (!mounted || index == _currentTab) return;
     setState(() => _currentTab = index);
+    if (index == 2) {
+      unawaited(appState.fetchRemoteBookings());
+    }
   }
 
   @override
@@ -354,26 +359,28 @@ class _WeatherAdviceCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 14),
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '成都市',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: ZdColors.textPrimary,
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '成都市',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: ZdColors.textPrimary,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 2),
-                  Text(
-                    '26°C  小雨 · 今日不宜室外施工',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: ZdColors.textSecondary,
+                    SizedBox(height: 2),
+                    Text(
+                      '26°C  小雨 · 今日不宜室外施工',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: ZdColors.textSecondary,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -777,10 +784,7 @@ class _GuaranteeCard extends StatelessWidget {
 class _SectionTitle extends StatelessWidget {
   final String title;
   final double spacing;
-  const _SectionTitle({
-    required this.title,
-    this.spacing = 10,
-  });
+  const _SectionTitle({required this.title, this.spacing = 10});
 
   @override
   Widget build(BuildContext context) {
@@ -932,23 +936,30 @@ class _HomeBanner extends StatelessWidget {
                         width: 0.2,
                       ),
                     ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TrustItem(
-                          icon: Icons.verified_user_outlined,
-                          label: '工人知底',
-                        ),
-                        _Divider(),
-                        _TrustItem(
-                          icon: Icons.bar_chart_outlined,
-                          label: '工价知底',
-                        ),
-                        _Divider(),
-                        _TrustItem(icon: Icons.build_outlined, label: '工艺知底'),
-                        _Divider(),
-                        _TrustItem(icon: Icons.shield_outlined, label: '平台托底'),
-                      ],
+                    child: const FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _TrustItem(
+                            icon: Icons.verified_user_outlined,
+                            label: '工人知底',
+                          ),
+                          _Divider(),
+                          _TrustItem(
+                            icon: Icons.bar_chart_outlined,
+                            label: '工价知底',
+                          ),
+                          _Divider(),
+                          _TrustItem(icon: Icons.build_outlined, label: '工艺知底'),
+                          _Divider(),
+                          _TrustItem(
+                            icon: Icons.shield_outlined,
+                            label: '平台托底',
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -1100,6 +1111,39 @@ class HomeRequirementHub extends StatelessWidget {
     }
   }
 
+  void _openBudgetFlow(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            _NewHomeRenovationFlowPage(scene: _ServiceRow.newHomeScene),
+      ),
+    );
+  }
+
+  void _openPriceTransparency(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PriceTransparencyPage()));
+  }
+
+  void _openConstructionStandards(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ConstructionStandardsPage()),
+    );
+  }
+
+  void _openWorkerSelection(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const TradeSelectPage()));
+  }
+
+  void _openFundEscrow(BuildContext context) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const FundBankEscrowPage()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -1108,6 +1152,14 @@ class HomeRequirementHub extends StatelessWidget {
         children: [
           // ── Hero: 3分钟匹配合适工人 ──
           _HeroSection(onMatch: () => _onMatch(context)),
+          const SizedBox(height: 14),
+          _TrustFlowCard(
+            onBudget: () => _openBudgetFlow(context),
+            onPrice: () => _openPriceTransparency(context),
+            onStandards: () => _openConstructionStandards(context),
+            onFindWorker: () => _openWorkerSelection(context),
+            onEscrow: () => _openFundEscrow(context),
+          ),
           const SizedBox(height: 20),
           // ── 按需找服务 ──
           const _ServiceRow(),
@@ -1152,87 +1204,89 @@ class _HeroSection extends StatelessWidget {
               ),
             ],
           ),
-          clipBehavior: Clip.antiAlias,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          clipBehavior: Clip.none,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              Row(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const _LeftNumber(),
-                        const SizedBox(height: 1),
-                        const Text(
-                          '匹配合适工人',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: _dark,
-                            letterSpacing: 0.5,
-                          ),
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _LeftNumber(),
+                            SizedBox(height: 2),
+                            Text(
+                              '匹配合适师傅',
+                              style: TextStyle(
+                                fontSize: 23,
+                                fontWeight: FontWeight.w700,
+                                color: _dark,
+                                height: 1.05,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 2),
-                        const Text(
-                          '',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w400,
-                            color: ZdColors.textSecondary,
-                          ),
-                        ),
-                      ],
+                      ),
+                      SizedBox(width: 145),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _CtaButton(onMatch: onMatch),
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.only(left: 16),
+                    child: Text(
+                      '先选需求，平台马上匹配师傅',
+                      style: TextStyle(fontSize: 12, color: Color(0xFF999999)),
                     ),
                   ),
-                  const _WorkerWithBubble(),
+                  const SizedBox(height: 8),
+                  const Wrap(
+                    spacing: 8,
+                    runSpacing: 2,
+                    children: [
+                      _TagItem(label: '严格筛选'),
+                      _TagItem(label: '实名认证'),
+                      _TagItem(label: '银行监管'),
+                    ],
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              _CtaButton(onMatch: onMatch),
-              const SizedBox(height: 6),
-              const Wrap(
-                spacing: 10,
-                runSpacing: 6,
-                children: [
-                  _TagItem(label: '严格筛选'),
-                  _TagItem(label: '实名认证'),
-                  _TagItem(label: '银行监管'),
-                ],
-              ),
+              const Positioned(right: 0, top: 30, child: _WorkerImage()),
+              const Positioned(right: 3, top: 0, child: _WorkerBubble()),
             ],
           ),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         // ── 数据统计条 ──
-        LayoutBuilder(
-          builder: (context, constraints) {
-            return Container(
-              key: const Key('home-stats-panel'),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFCFA),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFF5EDE5), width: 2.0),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.02),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.03),
-                    blurRadius: 2,
-                    offset: const Offset(0, 1),
-                  ),
-                ],
+        Container(
+          key: const Key('home-stats-panel'),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFFCFA),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFF5EDE5), width: 2.0),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 16,
+                offset: const Offset(0, 6),
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: const _HeroStatsPanel(),
-            );
-          },
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 2,
+                offset: const Offset(0, 1),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: const _HeroStatsPanel(),
         ),
       ],
     );
@@ -1244,47 +1298,40 @@ class _HeroStatsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: const [
-          SizedBox(
-            width: 70,
-            child: _StatCell(
-              icon: Icons.people_outline_rounded,
-              value: '12,368+',
-              label: '业主的选择',
-            ),
+    return const Row(
+      children: [
+        Expanded(
+          child: _StatCell(
+            icon: Icons.people_outline_rounded,
+            value: '12,368+',
+            label: '业主的选择',
           ),
-          SizedBox(width: 10),
-          SizedBox(
-            width: 70,
-            child: _StatCell(
-              icon: Icons.access_time_rounded,
-              value: '平均30分钟',
-              label: '快速响应',
-            ),
+        ),
+        SizedBox(width: 4),
+        Expanded(
+          child: _StatCell(
+            icon: Icons.access_time_rounded,
+            value: '平均30分钟',
+            label: '快速响应',
           ),
-          SizedBox(width: 10),
-          SizedBox(
-            width: 56,
-            child: _StatCell(
-              icon: Icons.thumb_up_outlined,
-              value: '99%',
-              label: '好评率',
-            ),
+        ),
+        SizedBox(width: 4),
+        Expanded(
+          child: _StatCell(
+            icon: Icons.thumb_up_outlined,
+            value: '99%',
+            label: '好评率',
           ),
-          SizedBox(width: 10),
-          SizedBox(
-            width: 56,
-            child: _StatCell(
-              icon: Icons.verified_user_rounded,
-              value: '100%',
-              label: '资质认证',
-            ),
+        ),
+        SizedBox(width: 4),
+        Expanded(
+          child: _StatCell(
+            icon: Icons.verified_user_rounded,
+            value: '100%',
+            label: '资质认证',
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1302,9 +1349,9 @@ class _LeftNumber extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           const Text(
-            '3',
+            '10',
             style: TextStyle(
-              fontSize: 34,
+              fontSize: 44,
               fontWeight: FontWeight.w900,
               color: _HeroSection._orange,
               height: 1,
@@ -1314,9 +1361,9 @@ class _LeftNumber extends StatelessWidget {
           const Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Text(
-              '分钟',
+              '秒',
               style: TextStyle(
-                fontSize: 17,
+                fontSize: 21,
                 fontWeight: FontWeight.w700,
                 color: _HeroSection._dark,
               ),
@@ -1328,42 +1375,46 @@ class _LeftNumber extends StatelessWidget {
   }
 }
 
-// ── 工人插画 + 气泡（独立组件）──
-class _WorkerWithBubble extends StatelessWidget {
-  const _WorkerWithBubble();
+// ── 工人图片（放大，溢出卡片）──
+class _WorkerImage extends StatelessWidget {
+  const _WorkerImage();
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return Image.asset(
+      'assets/images/worker_confident.png',
       width: 155,
-      height: 160,
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          const Positioned(
-            top: 2,
-            left: 34,
-            child: Text(
-              '最快当天可上门',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                color: ZdColors.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Image.asset(
-              'assets/images/worker_confident.png',
-              width: 150,
-              height: 140,
-              fit: BoxFit.contain,
-            ),
+      height: 135,
+      fit: BoxFit.contain,
+    );
+  }
+}
+
+// ── 气泡标签 ──
+class _WorkerBubble extends StatelessWidget {
+  const _WorkerBubble();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
+      ),
+      child: const Text(
+        '3分钟内响应',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 11,
+          color: ZdColors.primary,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -1412,12 +1463,12 @@ class _CtaButton extends StatelessWidget {
     return GestureDetector(
       onTap: onMatch,
       child: FractionallySizedBox(
-        widthFactor: 0.70,
+        widthFactor: 0.52,
         alignment: Alignment.centerLeft,
         child: Container(
           key: const Key('home-match-action'),
-          constraints: const BoxConstraints(minHeight: 34),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          constraints: const BoxConstraints(minHeight: 30),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
               colors: [ZdColors.primary, ZdColors.primaryDark],
@@ -1435,7 +1486,7 @@ class _CtaButton extends StatelessWidget {
           ),
           child: const Center(
             child: Text(
-              '立即匹配工人',
+              '立即找师傅',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
@@ -1468,12 +1519,15 @@ class _StatCell extends StatelessWidget {
       children: [
         Icon(icon, size: 18, color: ZdColors.primary),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
-            color: ZdColors.primary,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: ZdColors.primary,
+            ),
           ),
         ),
         const SizedBox(height: 2),
@@ -1490,20 +1544,307 @@ class _StatCell extends StatelessWidget {
   }
 }
 
+class _TrustFlowCard extends StatelessWidget {
+  const _TrustFlowCard({
+    required this.onBudget,
+    required this.onPrice,
+    required this.onStandards,
+    required this.onFindWorker,
+    required this.onEscrow,
+  });
+
+  final VoidCallback onBudget;
+  final VoidCallback onPrice;
+  final VoidCallback onStandards;
+  final VoidCallback onFindWorker;
+  final VoidCallback onEscrow;
+
+  static const _steps = [
+    _TrustFlowStepData(
+      index: '1',
+      title: '看预算',
+      subtitle: '先知道大概要花多少',
+      icon: Icons.calculate_outlined,
+    ),
+    _TrustFlowStepData(
+      index: '2',
+      title: '看工价',
+      subtitle: '每项人工价格有标准',
+      icon: Icons.price_check_outlined,
+    ),
+    _TrustFlowStepData(
+      index: '3',
+      title: '看标准',
+      subtitle: '知道师傅该怎么施工',
+      icon: Icons.rule_outlined,
+    ),
+    _TrustFlowStepData(
+      index: '4',
+      title: '找师傅',
+      subtitle: '按需求匹配可接单师傅',
+      icon: Icons.engineering_outlined,
+    ),
+    _TrustFlowStepData(
+      index: '5',
+      title: '托管下单',
+      subtitle: '验收通过后再付款',
+      icon: Icons.verified_user_outlined,
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('home-trust-flow-card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFE5D1)),
+        boxShadow: [
+          BoxShadow(
+            color: ZdColors.primary.withValues(alpha: 0.06),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  gradient: ZdColors.gradientPrimary,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.shield_outlined,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '装修找师傅，先知底再下单',
+                      style: TextStyle(
+                        color: ZdColors.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        height: 1.25,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '先了解价格和标准，再选择师傅，最后通过平台验收付款',
+                      style: TextStyle(
+                        color: ZdColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Column(
+            children: [
+              for (int i = 0; i < _steps.length; i++) ...[
+                _TrustFlowStep(
+                  data: _steps[i],
+                  isLast: i == _steps.length - 1,
+                  onTap: switch (i) {
+                    0 => onBudget,
+                    1 => onPrice,
+                    2 => onStandards,
+                    3 => onFindWorker,
+                    _ => onEscrow,
+                  },
+                ),
+                if (i != _steps.length - 1) const SizedBox(height: 8),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TrustFlowStepData {
+  const _TrustFlowStepData({
+    required this.index,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String index;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
+class _TrustFlowStep extends StatelessWidget {
+  const _TrustFlowStep({
+    required this.data,
+    required this.isLast,
+    required this.onTap,
+  });
+
+  final _TrustFlowStepData data;
+  final bool isLast;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Column(
+              children: [
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF0E5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(data.icon, color: ZdColors.primary, size: 17),
+                ),
+                if (!isLast)
+                  Container(
+                    width: 1,
+                    height: 12,
+                    margin: const EdgeInsets.only(top: 4),
+                    color: const Color(0xFFFFD6BC),
+                  ),
+              ],
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      data.title,
+                      style: const TextStyle(
+                        color: ZdColors.textPrimary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      '${data.index}. ${data.subtitle}',
+                      style: const TextStyle(
+                        color: ZdColors.textSecondary,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              color: ZdColors.textHint,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ── 按需找服务 ──
 class _ServiceRow extends StatelessWidget {
   const _ServiceRow();
 
+  static const newHomeScene = _ServiceScene(
+    title: '新房装修',
+    subtitle: '从毛坯到入住，一站式施工服务',
+    flowTitle: '新房装修流程',
+    icon: Icons.apartment_rounded,
+    accentColor: ZdColors.primary,
+    image: null,
+  );
+
+  static const _scenes = [
+    newHomeScene,
+    _ServiceScene(
+      title: '老房翻新',
+      subtitle: '解决老房空间、功能和美观问题',
+      flowTitle: '旧改流程',
+      icon: Icons.home_work_rounded,
+      accentColor: Color(0xFF8A6B56),
+      image: null,
+    ),
+    _ServiceScene(
+      title: '局部改造',
+      subtitle: '针对单个空间快速升级',
+      flowTitle: '局改需求',
+      icon: Icons.grid_view_rounded,
+      accentColor: Color(0xFF4CAF50),
+      image: null,
+    ),
+    _ServiceScene(
+      title: '找设计师',
+      subtitle: '专业方案规划，避免装修踩坑',
+      flowTitle: '设计师匹配',
+      icon: Icons.design_services_rounded,
+      accentColor: Color(0xFF7C4DFF),
+      image: null,
+    ),
+    _ServiceScene(
+      title: '验房收房',
+      subtitle: '入住前检查房屋质量问题',
+      flowTitle: '验房服务',
+      icon: Icons.fact_check_rounded,
+      accentColor: Color(0xFF2E7D32),
+      image: null,
+    ),
+  ];
+
   void _openConsultant(BuildContext context) {
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const ChatPage(workerName: 'AI装修顾问'),
-      ),
+      MaterialPageRoute(builder: (_) => const ChatPage(workerName: 'AI装修顾问')),
+    );
+  }
+
+  void _openScene(BuildContext context, _ServiceScene scene) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => _ServiceSceneFlowPage(scene: scene)),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final firstRow = _scenes.take(2).toList();
+    final secondRow = _scenes.skip(2).take(2).toList();
+    final finalScene = _scenes.last;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1531,7 +1872,10 @@ class _ServiceRow extends StatelessWidget {
             GestureDetector(
               onTap: () => _openConsultant(context),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFFFF0E5),
                   borderRadius: BorderRadius.circular(16),
@@ -1549,76 +1893,412 @@ class _ServiceRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          mainAxisSpacing: 10,
-          crossAxisSpacing: 10,
-          childAspectRatio: 2.0,
-          children: const [
-            _SvcCard(
-              icon: Icons.engineering_rounded,
-              iconColor: ZdColors.primary,
-              bgColor: Color(0xFFFFF0E5),
-              title: '全屋装修',
-            ),
-            _SvcCard(
-              icon: Icons.home_repair_service_rounded,
-              iconColor: Color(0xFF7C4DFF),
-              bgColor: Color(0xFFF3E5FF),
-              title: '旧房改造',
-            ),
-            _SvcCard(
-              icon: Icons.grid_view_rounded,
-              iconColor: Color(0xFF4CAF50),
-              bgColor: Color(0xFFE8F5E9),
-              title: '局部改造',
-            ),
-            _SvcCard(
-              icon: Icons.water_drop_outlined,
-              iconColor: Color(0xFFFFB800),
-              bgColor: Color(0xFFFFF8E1),
-              title: '防水维修',
-            ),
-            _SvcCard(
-              icon: Icons.fact_check_rounded,
-              iconColor: Color(0xFF4CAF50),
-              bgColor: Color(0xFFE8F5E9),
-              title: '验房收房',
-            ),
-            _SvcCard(
-              icon: Icons.more_horiz_rounded,
-              iconColor: Color(0xFF8A6B56),
-              bgColor: Color(0xFFF7F1EA),
-              title: '更多服务',
-            ),
-          ],
+        _ServiceSceneRow(
+          scenes: firstRow,
+          onTap: (scene) => _openScene(context, scene),
+        ),
+        const SizedBox(height: 10),
+        _ServiceSceneRow(
+          scenes: secondRow,
+          onTap: (scene) => _openScene(context, scene),
+        ),
+        const SizedBox(height: 10),
+        _ServiceSceneCard(
+          scene: finalScene,
+          fullWidth: true,
+          onTap: () => _openScene(context, finalScene),
         ),
       ],
     );
   }
 }
 
-class _SvcCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color bgColor;
-  final String title;
-
-  const _SvcCard({
-    required this.icon,
-    required this.iconColor,
-    required this.bgColor,
+class _ServiceScene {
+  const _ServiceScene({
     required this.title,
+    required this.subtitle,
+    required this.flowTitle,
+    required this.icon,
+    required this.accentColor,
+    required this.image,
+  });
+
+  final String title;
+  final String subtitle;
+  final String flowTitle;
+  final IconData icon;
+  final Color accentColor;
+  final ImageProvider? image;
+}
+
+class _ServiceSceneRow extends StatelessWidget {
+  const _ServiceSceneRow({required this.scenes, required this.onTap});
+
+  final List<_ServiceScene> scenes;
+  final void Function(_ServiceScene scene) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        for (int i = 0; i < scenes.length; i++) ...[
+          Expanded(
+            child: _ServiceSceneCard(
+              scene: scenes[i],
+              onTap: () => onTap(scenes[i]),
+            ),
+          ),
+          if (i != scenes.length - 1) const SizedBox(width: 10),
+        ],
+      ],
+    );
+  }
+}
+
+class _ServiceSceneCard extends StatelessWidget {
+  final _ServiceScene scene;
+  final bool fullWidth;
+  final VoidCallback onTap;
+
+  const _ServiceSceneCard({
+    required this.scene,
+    required this.onTap,
+    this.fullWidth = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          constraints: BoxConstraints(minHeight: fullWidth ? 128 : 166),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: fullWidth
+                ? Row(
+                    children: [
+                      SizedBox(
+                        width: 112,
+                        height: 92,
+                        child: _ServiceSceneImage(scene: scene),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(child: _ServiceSceneCopy(scene: scene)),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        height: 58,
+                        width: double.infinity,
+                        child: _ServiceSceneImage(scene: scene),
+                      ),
+                      const SizedBox(height: 10),
+                      _ServiceSceneCopy(scene: scene),
+                    ],
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceSceneImage extends StatelessWidget {
+  const _ServiceSceneImage({required this.scene});
+
+  final _ServiceScene scene;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          image: scene.image == null
+              ? null
+              : DecorationImage(image: scene.image!, fit: BoxFit.cover),
+          gradient: scene.image == null
+              ? LinearGradient(
+                  colors: [
+                    scene.accentColor.withValues(alpha: 0.18),
+                    const Color(0xFFFFF7F0),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -12,
+              bottom: -12,
+              child: Icon(
+                scene.icon,
+                size: 64,
+                color: scene.accentColor.withValues(alpha: 0.12),
+              ),
+            ),
+            Center(
+              child: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.86),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(scene.icon, size: 20, color: scene.accentColor),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceSceneCopy extends StatelessWidget {
+  const _ServiceSceneCopy({required this.scene});
+
+  final _ServiceScene scene;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          scene.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+            color: ZdColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          scene.subtitle,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 11,
+            height: 1.3,
+            color: ZdColors.textSecondary,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ServiceSceneFlowPage extends StatelessWidget {
+  const _ServiceSceneFlowPage({required this.scene});
+
+  final _ServiceScene scene;
+
+  @override
+  Widget build(BuildContext context) {
+    if (scene.flowTitle == '新房装修流程') {
+      return _NewHomeRenovationFlowPage(scene: scene);
+    }
+
+    return Scaffold(
+      backgroundColor: ZdColors.background,
+      appBar: AppBar(
+        title: Text(scene.flowTitle),
+        backgroundColor: ZdColors.background,
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 10,
+                offset: Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 180,
+                width: double.infinity,
+                child: _ServiceSceneImage(scene: scene),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                scene.title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: ZdColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                scene.subtitle,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: ZdColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NewHomeRenovationFlowPage extends StatefulWidget {
+  const _NewHomeRenovationFlowPage({required this.scene});
+
+  final _ServiceScene scene;
+
+  @override
+  State<_NewHomeRenovationFlowPage> createState() =>
+      _NewHomeRenovationFlowPageState();
+}
+
+class _NewHomeRenovationFlowPageState
+    extends State<_NewHomeRenovationFlowPage> {
+  String _area = '50-90㎡';
+  String _houseType = '普通住宅';
+  String _stage = '毛坯房';
+  String _grade = '品质装修';
+
+  void _openBudgetResult() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RenovationBudgetReportPage()),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: ZdColors.background,
+      appBar: AppBar(
+        title: const Text('新房装修流程'),
+        backgroundColor: ZdColors.background,
+        foregroundColor: ZdColors.textPrimary,
+        elevation: 0,
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: SizedBox(
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _openBudgetResult,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ZdColors.primary,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+            ),
+            child: const Text(
+              '生成装修预算',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _NewHomeIntroCard(scene: widget.scene),
+            const SizedBox(height: 14),
+            _RenovationStepCard(
+              stepLabel: '第一步：房屋信息',
+              title: '请输入您的房屋情况',
+              children: [
+                _RenovationChoiceGroup(
+                  label: '房屋面积：',
+                  options: const ['50㎡以下', '50-90㎡', '90-120㎡', '120㎡以上'],
+                  selectedValue: _area,
+                  onChanged: (value) => setState(() => _area = value),
+                ),
+                const SizedBox(height: 18),
+                _RenovationChoiceGroup(
+                  label: '房屋类型：',
+                  options: const ['普通住宅', '公寓', '别墅'],
+                  selectedValue: _houseType,
+                  onChanged: (value) => setState(() => _houseType = value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _RenovationStepCard(
+              stepLabel: '第二步：装修情况',
+              children: [
+                _RenovationChoiceGroup(
+                  label: '装修阶段：',
+                  options: const ['毛坯房', '精装改造'],
+                  selectedValue: _stage,
+                  onChanged: (value) => setState(() => _stage = value),
+                ),
+                const SizedBox(height: 18),
+                _RenovationChoiceGroup(
+                  label: '装修档次：',
+                  options: const ['简约实用', '品质装修', '高端装修'],
+                  selectedValue: _grade,
+                  onChanged: (value) => setState(() => _grade = value),
+                ),
+              ],
+            ),
+            const SizedBox(height: 88),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _NewHomeIntroCard extends StatelessWidget {
+  const _NewHomeIntroCard({required this.scene});
+
+  final _ServiceScene scene;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A000000),
@@ -1627,31 +2307,212 @@ class _SvcCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: bgColor),
-              child: Icon(icon, size: 22, color: iconColor),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 150,
+            width: double.infinity,
+            child: _ServiceSceneImage(scene: scene),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            scene.title,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              color: ZdColors.textPrimary,
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: ZdColors.textPrimary,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            scene.subtitle,
+            style: const TextStyle(
+              fontSize: 14,
+              height: 1.5,
+              color: ZdColors.textSecondary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RenovationStepCard extends StatelessWidget {
+  const _RenovationStepCard({
+    required this.stepLabel,
+    required this.children,
+    this.title,
+  });
+
+  final String stepLabel;
+  final String? title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: ZdColors.primary.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
                 ),
+                child: const Icon(
+                  Icons.check_rounded,
+                  size: 16,
+                  color: ZdColors.primary,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  stepLabel,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: ZdColors.textPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (title != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              title!,
+              style: const TextStyle(
+                fontSize: 14,
+                height: 1.45,
+                color: ZdColors.textSecondary,
               ),
             ),
           ],
+          const SizedBox(height: 18),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+class _RenovationChoiceGroup extends StatelessWidget {
+  const _RenovationChoiceGroup({
+    required this.label,
+    required this.options,
+    required this.selectedValue,
+    required this.onChanged,
+  });
+
+  final String label;
+  final List<String> options;
+  final String selectedValue;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: ZdColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final option in options)
+              _RenovationChoicePill(
+                label: option,
+                selected: option == selectedValue,
+                onTap: () => onChanged(option),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _RenovationChoicePill extends StatelessWidget {
+  const _RenovationChoicePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected ? const Color(0xFFFFF0E5) : ZdColors.background,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: selected
+                  ? ZdColors.primary
+                  : ZdColors.textSecondary.withValues(alpha: 0.12),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (selected) ...[
+                const Icon(
+                  Icons.check_circle_rounded,
+                  size: 16,
+                  color: ZdColors.primary,
+                ),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: selected ? ZdColors.primary : ZdColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1722,7 +2583,9 @@ class _TrustRow extends StatelessWidget {
                 title: '施工保障',
                 sub: '过程监管验收',
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ConstructionGuaranteePage()),
+                  MaterialPageRoute(
+                    builder: (_) => const ConstructionGuaranteePage(),
+                  ),
                 ),
               ),
             ),

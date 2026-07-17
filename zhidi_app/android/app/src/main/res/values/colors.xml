@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 开屏原生兜底色，与 Flutter SplashPage 渐变（#FFF8ED）及 splash_bg.png 暖米白保持一致 -->
+    <color name="splash_bg">#FFF8ED</color>
+</resources>
