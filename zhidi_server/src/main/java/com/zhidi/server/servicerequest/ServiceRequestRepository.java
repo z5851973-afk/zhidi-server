@@ -12,6 +12,9 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
 
 	List<ServiceRequest> findByOwnerUserIdOrderByCreatedAtDesc(UUID ownerUserId);
 
+	List<ServiceRequest> findByOwnerUserIdAndTradeAndServiceCityAndStatusOrderByCreatedAtDesc(
+			UUID ownerUserId, String trade, String serviceCity, ServiceRequestStatus status);
+
 	@Query("""
 		select r from ServiceRequest r
 		where r.id = :id and r.ownerUserId = :ownerId

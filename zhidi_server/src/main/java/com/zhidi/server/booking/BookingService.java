@@ -6,6 +6,7 @@ import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.servicerequest.ServiceRequest;
 import com.zhidi.server.servicerequest.ServiceRequestRepository;
+import com.zhidi.server.servicerequest.ServiceRequestStatus;
 import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import java.time.Instant;
@@ -53,10 +54,20 @@ public class BookingService {
 		String trade = normalize(request.trade(), worker.getPrimaryTrade());
 		String serviceCity = normalize(request.serviceCity(), worker.getServiceCity());
 
-		ServiceRequest serviceRequest = ServiceRequest.create(ownerUserId,
-			trade, serviceCity,
-			blankToNull(request.serviceAddress()), blankToNull(request.remark()));
-		serviceRequests.saveAndFlush(serviceRequest);
+		ServiceRequest serviceRequest = serviceRequests
+			.findByOwnerUserIdAndTradeAndServiceCityAndStatusOrderByCreatedAtDesc(
+				ownerUserId, trade, serviceCity, ServiceRequestStatus.OPEN)
+			.stream()
+			.findFirst()
+			.filter(sr -> !bookings.existsByServiceRequestIdAndWorkerUserId(
+				sr.getId(), worker.getUserId()))
+			.orElseGet(() -> {
+				ServiceRequest sr = ServiceRequest.create(ownerUserId,
+					trade, serviceCity,
+					blankToNull(request.serviceAddress()),
+					blankToNull(request.remark()));
+				return serviceRequests.saveAndFlush(sr);
+			});
 
 		Booking booking = Booking.createCandidate(serviceRequest, ownerUserId,
 			ownerName, owner.getPhone(), worker.getUserId(), worker.getName());

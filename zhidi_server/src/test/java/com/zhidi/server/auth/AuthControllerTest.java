@@ -11,8 +11,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserStatus;
+import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.dailyreport.DailyReportRepository;
+import com.zhidi.server.quote.QuoteRepository;
+import com.zhidi.server.servicerequest.ServiceRequestRepository;
+import com.zhidi.server.workercase.WorkerCaseRepository;
+import com.zhidi.server.owner.OwnerProfileRepository;
+import com.zhidi.server.worker.WorkerProfileRepository;
+import com.zhidi.server.auth.SmsVerificationCodeRepository;
+import com.zhidi.server.audit.OperationLogRepository;
 import com.zhidi.server.owner.OwnerProfileService;
 import com.zhidi.server.worker.WorkerProfileService;
 import java.util.Set;
@@ -48,6 +57,33 @@ class AuthControllerTest {
 
 	@MockitoBean
 	BookingService bookingService;
+
+	@MockitoBean
+	DailyReportRepository dailyReports;
+
+	@MockitoBean
+	BookingRepository bookingRepository;
+
+	@MockitoBean
+	QuoteRepository quotes;
+
+	@MockitoBean
+	ServiceRequestRepository serviceRequests;
+
+	@MockitoBean
+	WorkerCaseRepository workerCases;
+
+	@MockitoBean
+	OwnerProfileRepository ownerProfiles;
+
+	@MockitoBean
+	WorkerProfileRepository workerProfiles;
+
+	@MockitoBean
+	SmsVerificationCodeRepository smsCodes;
+
+	@MockitoBean
+	OperationLogRepository operationLogs;
 
 	@MockitoBean
 	UserRepository userRepository;
