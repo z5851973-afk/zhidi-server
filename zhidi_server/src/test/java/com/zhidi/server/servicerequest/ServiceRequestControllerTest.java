@@ -1,6 +1,7 @@
-package com.zhidi.server.booking;
+package com.zhidi.server.servicerequest;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -14,15 +15,18 @@ import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
+import com.zhidi.server.audit.OperationLogRepository;
 import com.zhidi.server.auth.AuthService;
 import com.zhidi.server.auth.JwtTokenService;
 import com.zhidi.server.auth.SmsVerificationCodeRepository;
-import com.zhidi.server.audit.OperationLogRepository;
+import com.zhidi.server.booking.BookingRepository;
+import com.zhidi.server.booking.BookingResponse;
+import com.zhidi.server.booking.BookingService;
+import com.zhidi.server.booking.BookingStatus;
 import com.zhidi.server.dailyreport.DailyReportRepository;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.owner.OwnerProfileService;
 import com.zhidi.server.quote.QuoteRepository;
-import com.zhidi.server.servicerequest.ServiceRequestRepository;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import com.zhidi.server.worker.WorkerProfileService;
 import com.zhidi.server.workercase.WorkerCaseRepository;
@@ -44,17 +48,19 @@ import org.springframework.test.web.servlet.MockMvc;
 		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"
 		+ "org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration,"
 		+ "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration",
-	"auth.jwt.secret=booking-controller-test-secret-at-least-thirty-two-bytes"
+	"auth.jwt.secret=service-request-controller-test-secret-12345678"
 })
 @AutoConfigureMockMvc
-class BookingControllerTest {
+class ServiceRequestControllerTest {
 
 	private static final UUID OWNER_ID =
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000201");
 	private static final UUID WORKER_ID =
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000202");
-	private static final UUID BOOKING_ID =
+	private static final UUID REQUEST_ID =
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000203");
+	private static final UUID WORKER_USER_ID =
+		UUID.fromString("01904f24-3f5b-7000-8000-000000000204");
 
 	@Autowired
 	MockMvc mvc;
@@ -63,10 +69,16 @@ class BookingControllerTest {
 	JwtTokenService tokens;
 
 	@MockitoBean
+	ServiceRequestService service;
+
+	@MockitoBean
 	BookingService bookingService;
 
 	@MockitoBean
 	BookingRepository bookingRepository;
+
+	@MockitoBean
+	ServiceRequestRepository serviceRequestRepository;
 
 	@MockitoBean
 	OwnerProfileService ownerProfileService;
@@ -87,9 +99,6 @@ class BookingControllerTest {
 	QuoteRepository quotes;
 
 	@MockitoBean
-	ServiceRequestRepository serviceRequests;
-
-	@MockitoBean
 	WorkerProfileRepository workerProfiles;
 
 	@MockitoBean
@@ -105,117 +114,102 @@ class BookingControllerTest {
 	OperationLogRepository operationLogs;
 
 	@Test
-	void ownerCreatesBookingUsingPrincipalIdentity() throws Exception {
+	void ownerCreatesServiceRequest() throws Exception {
 		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
-		when(bookingService.create(any(), any())).thenReturn(response(BookingStatus.PENDING));
+		when(service.createRequest(any(), any())).thenReturn(singleResponse());
 
-		mvc.perform(post("/api/v1/bookings")
+		mvc.perform(post("/api/v1/owners/me/service-requests")
 				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
 				.contentType(APPLICATION_JSON)
 				.content("""
-					{"workerUserId":"01904f24-3f5b-7000-8000-000000000202",
-					 "trade":"泥工","serviceCity":"杭州","serviceAddress":"西湖区",
-					 "remark":"厨房墙砖铺贴"}
+					{"trade":"水电","serviceCity":"成都","serviceAddress":"高新区 1 号",
+					 "remark":"旧房水电改造"}
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.code").value("OK"))
-			.andExpect(jsonPath("$.data.id").value(BOOKING_ID.toString()))
-			.andExpect(jsonPath("$.data.status").value("PENDING"))
-			.andExpect(jsonPath("$.data.ownerName").value("林业主"))
-			.andExpect(jsonPath("$.data.ownerPhone").value("16600000001"))
-			.andExpect(jsonPath("$.data.workerName").value("周师傅"));
+			.andExpect(jsonPath("$.data.id").value(REQUEST_ID.toString()))
+			.andExpect(jsonPath("$.data.trade").value("水电"))
+			.andExpect(jsonPath("$.data.status").value("OPEN"));
 
-		verify(bookingService).create(OWNER_ID, new BookingRequest(WORKER_ID,
-			"泥工", "杭州", "西湖区", "厨房墙砖铺贴"));
+		verify(service).createRequest(eq(OWNER_ID),
+			eq(new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", "旧房水电改造")));
 	}
 
 	@Test
-	void workerCannotCreateOwnerBooking() throws Exception {
+	void workerCannotCreateServiceRequest() throws Exception {
 		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
 
-		mvc.perform(post("/api/v1/bookings")
+		mvc.perform(post("/api/v1/owners/me/service-requests")
 				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER))
 				.contentType(APPLICATION_JSON)
-				.content("{\"workerUserId\":\"" + WORKER_ID + "\"}"))
+				.content("{\"trade\":\"水电\",\"serviceCity\":\"成都\"}"))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
-		verify(bookingService, never()).create(any(), any());
+		verify(service, never()).createRequest(any(), any());
 	}
 
 	@Test
-	void ownerListsOwnBookings() throws Exception {
+	void ownerListsOwnServiceRequests() throws Exception {
 		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
-		when(bookingService.listForOwner(OWNER_ID)).thenReturn(List.of(response(BookingStatus.PENDING)));
+		when(service.listOwnerRequests(OWNER_ID)).thenReturn(List.of(singleResponse()));
 
-		mvc.perform(get("/api/v1/owners/me/bookings")
+		mvc.perform(get("/api/v1/owners/me/service-requests")
 				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data[0].id").value(BOOKING_ID.toString()));
+			.andExpect(jsonPath("$.data[0].id").value(REQUEST_ID.toString()))
+			.andExpect(jsonPath("$.data[0].status").value("OPEN"));
 
-		verify(bookingService).listForOwner(OWNER_ID);
+		verify(service).listOwnerRequests(OWNER_ID);
 	}
 
 	@Test
-	void workerListsAndAcceptsOwnBookings() throws Exception {
-		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
-		when(bookingService.listForWorker(WORKER_ID)).thenReturn(List.of(response(BookingStatus.PENDING)));
-		when(bookingService.accept(WORKER_ID, BOOKING_ID)).thenReturn(response(BookingStatus.ACCEPTED));
+	void ownerAddsCandidateToRequest() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(service.addCandidate(any(), any(), any())).thenReturn(responseWithCandidates());
 
-		mvc.perform(get("/api/v1/workers/me/bookings")
-				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER)))
+		mvc.perform(post("/api/v1/owners/me/service-requests/{requestId}/candidates",
+					REQUEST_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
+				.contentType(APPLICATION_JSON)
+				.content("{\"workerUserId\":\"" + WORKER_USER_ID + "\"}"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data[0].status").value("PENDING"));
+			.andExpect(jsonPath("$.code").value("OK"))
+			.andExpect(jsonPath("$.data.candidates[0].workerUserId")
+				.value(WORKER_USER_ID.toString()));
 
-		mvc.perform(post("/api/v1/workers/me/bookings/{id}/accept", BOOKING_ID)
-				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER)))
+		verify(service).addCandidate(eq(OWNER_ID), eq(REQUEST_ID),
+			eq(new CandidateCreateRequest(WORKER_USER_ID)));
+	}
+
+	@Test
+	void ownerCancelsServiceRequest() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(service.cancelRequest(OWNER_ID, REQUEST_ID))
+			.thenReturn(responseWithStatus(ServiceRequestStatus.CANCELLED));
+
+		mvc.perform(post("/api/v1/owners/me/service-requests/{requestId}/cancel",
+					REQUEST_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.data.status").value("ACCEPTED"));
+			.andExpect(jsonPath("$.code").value("OK"))
+			.andExpect(jsonPath("$.data.status").value("CANCELLED"));
 
-		verify(bookingService).listForWorker(WORKER_ID);
-		verify(bookingService).accept(WORKER_ID, BOOKING_ID);
+		verify(service).cancelRequest(OWNER_ID, REQUEST_ID);
 	}
 
 	@Test
 	void invalidCreateRequestReturnsValidationError() throws Exception {
 		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
 
-		mvc.perform(post("/api/v1/bookings")
+		mvc.perform(post("/api/v1/owners/me/service-requests")
 				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
 				.contentType(APPLICATION_JSON)
-				.content("{\"workerUserId\":null,\"remark\":\"" + "x".repeat(501) + "\"}"))
+				.content("{\"remark\":\"" + "x".repeat(501) + "\"}"))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
-		verify(bookingService, never()).create(any(), any());
-	}
-
-	@Test
-	void ownerCancelBlankReasonReturnsValidationError() throws Exception {
-		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
-
-		mvc.perform(post("/api/v1/owners/me/bookings/{id}/cancel", BOOKING_ID)
-				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
-				.contentType(APPLICATION_JSON)
-				.content("{\"reason\":\"\"}"))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-
-		verify(bookingService, never()).ownerCancel(any(), any(), any());
-	}
-
-	@Test
-	void workerCancelBlankReasonReturnsValidationError() throws Exception {
-		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
-
-		mvc.perform(post("/api/v1/workers/me/bookings/{id}/cancel", BOOKING_ID)
-				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER))
-				.contentType(APPLICATION_JSON)
-				.content("{\"reason\":\"   \"}"))
-			.andExpect(status().isBadRequest())
-			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-
-		verify(bookingService, never()).workerCancel(any(), any(), any());
+		verify(service, never()).createRequest(any(), any());
 	}
 
 	private void givenDatabaseUser(UUID userId, String phone, UserRole role) {
@@ -230,12 +224,28 @@ class BookingControllerTest {
 		return "Bearer " + tokens.issue(userId, "19999999999", Set.of(role)).accessToken();
 	}
 
-	private BookingResponse response(BookingStatus status) {
-		Instant now = Instant.parse("2026-07-15T10:00:00Z");
-		return new BookingResponse(BOOKING_ID, BOOKING_ID,
+	private ServiceRequestResponse singleResponse() {
+		return responseWithStatus(ServiceRequestStatus.OPEN);
+	}
+
+	private ServiceRequestResponse responseWithStatus(ServiceRequestStatus status) {
+		Instant now = Instant.parse("2026-07-17T10:00:00Z");
+		return new ServiceRequestResponse(REQUEST_ID, OWNER_ID,
+			"水电", "成都", "高新区 1 号", "旧房水电改造",
+			status, List.of(), now, now);
+	}
+
+	private ServiceRequestResponse responseWithCandidates() {
+		Instant now = Instant.parse("2026-07-17T10:00:00Z");
+		BookingResponse candidate = new BookingResponse(
+			UUID.randomUUID(), REQUEST_ID,
 			OWNER_ID, "林业主", "16600000001",
-			WORKER_ID, "周师傅",
-			"泥工", "杭州", "西湖区", "厨房墙砖铺贴", status,
+			WORKER_USER_ID, "张师傅",
+			"水电", "成都", "高新区 1 号", "旧房水电改造",
+			BookingStatus.PENDING,
 			null, null, null, now, now);
+		return new ServiceRequestResponse(REQUEST_ID, OWNER_ID,
+			"水电", "成都", "高新区 1 号", "旧房水电改造",
+			ServiceRequestStatus.COMPARING, List.of(candidate), now, now);
 	}
 }

@@ -5,23 +5,35 @@ import 'package:http/http.dart' as http;
 
 import 'auth_api_client.dart';
 
-abstract interface class OwnerBookingApi {
-  Future<RemoteOwnerBooking> createBooking(
+abstract interface class ServiceRequestApi {
+  Future<RemoteServiceRequest> createRequest(
     String accessToken,
-    OwnerBookingCreateRequest request,
+    ServiceRequestDraft draft,
   );
 
-  Future<List<RemoteOwnerBooking>> listOwnerBookings(String accessToken);
+  Future<List<RemoteServiceRequest>> listOwnerRequests(String accessToken);
 
-  Future<RemoteOwnerBooking> cancelBooking(
+  Future<RemoteServiceRequest> addCandidate(
+    String accessToken,
+    String requestId,
+    String workerUserId,
+  );
+
+  Future<RemoteCandidateBooking> cancelAsOwner(
+    String accessToken,
+    String bookingId,
+    String reason,
+  );
+
+  Future<RemoteCandidateBooking> cancelAsWorker(
     String accessToken,
     String bookingId,
     String reason,
   );
 }
 
-final class OwnerBookingApiClient implements OwnerBookingApi {
-  OwnerBookingApiClient({
+final class ServiceRequestApiClient implements ServiceRequestApi {
+  ServiceRequestApiClient({
     Uri? baseUrl,
     http.Client? httpClient,
     this.requestTimeout = const Duration(seconds: 10),
@@ -33,39 +45,69 @@ final class OwnerBookingApiClient implements OwnerBookingApi {
   final Duration requestTimeout;
 
   @override
-  Future<RemoteOwnerBooking> createBooking(
+  Future<RemoteServiceRequest> createRequest(
     String accessToken,
-    OwnerBookingCreateRequest request,
+    ServiceRequestDraft draft,
   ) async {
     final response = await _post(
-      '/api/v1/bookings',
+      '/api/v1/owners/me/service-requests',
       accessToken,
-      jsonEncode(request.toJson()),
+      jsonEncode(draft.toJson()),
     );
-    return _parseBooking(response);
+    return _parseServiceRequest(response);
   }
 
   @override
-  Future<List<RemoteOwnerBooking>> listOwnerBookings(String accessToken) async {
-    final response = await _get('/api/v1/owners/me/bookings', accessToken);
-    return _parseBookingList(response);
+  Future<List<RemoteServiceRequest>> listOwnerRequests(
+      String accessToken) async {
+    final response =
+        await _get('/api/v1/owners/me/service-requests', accessToken);
+    return _parseServiceRequestList(response);
   }
 
   @override
-  Future<RemoteOwnerBooking> cancelBooking(
-      String accessToken, String bookingId, String reason) async {
+  Future<RemoteServiceRequest> addCandidate(
+    String accessToken,
+    String requestId,
+    String workerUserId,
+  ) async {
+    final response = await _post(
+      '/api/v1/owners/me/service-requests/$requestId/candidates',
+      accessToken,
+      jsonEncode({'workerUserId': workerUserId}),
+    );
+    return _parseServiceRequest(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> cancelAsOwner(
+    String accessToken,
+    String bookingId,
+    String reason,
+  ) async {
     final response = await _post(
       '/api/v1/owners/me/bookings/$bookingId/cancel',
       accessToken,
       jsonEncode({'reason': reason}),
     );
-    return _parseBooking(response);
+    return _parseCandidateBooking(response);
   }
 
-  Future<http.Response> _get(
-    String path,
+  @override
+  Future<RemoteCandidateBooking> cancelAsWorker(
     String accessToken,
+    String bookingId,
+    String reason,
   ) async {
+    final response = await _post(
+      '/api/v1/workers/me/bookings/$bookingId/cancel',
+      accessToken,
+      jsonEncode({'reason': reason}),
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  Future<http.Response> _get(String path, String accessToken) async {
     final request = http.Request('GET', baseUrl.resolve(path))
       ..headers.addAll({
         'accept': 'application/json',
@@ -120,25 +162,24 @@ final class OwnerBookingApiClient implements OwnerBookingApi {
       );
     }
   }
+
+  void close() => _httpClient.close();
 }
 
-final class OwnerBookingCreateRequest {
-  const OwnerBookingCreateRequest({
-    required this.workerUserId,
-    this.trade,
-    this.serviceCity,
+final class ServiceRequestDraft {
+  const ServiceRequestDraft({
+    required this.trade,
+    required this.serviceCity,
     this.serviceAddress,
     this.remark,
   });
 
-  final String workerUserId;
-  final String? trade;
-  final String? serviceCity;
+  final String trade;
+  final String serviceCity;
   final String? serviceAddress;
   final String? remark;
 
   Map<String, dynamic> toJson() => {
-    'workerUserId': workerUserId,
     'trade': trade,
     'serviceCity': serviceCity,
     'serviceAddress': serviceAddress,
@@ -146,17 +187,63 @@ final class OwnerBookingCreateRequest {
   };
 }
 
-final class RemoteOwnerBooking {
-  const RemoteOwnerBooking({
+final class RemoteServiceRequest {
+  const RemoteServiceRequest({
     required this.id,
     required this.ownerUserId,
+    required this.trade,
+    required this.serviceCity,
+    this.serviceAddress,
+    this.remark,
+    required this.status,
+    required this.candidates,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory RemoteServiceRequest.fromJson(Map<String, dynamic> json) {
+    return RemoteServiceRequest(
+      id: _requiredString(json, 'id'),
+      ownerUserId: _requiredString(json, 'ownerUserId'),
+      trade: _requiredString(json, 'trade'),
+      serviceCity: _requiredString(json, 'serviceCity'),
+      serviceAddress: _nullableString(json, 'serviceAddress'),
+      remark: _nullableString(json, 'remark'),
+      status: _requiredString(json, 'status'),
+      candidates: (json['candidates'] as List)
+          .map((e) =>
+              RemoteCandidateBooking.fromJson(Map<String, dynamic>.from(e)))
+          .toList(),
+      createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+      updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
+    );
+  }
+
+  final String id;
+  final String ownerUserId;
+  final String trade;
+  final String serviceCity;
+  final String? serviceAddress;
+  final String? remark;
+  final String status;
+  final List<RemoteCandidateBooking> candidates;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+}
+
+final class RemoteCandidateBooking {
+  const RemoteCandidateBooking({
+    required this.id,
     required this.serviceRequestId,
+    required this.ownerUserId,
+    required this.ownerName,
+    required this.ownerPhone,
     required this.workerUserId,
     required this.workerName,
     required this.trade,
     required this.serviceCity,
-    required this.serviceAddress,
-    required this.remark,
+    this.serviceAddress,
+    this.remark,
     required this.status,
     this.cancelledBy,
     this.cancelReason,
@@ -165,11 +252,13 @@ final class RemoteOwnerBooking {
     required this.updatedAt,
   });
 
-  factory RemoteOwnerBooking.fromJson(Map<String, dynamic> json) {
-    return RemoteOwnerBooking(
+  factory RemoteCandidateBooking.fromJson(Map<String, dynamic> json) {
+    return RemoteCandidateBooking(
       id: _requiredString(json, 'id'),
-      ownerUserId: _requiredString(json, 'ownerUserId'),
       serviceRequestId: _requiredString(json, 'serviceRequestId'),
+      ownerUserId: _requiredString(json, 'ownerUserId'),
+      ownerName: _requiredString(json, 'ownerName'),
+      ownerPhone: _requiredString(json, 'ownerPhone'),
       workerUserId: _requiredString(json, 'workerUserId'),
       workerName: _requiredString(json, 'workerName'),
       trade: _requiredString(json, 'trade'),
@@ -188,8 +277,10 @@ final class RemoteOwnerBooking {
   }
 
   final String id;
-  final String ownerUserId;
   final String serviceRequestId;
+  final String ownerUserId;
+  final String ownerName;
+  final String ownerPhone;
   final String workerUserId;
   final String workerName;
   final String trade;
@@ -204,7 +295,7 @@ final class RemoteOwnerBooking {
   final DateTime updatedAt;
 }
 
-RemoteOwnerBooking _parseBooking(http.Response response) {
+RemoteServiceRequest _parseServiceRequest(http.Response response) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! Map<String, dynamic>) {
@@ -215,7 +306,7 @@ RemoteOwnerBooking _parseBooking(http.Response response) {
     );
   }
   try {
-    return RemoteOwnerBooking.fromJson(data);
+    return RemoteServiceRequest.fromJson(data);
   } on FormatException {
     throw AuthApiException(
       code: 'INVALID_RESPONSE',
@@ -231,7 +322,7 @@ RemoteOwnerBooking _parseBooking(http.Response response) {
   }
 }
 
-List<RemoteOwnerBooking> _parseBookingList(http.Response response) {
+List<RemoteServiceRequest> _parseServiceRequestList(http.Response response) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! List) {
@@ -243,10 +334,37 @@ List<RemoteOwnerBooking> _parseBookingList(http.Response response) {
   }
   try {
     return data
-        .map((e) => RemoteOwnerBooking.fromJson(
+        .map((e) => RemoteServiceRequest.fromJson(
               Map<String, dynamic>.from(e as Map),
             ))
         .toList();
+  } on FormatException {
+    throw AuthApiException(
+      code: 'INVALID_RESPONSE',
+      message: '服务器响应格式异常',
+      statusCode: response.statusCode,
+    );
+  } on TypeError {
+    throw AuthApiException(
+      code: 'INVALID_RESPONSE',
+      message: '服务器响应格式异常',
+      statusCode: response.statusCode,
+    );
+  }
+}
+
+RemoteCandidateBooking _parseCandidateBooking(http.Response response) {
+  final envelope = _parseEnvelope(response);
+  final data = envelope['data'];
+  if (data is! Map<String, dynamic>) {
+    throw AuthApiException(
+      code: 'INVALID_RESPONSE',
+      message: '服务器响应缺少数据',
+      statusCode: response.statusCode,
+    );
+  }
+  try {
+    return RemoteCandidateBooking.fromJson(data);
   } on FormatException {
     throw AuthApiException(
       code: 'INVALID_RESPONSE',

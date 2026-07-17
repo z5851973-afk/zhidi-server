@@ -3,6 +3,7 @@ package com.zhidi.server.servicerequest;
 import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.booking.Booking;
+import com.zhidi.server.booking.BookingCancellationActor;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingResponse;
 import com.zhidi.server.booking.BookingStatus;
@@ -119,7 +120,7 @@ public class ServiceRequestService {
 		for (Booking b : candidates) {
 			if (b.getStatus() == BookingStatus.PENDING
 					|| b.getStatus() == BookingStatus.ACCEPTED) {
-				b.cancel("OWNER", "需求已取消", now);
+				b.cancel(BookingCancellationActor.OWNER, "需求已取消", now);
 			}
 		}
 

@@ -177,12 +177,13 @@ public class Booking extends BaseEntity {
 		};
 	}
 
-	public void cancel(String cancelledBy, String cancelReason, Instant cancelledAt) {
+	public void cancel(BookingCancellationActor actor, String cancelReason,
+			Instant cancelledAt) {
 		if (!canCancelBeforeOnSite()) {
 			throw new IllegalStateException("工人确认上门后不能普通取消");
 		}
 		this.status = BookingStatus.CANCELLED;
-		this.cancelledBy = Objects.requireNonNull(cancelledBy);
+		this.cancelledBy = Objects.requireNonNull(actor).name();
 		this.cancelReason = Objects.requireNonNull(cancelReason).trim();
 		this.cancelledAt = Objects.requireNonNull(cancelledAt);
 	}

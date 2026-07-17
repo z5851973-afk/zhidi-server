@@ -124,11 +124,20 @@ public class BookingService {
 	}
 
 	@Transactional
-	public BookingResponse cancel(UUID ownerUserId, UUID bookingId) {
+	public BookingResponse ownerCancel(UUID ownerUserId, UUID bookingId,
+			String reason) {
 		Booking booking = bookings.findByIdAndOwnerUserId(bookingId, ownerUserId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
-		booking.cancel("OWNER", "取消预约", Instant.now());
+		booking.cancel(BookingCancellationActor.OWNER, reason, Instant.now());
+		return toResponse(booking);
+	}
+
+	@Transactional
+	public BookingResponse workerCancel(UUID workerUserId, UUID bookingId,
+			String reason) {
+		Booking booking = findWorkerBooking(workerUserId, bookingId);
+		booking.cancel(BookingCancellationActor.WORKER, reason, Instant.now());
 		return toResponse(booking);
 	}
 

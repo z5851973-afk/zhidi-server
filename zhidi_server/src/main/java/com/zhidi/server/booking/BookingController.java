@@ -71,13 +71,41 @@ public class BookingController {
 		return ApiResponse.ok(bookingService.reject(principal.userId(), id), traceId());
 	}
 
-	@PostMapping("/api/v1/bookings/{id}/cancel")
+	@PostMapping("/api/v1/owners/me/bookings/{id}/cancel")
 	@PreAuthorize("hasRole('OWNER')")
 	@Operation(summary = "业主取消预约")
-	public ApiResponse<BookingResponse> cancel(
+	public ApiResponse<BookingResponse> ownerCancel(
 			@AuthenticationPrincipal CurrentUserPrincipal principal,
-			@PathVariable UUID id) {
-		return ApiResponse.ok(bookingService.cancel(principal.userId(), id), traceId());
+			@PathVariable UUID id,
+			@Valid @RequestBody BookingCancellationRequest request) {
+		return ApiResponse.ok(
+			bookingService.ownerCancel(principal.userId(), id, request.reason()),
+			traceId());
+	}
+
+	@PostMapping("/api/v1/workers/me/bookings/{id}/cancel")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人取消预约")
+	public ApiResponse<BookingResponse> workerCancel(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @RequestBody BookingCancellationRequest request) {
+		return ApiResponse.ok(
+			bookingService.workerCancel(principal.userId(), id, request.reason()),
+			traceId());
+	}
+
+	// Temporary legacy route — remove after Flutter client is upgraded
+	@PostMapping("/api/v1/bookings/{id}/cancel")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主取消预约（旧路径）")
+	public ApiResponse<BookingResponse> cancelLegacy(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @RequestBody BookingCancellationRequest request) {
+		return ApiResponse.ok(
+			bookingService.ownerCancel(principal.userId(), id, request.reason()),
+			traceId());
 	}
 
 	private String traceId() {
