@@ -1,2 +1,9 @@
 .superpowers/
 .worktrees/
+
+# System
+**/.DS_Store
+
+# Temporary caches
+**/.codex-flutter-home/
+**/.codex-audits/

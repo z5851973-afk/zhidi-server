@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>知底 - 我的</title>
+  <style>
+    :root {
+      --bg: #f6f4ef;
+      --card: #ffffff;
+      --ink: #141414;
+      --muted: #8d8d8d;
+      --orange: #ff7a2f;
+      --orange-soft: rgba(255, 122, 47, 0.10);
+      --green: #2b8a66;
+      --line: rgba(20, 20, 20, 0.08);
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.05);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #f5f2ea 0%, #f7f6f3 34%, #f2f1ee 100%);
+      color: var(--ink);
+    }
+    .phone {
+      width: min(100vw, 420px);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 22px 14px 240px;
+      position: relative;
+    }
+    .top-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 4px 0;
+      color: #1a1a1a;
+      font-weight: 700;
+      font-size: 26px;
+    }
+    .gear {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.72);
+      border: 1px solid var(--line);
+      display: grid;
+      place-items: center;
+      box-shadow: var(--shadow);
+      font-size: 20px;
+    }
+    .hero {
+      margin-top: 28px;
+      display: grid;
+      grid-template-columns: 76px 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 6px 18px;
+    }
+    .avatar {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #4a4a4a, #1f1f1f);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.12);
+      overflow: hidden;
+      position: relative;
+    }
+    .avatar::after {
+      content: "";
+      position: absolute;
+      inset: 14px 18px 20px;
+      border-radius: 10px;
+      background: radial-gradient(circle at 35% 28%, #7d7d7d 0, #4f4f4f 55%, #232323 100%);
+      opacity: 0.9;
+    }
+    .identity {
+      align-self: start;
+      padding-top: 12px;
+    }
+    .nickname {
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .edit {
+      align-self: start;
+      padding-top: 16px;
+      color: #9d9d9d;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .edit span { font-size: 15px; vertical-align: -1px; }
+    .panel {
+      background: var(--card);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      border: 1px solid rgba(255,255,255,0.85);
+      overflow: hidden;
+      margin-top: 14px;
+    }
+    .grid4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      padding: 18px 14px;
+      text-align: center;
+    }
+    .action {
+      display: grid;
+      gap: 8px;
+      place-items: center;
+      padding: 8px 2px;
+    }
+    .ico {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: #fafafa;
+      border: 1px solid rgba(20,20,20,0.06);
+      font-size: 20px;
+      color: var(--orange);
+    }
+    .action label {
+      font-size: 14px;
+      color: #3a3a3a;
+    }
+    .section {
+      padding: 16px 18px;
+      border-top: 1px solid var(--line);
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .orders {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .order {
+      border-radius: 18px;
+      padding: 16px 14px;
+      background: linear-gradient(180deg, #fff 0%, #fbfbfb 100%);
+      border: 1px solid rgba(20,20,20,0.06);
+      min-height: 88px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+    }
+    .order .mini {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      background: var(--orange-soft);
+      display: grid;
+      place-items: center;
+      color: var(--orange);
+      font-size: 18px;
+      flex: 0 0 auto;
+    }
+    .points {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      color: var(--muted);
+      margin-top: 10px;
+    }
+    .tools {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px 8px;
+    }
+    .tool {
+      display: grid;
+      gap: 8px;
+      place-items: center;
+      padding: 6px 2px;
+      text-align: center;
+    }
+    .tool .ico {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      color: #202020;
+      background: #fff;
+    }
+    .tool label {
+      font-size: 14px;
+      color: #333;
+      line-height: 1.15;
+    }
+    .banner {
+      margin-top: 14px;
+      border-radius: 18px;
+      min-height: 84px;
+      background: linear-gradient(90deg, #ffe9d7 0%, #fff4e8 68%, #ffe6c8 100%);
+      box-shadow: var(--shadow);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      gap: 12px;
+    }
+    .end-space {
+      height: 96px;
+    }
+    .banner strong {
+      display: block;
+      font-size: 22px;
+      line-height: 1.15;
+    }
+    .banner small {
+      display: block;
+      color: #75583f;
+      margin-top: 4px;
+    }
+    .btn {
+      background: #ffdfb3;
+      color: #b35a11;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-weight: 800;
+      white-space: nowrap;
+      box-shadow: inset 0 0 0 1px rgba(179,90,17,0.08);
+    }
+    .bottom {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: min(100vw, 420px);
+      background: rgba(255,255,255,0.94);
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      padding: 8px 6px 12px;
+      backdrop-filter: blur(16px);
+    }
+    .tab {
+      display: grid;
+      justify-items: center;
+      gap: 5px;
+      color: #353535;
+      font-size: 12px;
+    }
+    .tab .ico {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: transparent;
+      border: 0;
+      color: #222;
+      font-size: 24px;
+    }
+    .tab.active {
+      color: var(--orange);
+    }
+    .tab.active .ico { color: var(--orange); }
+    .tab.center .ico {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--orange);
+      color: white;
+      box-shadow: 0 10px 22px rgba(255, 122, 47, 0.28);
+      margin-top: -14px;
+      border: 6px solid rgba(255,255,255,0.94);
+    }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <div class="top-row">
+      <div>我的</div>
+      <div class="gear">⚙</div>
+    </div>
+
+    <section class="hero">
+      <div class="avatar" aria-hidden="true"></div>
+      <div class="identity">
+        <div class="nickname">王女士</div>
+        <div class="meta">成都市 · 武侯区 · 锦城小区</div>
+      </div>
+      <div class="edit">编辑资料 <span>✎</span></div>
+    </section>
+
+    <section class="panel">
+      <div class="grid4">
+        <div class="action"><div class="ico">券</div><label>优惠券</label></div>
+        <div class="action"><div class="ico">盾</div><label>质保售后</label></div>
+        <div class="action"><div class="ico">单</div><label>预约记录</label></div>
+        <div class="action"><div class="ico">权</div><label>我的权益</label></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section">
+        <div class="section-head">
+          <span>全部订单</span>
+        </div>
+        <div class="orders">
+          <div class="order"><div class="mini">👷</div>人工订单</div>
+          <div class="order"><div class="mini">🪣</div>材料订单</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section">
+        <div class="section-head">
+          <span>积分商城</span>
+          <span class="muted">我的积分 0 ›</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section">
+        <div class="section-head">
+          <span>常用工具</span>
+        </div>
+        <div class="tools">
+          <div class="tool"><div class="ico">💳</div><label>我的余额</label></div>
+          <div class="tool"><div class="ico">📍</div><label>房子管理</label></div>
+          <div class="tool"><div class="ico">🎁</div><label>我的礼品</label></div>
+          <div class="tool"><div class="ico">⭐</div><label>活动参与</label></div>
+          <div class="tool"><div class="ico">!</div><label>投诉与反馈</label></div>
+          <div class="tool"><div class="ico">🛡</div><label>隐私保护</label></div>
+          <div class="tool"><div class="ico">🎧</div><label>联系客服</label></div>
+          <div class="tool"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="banner">
+      <div>
+        <strong>推荐新业主</strong>
+        <small>邀请好友，拿平台积分奖励</small>
+      </div>
+      <div class="btn">立即了解</div>
+    </section>
+
+    <div class="end-space" aria-hidden="true"></div>
+  </main>
+
+  <nav class="bottom" aria-label="底部导航">
+    <div class="tab">
+      <div class="ico">⌂</div>
+      <div>首页</div>
+    </div>
+    <div class="tab">
+      <div class="ico">◫</div>
+      <div>全部服务</div>
+    </div>
+    <div class="tab center">
+      <div class="ico">🏢</div>
+      <div>我的家</div>
+    </div>
+    <div class="tab">
+      <div class="ico">💬</div>
+      <div>消息</div>
+    </div>
+    <div class="tab active">
+      <div class="ico">◔</div>
+      <div>我的</div>
+    </div>
+  </nav>
+</body>
+</html>

@@ -460,26 +460,25 @@ git commit -m "feat(owner): connect phone login to backend"
 
 ---
 
-### 任务 7：平台开发配置与全链路验证
+### 任务 7：Android 开发配置与全链路验证
 
 **文件：**
-- 修改：`zhidi_app/ios/Runner/Info.plist`
 - 修改：`zhidi_app/android/app/src/debug/AndroidManifest.xml`（不存在则新建，仅用于 debug）
 - 修改：`zhidi_app/README.md`
 
 **接口：**
-- 输入：本地后端地址、iOS/Android 调试网络权限。
+- 输入：本地后端地址、Android 调试网络权限。
 - 输出：模拟器可访问本地 HTTP 后端，发布配置不全局放开明文流量。
 
-- [ ] **步骤 1：写清本地启动契约并检查失败场景**
+- [x] **步骤 1：写清本地启动契约并检查失败场景**
 
-在 README 增加三条可复制命令：iOS 使用 `localhost:8080`、Android 使用 `10.0.2.2:8080`、真机使用局域网 IP。先运行 iOS/Android 配置检查，确认当前本地 HTTP 请求会被平台策略阻止或配置缺失。
+在 README 增加两条可复制命令：Android 模拟器使用 `10.0.2.2:8080`，Android 真机使用局域网 IP。检查 Android 配置，确认本地 HTTP 请求的开发权限是否缺失。
 
-- [ ] **步骤 2：加入仅开发环境的网络配置**
+- [x] **步骤 2：加入仅开发环境的网络配置**
 
-iOS 使用 debug 专用 plist 合并或最小本地域名例外；Android 只在 `src/debug/AndroidManifest.xml` 设置 `android:usesCleartextTraffic="true"`。不要修改 release Manifest 为全局明文允许。
+Android 只在 `src/debug/AndroidManifest.xml` 设置 `android:usesCleartextTraffic="true"`。不要修改 release Manifest 为全局明文允许。
 
-- [ ] **步骤 3：运行完整后端测试**
+- [x] **步骤 3：运行完整后端测试**
 
 ```bash
 cd /Users/liupei/Documents/zhidi/zhidi_server
@@ -490,7 +489,9 @@ MAVEN_USER_HOME=/Users/liupei/Documents/zhidi/.m2 ./mvnw test \
 
 预期：0 failures、0 errors。
 
-- [ ] **步骤 4：运行 Flutter 静态检查和完整测试**
+2026-07-14 验证结果：后端全量测试通过，`Tests run: 34, Failures: 0, Errors: 0, Skipped: 0`。
+
+- [x] **步骤 4：运行 Flutter 静态检查和完整测试**
 
 ```bash
 cd /Users/liupei/Documents/zhidi/zhidi_app
@@ -502,24 +503,30 @@ HOME=/Users/liupei/Documents/zhidi/zhidi_app/.codex-flutter-home \
 
 预期：静态检查无错误，完整测试 0 failures。
 
-- [ ] **步骤 5：真实本地流程验证**
+2026-07-14 验证结果：`flutter analyze` 无问题，Flutter 全量测试通过，`57` 项测试、`0` failures。
 
-启动后端后，以 owner flavor 启动 iOS 模拟器：
+- [x] **步骤 5：真实本地流程验证**
+
+启动后端后，以 owner flavor 启动本地调试 App。
+
+Android 模拟器使用：
 
 ```bash
-../flutter/bin/flutter run \
-  --dart-define=FLUTTER_APP_FLAVOR=owner \
-  --dart-define=API_BASE_URL=http://localhost:8080
+../flutter/bin/flutter run -d emulator-5554 \
+  --flavor owner \
+  --dart-define=ZHIDI_APP_FLAVOR=owner \
+  --dart-define=API_BASE_URL=http://10.0.2.2:8080
 ```
 
 使用一个未注册手机号获取模拟验证码并登录，确认：自动填入、新业主创建、JWT 写入安全存储、进入既有 onboarding/home 路由、退出后令牌清除。随后使用同一手机号再次获取验证码，确认走已有业主登录且不创建重复用户。
+
+2026-07-14 Android 验证结果：Pixel_9 模拟器以 owner flavor 连接本地 Spring Boot/MySQL；手机号 `16607142343` 的开发验证码自动填入，新用户登录进入“我的”，退出后受保护页重新要求登录，同一手机号再次验证码登录成功。
 
 - [ ] **步骤 6：检查差异并提交配置文档**
 
 ```bash
 git diff --check
 git status --short
-git add zhidi_app/ios/Runner/Info.plist \
-  zhidi_app/android/app/src/debug/AndroidManifest.xml zhidi_app/README.md
+git add zhidi_app/android/app/src/debug/AndroidManifest.xml zhidi_app/README.md
 git commit -m "docs(owner): document local authentication setup"
 ```

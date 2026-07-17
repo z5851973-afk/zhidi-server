@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>知底 - 我的风格选择</title>
+  <style>
+    :root {
+      --bg: #f6f5f1;
+      --card: #ffffff;
+      --ink: #161616;
+      --muted: #7d7d7d;
+      --orange: #ff7a2f;
+      --green: #2c8b65;
+      --blue: #2f6cff;
+      --line: rgba(22, 22, 22, 0.08);
+      --shadow: 0 14px 34px rgba(16, 16, 16, 0.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(180deg, #f4f2eb 0%, #f7f7f4 100%);
+      color: var(--ink);
+    }
+    .phone {
+      width: min(100vw, 420px);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: 18px 14px 240px;
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 4px 12px;
+    }
+    .title {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+    }
+    .badge {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: #fff;
+      display: grid;
+      place-items: center;
+      box-shadow: var(--shadow);
+    }
+    .sub {
+      margin: 0 4px 16px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .hero {
+      padding: 14px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(255,122,47,0.12), rgba(255,255,255,0.92));
+      border: 1px solid rgba(255,122,47,0.12);
+      box-shadow: var(--shadow);
+      margin-bottom: 14px;
+    }
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 20px;
+      background: linear-gradient(145deg, #161616, #444);
+    }
+    .name {
+      font-size: 23px;
+      font-weight: 800;
+    }
+    .meta {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .edit {
+      color: #9a9a9a;
+      font-size: 13px;
+      white-space: nowrap;
+      padding-top: 6px;
+    }
+    .chips {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(44, 139, 101, 0.1);
+      color: var(--green);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .panel {
+      background: var(--card);
+      border: 1px solid rgba(22,22,22,0.06);
+      box-shadow: var(--shadow);
+      border-radius: 20px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 16px 0;
+    }
+    .panel-title {
+      font-size: 20px;
+      font-weight: 800;
+    }
+    .panel-note {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .grid4 {
+      padding: 14px 14px 16px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px 6px;
+      text-align: center;
+    }
+    .tool {
+      padding: 8px 4px;
+      border-radius: 16px;
+      background: #fbfbfa;
+      border: 1px solid rgba(22,22,22,0.05);
+    }
+    .ico {
+      width: 40px;
+      height: 40px;
+      margin: 0 auto 8px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      background: rgba(47, 108, 255, 0.08);
+      color: var(--blue);
+      font-size: 20px;
+    }
+    .tool label {
+      font-size: 13px;
+      color: #333;
+      line-height: 1.2;
+    }
+    .orders {
+      padding: 14px 14px 16px;
+      display: grid;
+      gap: 10px;
+    }
+    .order-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 14px;
+      border-radius: 16px;
+      background: #fafaf9;
+      border: 1px solid rgba(22,22,22,0.05);
+      font-weight: 700;
+    }
+    .order-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .mini {
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: rgba(255,122,47,0.10);
+      color: var(--orange);
+      font-size: 18px;
+    }
+    .banner {
+      margin-top: 12px;
+      margin-bottom: 12px;
+      padding: 14px 16px;
+      border-radius: 20px;
+      background: linear-gradient(90deg, #fff2e7, #ffe7cd);
+      box-shadow: var(--shadow);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+    .end-space {
+      height: 96px;
+    }
+    .banner strong {
+      display: block;
+      font-size: 19px;
+      line-height: 1.2;
+    }
+    .banner small {
+      display: block;
+      color: #7d5a3b;
+      margin-top: 4px;
+    }
+    .button {
+      padding: 11px 14px;
+      border-radius: 999px;
+      background: #fff;
+      color: #b45a12;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: inset 0 0 0 1px rgba(180,90,18,0.08);
+      white-space: nowrap;
+    }
+    .styles {
+      margin-top: 14px;
+      display: grid;
+      gap: 12px;
+    }
+    .style-card {
+      border-radius: 20px;
+      padding: 14px;
+      background: #fff;
+      border: 1px solid rgba(22,22,22,0.06);
+      box-shadow: var(--shadow);
+    }
+    .style-card.active {
+      border-color: rgba(255,122,47,0.18);
+      background: linear-gradient(180deg, #ffffff 0%, #fff9f4 100%);
+    }
+    .style-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .style-name {
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .style-desc {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .mini-preview {
+      margin-top: 12px;
+      border-radius: 16px;
+      padding: 12px;
+      background: #f8f7f4;
+      border: 1px dashed rgba(22,22,22,0.08);
+      display: grid;
+      gap: 8px;
+    }
+    .mini-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .mini-pill {
+      height: 12px;
+      border-radius: 999px;
+      background: #d9d9d9;
+    }
+    .mini-pill.orange { background: rgba(255,122,47,0.85); }
+    .mini-pill.green { background: rgba(44,139,101,0.8); }
+    .mini-pill.blue { background: rgba(47,108,255,0.78); }
+    .mini-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      background: #d9d9d9;
+      flex: 0 0 auto;
+    }
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    .mini-card {
+      height: 42px;
+      border-radius: 12px;
+      background: #ffffff;
+      border: 1px solid rgba(22,22,22,0.06);
+    }
+    .bottom {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      transform: translateX(-50%);
+      width: min(100vw, 420px);
+      background: rgba(255,255,255,0.94);
+      backdrop-filter: blur(14px);
+      border-top: 1px solid var(--line);
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      padding: 8px 6px calc(12px + env(safe-area-inset-bottom));
+    }
+    .tab {
+      display: grid;
+      justify-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #373737;
+    }
+    .tab .ico {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: transparent;
+      color: #222;
+      font-size: 22px;
+      border: 0;
+    }
+    .tab.active { color: var(--orange); }
+    .tab.active .ico { color: var(--orange); }
+    .tab.center .ico {
+      width: 54px;
+      height: 54px;
+      border-radius: 50%;
+      margin-top: -12px;
+      background: var(--orange);
+      color: #fff;
+      box-shadow: 0 10px 22px rgba(255, 122, 47, 0.25);
+      border: 6px solid rgba(255,255,255,0.95);
+    }
+  </style>
+</head>
+<body>
+  <main class="phone">
+    <div class="top">
+      <div class="title">我的</div>
+      <div class="badge">⚙</div>
+    </div>
+    <p class="sub">我做了三种方向。A 是最像“知底”的工具型页面，B 更轻，C 更像内容工作台。</p>
+
+    <section class="hero">
+      <div class="hero-top">
+        <div class="avatar"></div>
+        <div style="flex:1;">
+          <div class="name">王女士</div>
+          <div class="meta">成都市 · 武侯区 · 锦城小区<br>业主账号 · 隐私号码已保护</div>
+        </div>
+        <div class="edit">编辑资料</div>
+      </div>
+      <div class="chips">
+        <span class="chip">房屋已绑定</span>
+        <span class="chip">施工中 1 个</span>
+        <span class="chip">消息 2 条</span>
+      </div>
+    </section>
+
+    <section class="styles">
+      <div class="style-card active">
+        <div class="style-head">
+          <div>
+            <div class="style-name">A. 工具型工作台</div>
+            <div class="style-desc">更克制，像装修平台的真实工作台。适合放业主账号、订单、房屋、积分、客服，信息密度高但不花。</div>
+          </div>
+          <div class="button">推荐</div>
+        </div>
+        <div class="mini-preview">
+          <div class="mini-row">
+            <div class="mini-avatar"></div>
+            <div class="mini-pill orange" style="width:28%;"></div>
+            <div class="mini-pill" style="width:18%;"></div>
+            <div class="mini-pill green" style="width:16%;"></div>
+          </div>
+          <div class="mini-grid">
+            <div class="mini-card"></div>
+            <div class="mini-card"></div>
+            <div class="mini-card"></div>
+            <div class="mini-card"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="style-card">
+        <div class="style-head">
+          <div>
+            <div class="style-name">B. 轻量极简风</div>
+            <div class="style-desc">更少模块、更大留白，适合想让“我的”页更干净一点，但仍然保留核心入口。</div>
+          </div>
+        </div>
+        <div class="mini-preview">
+          <div class="mini-row">
+            <div class="mini-avatar" style="border-radius:50%;"></div>
+            <div class="mini-pill blue" style="width:24%;"></div>
+            <div class="mini-pill" style="width:30%;"></div>
+          </div>
+          <div class="mini-card" style="height:72px;"></div>
+          <div class="mini-card" style="height:52px;"></div>
+        </div>
+      </div>
+
+      <div class="style-card">
+        <div class="style-head">
+          <div>
+            <div class="style-name">C. 内容型服务页</div>
+            <div class="style-desc">更适合展示推荐、权益和活动，但会更接近电商或会员中心，不如 A 稳重。</div>
+          </div>
+        </div>
+        <div class="mini-preview">
+          <div class="mini-row">
+            <div class="mini-pill orange" style="width:38%; height:16px;"></div>
+            <div class="mini-pill" style="width:22%; height:16px;"></div>
+          </div>
+          <div class="mini-card" style="height:58px;"></div>
+          <div class="mini-grid">
+            <div class="mini-card"></div>
+            <div class="mini-card"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-top:14px;">
+      <div class="panel-head">
+        <div class="panel-title">建议结构</div>
+        <div class="panel-note">更适合知底</div>
+      </div>
+      <div class="grid4">
+        <div class="tool"><div class="ico">👤</div><label>业主账号</label></div>
+        <div class="tool"><div class="ico">🏠</div><label>我的房子</label></div>
+        <div class="tool"><div class="ico">📒</div><label>订单与进度</label></div>
+        <div class="tool"><div class="ico">🎧</div><label>客服与隐私</label></div>
+      </div>
+    </section>
+
+    <section class="banner">
+      <div>
+        <strong>推荐采用 A</strong>
+        <small>更像一个真实的装修平台，而不是营销页</small>
+      </div>
+      <div class="button">保留知底气质</div>
+    </section>
+
+    <div class="end-space" aria-hidden="true"></div>
+  </main>
+
+  <nav class="bottom" aria-label="底部导航">
+    <div class="tab"><div class="ico">⌂</div><div>首页</div></div>
+    <div class="tab"><div class="ico">▦</div><div>全部服务</div></div>
+    <div class="tab center"><div class="ico">🏢</div><div>我的家</div></div>
+    <div class="tab"><div class="ico">💬</div><div>消息</div></div>
+    <div class="tab active"><div class="ico">◔</div><div>我的</div></div>
+  </nav>
+</body>
+</html>
