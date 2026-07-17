@@ -7,7 +7,9 @@ import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.servicerequest.ServiceRequest;
 import com.zhidi.server.servicerequest.ServiceRequestRepository;
+import com.zhidi.server.servicerequest.ServiceRequestStatus;
 import com.zhidi.server.owner.OwnerProfile;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.support.MySqlContainerSupport;
@@ -141,5 +143,63 @@ class BookingServiceIntegrationTest extends MySqlContainerSupport {
 		User user = User.create(phone);
 		user.grantRole(role);
 		return users.saveAndFlush(user);
+	}
+
+	@Test
+	void acceptElectsWinnerMarksOthersNotSelectedAdvancesServiceRequest() {
+		workerProfiles.saveAndFlush(WorkerProfile.create(otherWorker.getId(), "李师傅",
+			"杭州", "泥工", 8, new BigDecimal("580.00"), "老房翻新"));
+		BookingResponse first = service.create(owner.getId(), new BookingRequest(
+			worker.getId(), "泥工", "杭州", null, null));
+		UUID srId = first.serviceRequestId();
+		BookingResponse second = service.create(owner.getId(), new BookingRequest(
+			otherWorker.getId(), "泥工", "杭州", null, null));
+
+		service.accept(worker.getId(), first.id());
+
+		// 当选者状态为 ACCEPTED
+		assertThat(bookings.findById(first.id())).get()
+			.extracting(Booking::getStatus).isEqualTo(BookingStatus.ACCEPTED);
+		// 其他候选人 NOT_SELECTED
+		assertThat(bookings.findById(second.id())).get()
+			.extracting(Booking::getStatus).isEqualTo(BookingStatus.NOT_SELECTED);
+		// ServiceRequest 推进到 WORKER_SELECTED
+		assertThat(serviceRequests.findById(srId)).get()
+			.extracting(ServiceRequest::getStatus).isEqualTo(ServiceRequestStatus.WORKER_SELECTED);
+	}
+
+	@Test
+	void rejectWithRemainingCandidatesDoesNotRevertServiceRequest() {
+		workerProfiles.saveAndFlush(WorkerProfile.create(otherWorker.getId(), "李师傅",
+			"杭州", "泥工", 8, new BigDecimal("580.00"), "老房翻新"));
+		BookingResponse first = service.create(owner.getId(), new BookingRequest(
+			worker.getId(), "泥工", "杭州", null, null));
+		UUID srId = first.serviceRequestId();
+		service.create(owner.getId(), new BookingRequest(
+			otherWorker.getId(), "泥工", "杭州", null, null));
+
+		service.reject(worker.getId(), first.id());
+
+		assertThat(bookings.findById(first.id())).get()
+			.extracting(Booking::getStatus).isEqualTo(BookingStatus.REJECTED);
+		// 还有候选人，ServiceRequest 应保持 OPEN
+		assertThat(serviceRequests.findById(srId)).get()
+			.extracting(ServiceRequest::getStatus).isEqualTo(ServiceRequestStatus.OPEN);
+	}
+
+	@Test
+	void rejectLastCandidateRevertsServiceRequestToOpen() {
+		BookingResponse only = service.create(owner.getId(), new BookingRequest(
+			worker.getId(), "泥工", "杭州", null, null));
+		UUID srId = only.serviceRequestId();
+		service.accept(worker.getId(), only.id());
+
+		service.reject(worker.getId(), only.id());
+
+		assertThat(bookings.findById(only.id())).get()
+			.extracting(Booking::getStatus).isEqualTo(BookingStatus.REJECTED);
+		// 已无候选人，ServiceRequest 回退到 OPEN
+		assertThat(serviceRequests.findById(srId)).get()
+			.extracting(ServiceRequest::getStatus).isEqualTo(ServiceRequestStatus.OPEN);
 	}
 }

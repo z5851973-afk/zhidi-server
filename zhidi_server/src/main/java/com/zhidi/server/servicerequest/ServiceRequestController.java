@@ -55,6 +55,16 @@ public class ServiceRequestController {
 			traceId());
 	}
 
+	@PostMapping("/api/v1/owners/me/service-requests/{requestId}/cancel")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主取消装修需求")
+	public ApiResponse<ServiceRequestResponse> cancel(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID requestId) {
+		return ApiResponse.ok(service.cancelRequest(principal.userId(), requestId),
+			traceId());
+	}
+
 	private String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}

@@ -10,6 +10,7 @@ import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -99,6 +100,31 @@ public class ServiceRequestService {
 	public List<ServiceRequestResponse> listOwnerRequests(UUID ownerUserId) {
 		return requests.findByOwnerUserIdOrderByCreatedAtDesc(ownerUserId)
 			.stream().map(this::toResponse).toList();
+	}
+
+	@Transactional
+	public ServiceRequestResponse cancelRequest(UUID ownerUserId, UUID requestId) {
+		ServiceRequest request = requests.findOwnedForUpdate(requestId, ownerUserId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"SERVICE_REQUEST_NOT_FOUND", "装修需求不存在"));
+
+		if (request.getStatus() == ServiceRequestStatus.CANCELLED) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"SERVICE_REQUEST_ALREADY_CANCELLED", "该需求已取消");
+		}
+
+		Instant now = Instant.now();
+		List<Booking> candidates = bookings
+			.findByServiceRequestIdOrderByCreatedAtAsc(requestId);
+		for (Booking b : candidates) {
+			if (b.getStatus() == BookingStatus.PENDING
+					|| b.getStatus() == BookingStatus.ACCEPTED) {
+				b.cancel("OWNER", "需求已取消", now);
+			}
+		}
+
+		request.cancel();
+		return toResponse(request);
 	}
 
 	private void syncStatus(ServiceRequest request) {

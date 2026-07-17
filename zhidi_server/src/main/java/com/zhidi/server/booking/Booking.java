@@ -164,6 +164,10 @@ public class Booking extends BaseEntity {
 		this.status = BookingStatus.REJECTED;
 	}
 
+	public void notSelect() {
+		this.status = BookingStatus.NOT_SELECTED;
+	}
+
 	public boolean canCancelBeforeOnSite() {
 		return switch (status) {
 			case PENDING, ACCEPTED, VISIT_PROPOSED,

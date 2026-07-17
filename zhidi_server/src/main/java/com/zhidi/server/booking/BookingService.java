@@ -79,6 +79,18 @@ public class BookingService {
 	public BookingResponse accept(UUID workerUserId, UUID bookingId) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.accept();
+
+		List<Booking> candidates = bookings
+			.findByServiceRequestIdOrderByCreatedAtAsc(booking.getServiceRequestId());
+		for (Booking other : candidates) {
+			if (!other.getId().equals(bookingId) && other.getStatus() == BookingStatus.PENDING) {
+				other.notSelect();
+			}
+		}
+
+		serviceRequests.findById(booking.getServiceRequestId())
+			.ifPresent(ServiceRequest::selectWorker);
+
 		return toResponse(booking);
 	}
 
@@ -86,6 +98,17 @@ public class BookingService {
 	public BookingResponse reject(UUID workerUserId, UUID bookingId) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.reject();
+
+		long pendingCount = bookings
+			.findByServiceRequestIdOrderByCreatedAtAsc(booking.getServiceRequestId())
+			.stream()
+			.filter(b -> b.getStatus() == BookingStatus.PENDING)
+			.count();
+		if (pendingCount == 0) {
+			serviceRequests.findById(booking.getServiceRequestId())
+				.ifPresent(ServiceRequest::reopen);
+		}
+
 		return toResponse(booking);
 	}
 

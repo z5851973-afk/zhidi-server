@@ -81,4 +81,16 @@ public class ServiceRequest extends BaseEntity {
 	void setStatus(ServiceRequestStatus status) {
 		this.status = Objects.requireNonNull(status);
 	}
+
+	public void selectWorker() {
+		this.status = ServiceRequestStatus.WORKER_SELECTED;
+	}
+
+	public void reopen() {
+		this.status = ServiceRequestStatus.OPEN;
+	}
+
+	public void cancel() {
+		this.status = ServiceRequestStatus.CANCELLED;
+	}
 }
