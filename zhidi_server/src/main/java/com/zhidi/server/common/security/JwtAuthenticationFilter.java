@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,6 +29,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
 	private static final String BEARER_PREFIX = "Bearer ";
+	private static final Pattern PUBLIC_WORKER_PATH =
+		Pattern.compile("^/api/v1/workers/[0-9a-fA-F-]{36}(?:/cases)?$");
 
 	private final JwtTokenService jwtTokenService;
 	private final UserRepository userRepository;
@@ -53,7 +56,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 			return false;
 		}
 		return path.equals("/api/v1/workers")
-			|| (path.startsWith("/api/v1/workers/") && !path.equals("/api/v1/workers/me"));
+			|| PUBLIC_WORKER_PATH.matcher(path).matches();
 	}
 
 	@Override

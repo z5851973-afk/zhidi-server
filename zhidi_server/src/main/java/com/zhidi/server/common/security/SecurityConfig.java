@@ -41,7 +41,8 @@ public class SecurityConfig {
 			.authorizeHttpRequests(authorize -> authorize
 				.requestMatchers(PUBLIC_PATHS).permitAll()
 				.requestMatchers(org.springframework.http.HttpMethod.GET,
-					"/api/v1/workers", "/api/v1/workers/*").permitAll()
+					"/api/v1/workers", "/api/v1/workers/*",
+					"/api/v1/workers/*/cases").permitAll()
 				.requestMatchers("/api/v1/**").authenticated()
 				.anyRequest().permitAll())
 			.exceptionHandling(exceptions -> exceptions

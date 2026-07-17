@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserStatus;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.owner.OwnerProfileService;
 import com.zhidi.server.worker.WorkerProfileService;
@@ -44,6 +45,9 @@ class AuthControllerTest {
 
 	@MockitoBean
 	WorkerProfileService workerProfileService;
+
+	@MockitoBean
+	BookingService bookingService;
 
 	@MockitoBean
 	UserRepository userRepository;

@@ -84,15 +84,26 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 
 	@Test
 	void completenessRequiresCoreWorkerValues() {
-		assertThat(update("张师傅", "水电", 8, new BigDecimal("180.00"))
+		assertThat(update("张师傅", "成都", "水电", 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isTrue();
-		assertThat(update(null, "水电", 8, new BigDecimal("180.00"))
+		assertThat(update(null, "成都", "水电", 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isFalse();
-		assertThat(update("张师傅", null, 8, new BigDecimal("180.00"))
+		assertThat(update("张师傅", null, "水电", 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isFalse();
-		assertThat(update("张师傅", "水电", null, new BigDecimal("180.00"))
+		assertThat(update("张师傅", "成都", null, 8,
+			new BigDecimal("180.00"), "擅长旧房水电改造")
 			.profileComplete()).isFalse();
-		assertThat(update("张师傅", "水电", 8, null)
+		assertThat(update("张师傅", "成都", "水电", null,
+			new BigDecimal("180.00"), "擅长旧房水电改造")
+			.profileComplete()).isFalse();
+		assertThat(update("张师傅", "成都", "水电", 8, null,
+			"擅长旧房水电改造")
+			.profileComplete()).isFalse();
+		assertThat(update("张师傅", "成都", "水电", 8,
+			new BigDecimal("180.00"), null)
 			.profileComplete()).isFalse();
 	}
 
@@ -142,11 +153,12 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 				error -> assertThat(error.code()).isEqualTo("WORKER_NOT_FOUND"));
 	}
 
-	private WorkerProfileResponse update(String name, String primaryTrade,
-			Integer experienceYears, BigDecimal dailyRate) {
+	private WorkerProfileResponse update(String name, String serviceCity,
+			String primaryTrade, Integer experienceYears, BigDecimal dailyRate,
+			String bio) {
 		return service.update(worker.getId(), worker.getPhone(),
-			new WorkerProfileRequest(name, "成都", primaryTrade, experienceYears,
-				dailyRate, null));
+			new WorkerProfileRequest(name, serviceCity, primaryTrade, experienceYears,
+				dailyRate, bio));
 	}
 
 	private User createWorker(String phone) {

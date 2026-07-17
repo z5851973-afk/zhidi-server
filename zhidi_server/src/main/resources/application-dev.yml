@@ -1,11 +1,13 @@
 spring:
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/zhidi?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${DB_USER:zhidi}
-    password: ${DB_PASSWORD:zhidi_dev}
+    url: ${DB_URL:jdbc:h2:mem:zhidi;DB_CLOSE_DELAY=-1;MODE=MySQL}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
   flyway:
-    enabled: true
+    enabled: false
   jpa:
+    hibernate:
+      ddl-auto: create-drop
     properties:
       hibernate:
         type:

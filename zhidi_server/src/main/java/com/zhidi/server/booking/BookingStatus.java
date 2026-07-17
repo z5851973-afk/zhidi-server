@@ -1,0 +1,15 @@
+package com.zhidi.server.booking;
+
+public enum BookingStatus {
+	PENDING,
+	ACCEPTED,
+	VISIT_PROPOSED,
+	VISIT_SCHEDULED,
+	ARRIVAL_PENDING,
+	ON_SITE,
+	QUOTE_PENDING,
+	READY_TO_START,
+	REJECTED,
+	CANCELLED,
+	NOT_SELECTED
+}

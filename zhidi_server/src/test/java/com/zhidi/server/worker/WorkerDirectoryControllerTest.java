@@ -8,6 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.auth.AuthService;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.owner.OwnerProfileService;
 import java.math.BigDecimal;
 import java.util.List;
@@ -40,6 +41,9 @@ class WorkerDirectoryControllerTest {
 
 	@MockitoBean
 	OwnerProfileService ownerProfileService;
+
+	@MockitoBean
+	BookingService bookingService;
 
 	@MockitoBean
 	UserRepository users;

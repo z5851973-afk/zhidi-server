@@ -11,6 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.zhidi.server.auth.AuthService;
 import com.zhidi.server.auth.JwtTokenService;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.owner.OwnerProfileService;
 import com.zhidi.server.worker.WorkerProfileService;
 import com.zhidi.server.account.User;
@@ -57,6 +58,9 @@ class SmokeApiTest {
 
 	@MockitoBean
 	WorkerProfileService workerProfileService;
+
+	@MockitoBean
+	BookingService bookingService;
 
 	@Autowired
 	JwtTokenService tokens;

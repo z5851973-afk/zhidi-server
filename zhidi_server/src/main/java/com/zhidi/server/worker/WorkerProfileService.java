@@ -32,7 +32,7 @@ public class WorkerProfileService {
 	@Transactional(readOnly = true)
 	public List<WorkerDirectoryResponse> listVisible() {
 		return repository
-			.findByNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullOrderByUpdatedAtDesc()
+			.findByNameIsNotNullAndServiceCityIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullAndBioIsNotNullOrderByUpdatedAtDesc()
 			.stream()
 			.map(this::toDirectoryResponse)
 			.toList();
@@ -42,7 +42,7 @@ public class WorkerProfileService {
 	public WorkerDirectoryResponse getVisible(UUID userId) {
 		Objects.requireNonNull(userId);
 		return repository
-			.findByUserIdAndNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNull(userId)
+			.findByUserIdAndNameIsNotNullAndServiceCityIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullAndBioIsNotNull(userId)
 			.map(this::toDirectoryResponse)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"WORKER_NOT_FOUND", "worker is not available"));
@@ -69,9 +69,11 @@ public class WorkerProfileService {
 
 	private WorkerProfileResponse toResponse(WorkerProfile profile, String phone) {
 		boolean complete = profile.getName() != null
+			&& profile.getServiceCity() != null
 			&& profile.getPrimaryTrade() != null
 			&& profile.getExperienceYears() != null
-			&& profile.getDailyRate() != null;
+			&& profile.getDailyRate() != null
+			&& profile.getBio() != null;
 		return new WorkerProfileResponse(profile.getUserId(), phone, profile.getName(),
 			profile.getServiceCity(), profile.getPrimaryTrade(), profile.getExperienceYears(),
 			profile.getDailyRate(), profile.getBio(), complete);

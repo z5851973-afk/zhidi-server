@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -32,6 +33,13 @@ public class GlobalExceptionHandler {
 		return ResponseEntity
 			.badRequest()
 			.body(ApiResponse.error("INVALID_REQUEST", "request body is invalid", traceId()));
+	}
+
+	@ExceptionHandler(MaxUploadSizeExceededException.class)
+	ResponseEntity<ApiResponse<Void>> handleUploadTooLarge() {
+		return ResponseEntity
+			.status(HttpStatus.PAYLOAD_TOO_LARGE)
+			.body(ApiResponse.error("IMAGE_TOO_LARGE", "image file exceeds 10MB", traceId()));
 	}
 
 	@ExceptionHandler(Exception.class)

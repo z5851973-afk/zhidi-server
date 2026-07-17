@@ -7,9 +7,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.MDC;
-import org.springframework.context.EnvironmentAware;
-import org.springframework.core.env.Environment;
-import org.springframework.core.env.Profiles;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,18 +16,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "认证", description = "业主和工匠手机号认证接口")
-public class AuthController implements EnvironmentAware {
+public class AuthController {
 
 	private final AuthService authService;
-	private Environment environment;
 
 	public AuthController(AuthService authService) {
 		this.authService = authService;
-	}
-
-	@Override
-	public void setEnvironment(Environment environment) {
-		this.environment = environment;
 	}
 
 	@PostMapping("/sms-codes")
@@ -39,10 +30,8 @@ public class AuthController implements EnvironmentAware {
 			@Valid @RequestBody RequestSmsCodeRequest request,
 			HttpServletRequest servletRequest) {
 		SmsCodeIssueResult result = authService.issueCode(request.phone(), servletRequest.getRemoteAddr());
-		String simulatedCode = environment.acceptsProfiles(Profiles.of("dev"))
-			? result.simulatedCode() : null;
 		RequestSmsCodeResponse response = new RequestSmsCodeResponse(
-			simulatedCode, result.expiresInSeconds(), result.retryAfterSeconds());
+			result.simulatedCode(), result.expiresInSeconds(), result.retryAfterSeconds());
 		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
 	}
 

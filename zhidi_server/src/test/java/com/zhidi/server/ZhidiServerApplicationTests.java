@@ -2,6 +2,7 @@ package com.zhidi.server;
 
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.auth.AuthService;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.owner.OwnerProfileService;
 import com.zhidi.server.worker.WorkerProfileService;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,9 @@ class ZhidiServerApplicationTests {
 
 	@MockitoBean
 	WorkerProfileService workerProfileService;
+
+	@MockitoBean
+	BookingService bookingService;
 
 	@MockitoBean
 	UserRepository userRepository;

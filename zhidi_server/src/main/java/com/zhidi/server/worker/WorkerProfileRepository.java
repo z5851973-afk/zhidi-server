@@ -8,8 +8,8 @@ public interface WorkerProfileRepository extends JpaRepository<WorkerProfile, UU
 
 	Optional<WorkerProfile> findByUserId(UUID userId);
 
-	Optional<WorkerProfile> findByUserIdAndNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNull(
+	Optional<WorkerProfile> findByUserIdAndNameIsNotNullAndServiceCityIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullAndBioIsNotNull(
 		UUID userId);
 
-	java.util.List<WorkerProfile> findByNameIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullOrderByUpdatedAtDesc();
+	java.util.List<WorkerProfile> findByNameIsNotNullAndServiceCityIsNotNullAndPrimaryTradeIsNotNullAndExperienceYearsIsNotNullAndDailyRateIsNotNullAndBioIsNotNullOrderByUpdatedAtDesc();
 }

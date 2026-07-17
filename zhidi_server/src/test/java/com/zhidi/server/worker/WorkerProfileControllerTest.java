@@ -17,6 +17,7 @@ import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.auth.AuthService;
 import com.zhidi.server.auth.JwtTokenService;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.owner.OwnerProfileService;
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -54,6 +55,9 @@ class WorkerProfileControllerTest {
 
 	@MockitoBean
 	OwnerProfileService ownerProfileService;
+
+	@MockitoBean
+	BookingService bookingService;
 
 	@MockitoBean
 	UserRepository users;
