@@ -91,7 +91,7 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const SizedBox(height: 12),
                         itemBuilder: (ctx, i) => _buildItem(_items[i]),
                       ),
@@ -130,7 +130,7 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: _errorColor.withOpacity(0.05),
+                color: _errorColor.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -168,7 +168,7 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child: Row(

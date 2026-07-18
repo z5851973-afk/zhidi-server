@@ -110,7 +110,7 @@ class PaymentApiClient {
       'bookingId': bookingId,
       'type': type,
       'reason': reason,
-      if (evidence != null) 'evidence': evidence,
+      'evidence': ?evidence,
     });
     return AfterSaleModel.fromJson(body['data']);
   }

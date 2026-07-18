@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -47,10 +49,7 @@ Future<void> main() async {
   ZdTheme.setSystemUIOverlay();
   await initializeFirebaseForStartup(Firebase.initializeApp);
 
-  final flavor = const String.fromEnvironment(
-    'ZHIDI_APP_FLAVOR',
-    defaultValue: 'worker',
-  ).toLowerCase();
+  final flavor = await _detectFlavor();
 
   if (flavor == 'owner') {
     await _runOwner();
@@ -71,6 +70,22 @@ Future<void> initializeFirebaseForStartup(
   } catch (_) {
     // Firebase 配置不可用时继续使用本地 mock 数据，避免阻塞 App 启动。
   }
+}
+
+/// 运行时检测 flavor：优先通过 MethodChannel 读取原生端 applicationId，
+/// 兜底使用 dart-define（便于开发调试时手动传入）。
+Future<String> _detectFlavor() async {
+  if (Platform.isAndroid) {
+    try {
+      const channel = MethodChannel('app/flavor');
+      final flavor = await channel.invokeMethod<String>('getFlavor');
+      if (flavor != null && flavor.isNotEmpty) return flavor;
+    } catch (_) {}
+  }
+  return const String.fromEnvironment(
+    'ZHIDI_APP_FLAVOR',
+    defaultValue: 'worker',
+  );
 }
 
 Future<void> _runOwner() async {

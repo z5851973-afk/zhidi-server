@@ -49,6 +49,7 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
   }
 
   Future<void> _createAfterSale() async {
+    final appState = OwnerAppScope.of(context);
     final type = await showDialog<String>(
       context: context,
       builder: (ctx) => SimpleDialog(
@@ -70,6 +71,7 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
       ),
     );
     if (type == null) return;
+    if (!mounted) return;
 
     final reasonCtrl = TextEditingController();
     final result = await showDialog<Map<String, String>>(
@@ -99,11 +101,12 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
         ],
       ),
     );
+    reasonCtrl.dispose();
     if (result == null || result['reason']!.isEmpty) return;
 
     try {
       final api = PaymentApiClient();
-      final token = (await OwnerAppScope.of(context).getAccessToken())!;
+      final token = (await appState.getAccessToken())!;
       await api.createAfterSale(token,
         bookingId: widget.bookingId ?? '',
         type: result['type']!,
@@ -170,7 +173,7 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _items.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const SizedBox(height: 12),
                         itemBuilder: (ctx, i) => _buildItem(_items[i]),
                       ),
@@ -217,7 +220,7 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _statusColor(item.status).withOpacity(0.1),
+                    color: _statusColor(item.status).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(item.statusLabel,
@@ -325,7 +328,7 @@ class _OwnerAfterSalePageState extends State<OwnerAfterSalePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(4),
       ),
       child:

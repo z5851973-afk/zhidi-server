@@ -70,74 +70,6 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     if (mounted) setState(() => _creating = false);
   }
 
-  Future<void> _handlePay() async {
-    if (_order == null) return;
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认支付'),
-        content: Text(
-            '支付金额：¥${_order!.amount.toStringAsFixed(2)}\n\nTODO：对接微信/支付宝 SDK'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确认'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('支付渠道 SDK 待对接')),
-      );
-    }
-  }
-
-  Future<void> _requestRefund() async {
-    if (_order == null) return;
-    final reasonCtrl = TextEditingController();
-    final reason = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('申请退款'),
-        content: TextField(
-          controller: reasonCtrl,
-          decoration: const InputDecoration(
-            hintText: '请输入退款原因',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, reasonCtrl.text),
-            child: const Text('提交'),
-          ),
-        ],
-      ),
-    );
-    if (reason == null || reason.isEmpty) return;
-    try {
-      final api = PaymentApiClient();
-      final token = (await OwnerAppScope.of(context).getAccessToken())!;
-      _order = await api.requestRefund(token, _order!.id, reason);
-      if (mounted) setState(() {});
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('退款申请失败: $e')));
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,15 +183,23 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
             if (order.refundedAt != null) _row('退款时间', order.refundedAt!),
           ]),
 
+          const SizedBox(height: 12),
+          _infoCard('支付说明', children: const [
+            Text(
+              '支付与退款渠道尚未开通。当前订单仅用于核对已确认报价，不会扣款，也不会自动标记为已支付。',
+              style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
+            ),
+          ]),
+
           // 退款入口
           if (order.isPaid) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: _requestRefund,
+                onPressed: null,
                 icon: const Icon(Icons.undo),
-                label: const Text('申请退款'),
+                label: const Text('退款渠道尚未开通'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _errorColor,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -279,7 +219,7 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, -2)),
         ],
@@ -288,13 +228,15 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
         child: SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: _handlePay,
+            onPressed: null,
             style: ElevatedButton.styleFrom(
               backgroundColor: _primary,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
-            child: Text('去支付  ¥${_order!.amount.toStringAsFixed(2)}'),
+            child: Text(
+              '支付渠道尚未开通  ¥${_order!.amount.toStringAsFixed(2)}',
+            ),
           ),
         ),
       ),

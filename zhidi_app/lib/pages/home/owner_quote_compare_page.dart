@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
 
@@ -77,26 +79,9 @@ class _OwnerQuoteComparePageState extends State<OwnerQuoteComparePage> {
   Future<void> _acceptQuote(RemoteQuote quote) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认选人'),
-        content: Text(
-          '确定选 ${quote.workerName ?? "该"} 师傅？选定后其他候选人的预约将自动关闭。',
-          style: const TextStyle(fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: ZdColors.primary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('确认选择'),
-          ),
-        ],
+      builder: (_) => QuoteSelectionConfirmationDialog(
+        workerName: quote.workerName ?? '该师傅',
+        totalPrice: quote.totalPrice,
       ),
     );
 
@@ -174,6 +159,104 @@ class _OwnerQuoteComparePageState extends State<OwnerQuoteComparePage> {
                             );
                           },
                         ),
+    );
+  }
+}
+
+class QuoteSelectionConfirmationDialog extends StatefulWidget {
+  const QuoteSelectionConfirmationDialog({
+    super.key,
+    required this.workerName,
+    required this.totalPrice,
+  });
+
+  final String workerName;
+  final double totalPrice;
+
+  @override
+  State<QuoteSelectionConfirmationDialog> createState() =>
+      _QuoteSelectionConfirmationDialogState();
+}
+
+class _QuoteSelectionConfirmationDialogState
+    extends State<QuoteSelectionConfirmationDialog> {
+  Timer? _holdTimer;
+  bool _acknowledged = false;
+  bool _holding = false;
+
+  void _startHold(PointerDownEvent event) {
+    if (!_acknowledged || _holdTimer != null) return;
+    setState(() => _holding = true);
+    _holdTimer = Timer(const Duration(seconds: 2), () {
+      _holdTimer = null;
+      if (mounted) Navigator.pop(context, true);
+    });
+  }
+
+  void _cancelHold([PointerEvent? event]) {
+    _holdTimer?.cancel();
+    _holdTimer = null;
+    if (mounted && _holding) setState(() => _holding = false);
+  }
+
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('确认选人'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('师傅：${widget.workerName}'),
+          const SizedBox(height: 6),
+          Text(
+            '报价：¥${widget.totalPrice.toStringAsFixed(2)}',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '选定后，其他候选预约和待处理报价将关闭。',
+            style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          CheckboxListTile(
+            value: _acknowledged,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: const Text('我已核对师傅、报价明细和总价'),
+            onChanged: (value) {
+              _cancelHold();
+              setState(() => _acknowledged = value == true);
+            },
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        Listener(
+          onPointerDown: _startHold,
+          onPointerUp: _cancelHold,
+          onPointerCancel: _cancelHold,
+          child: ElevatedButton(
+            key: const Key('quote-hold-confirm'),
+            onPressed: _acknowledged ? () {} : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ZdColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(_holding ? '继续按住…' : '按住 2 秒确认'),
+          ),
+        ),
+      ],
     );
   }
 }

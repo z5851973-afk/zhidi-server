@@ -100,8 +100,10 @@ final class ServiceRequestApiClient implements ServiceRequestApi {
   @override
   Future<List<RemoteServiceRequest>> listOwnerRequests(
       String accessToken) async {
-    final response =
-        await _get('/api/v1/owners/me/service-requests', accessToken);
+    final response = await _get(
+      '/api/v1/owners/me/service-requests',
+      accessToken,
+    );
     return _parseServiceRequestList(response);
   }
 
@@ -630,9 +632,6 @@ String _requiredString(Map<String, dynamic> json, String key) {
 }
 
 String? _nullableString(Map<String, dynamic> json, String key) {
-  if (!json.containsKey(key)) {
-    throw FormatException('$key is required');
-  }
   final value = json[key];
   if (value != null && value is! String) {
     throw FormatException('$key must be a string or null');
