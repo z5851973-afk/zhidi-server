@@ -162,6 +162,8 @@ public class ServiceRequestService {
 			booking.getServiceCity(), booking.getServiceAddress(), booking.getRemark(),
 			booking.getStatus(),
 			booking.getCancelledBy(), booking.getCancelReason(), booking.getCancelledAt(),
+			booking.isArrivalConfirmedByOwner(), booking.isArrivalConfirmedByWorker(),
+			booking.getOnSiteAt(), null,
 			booking.getCreatedAt(), booking.getUpdatedAt());
 	}
 }

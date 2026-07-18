@@ -243,7 +243,7 @@ class ServiceRequestControllerTest {
 			WORKER_USER_ID, "张师傅",
 			"水电", "成都", "高新区 1 号", "旧房水电改造",
 			BookingStatus.PENDING,
-			null, null, null, now, now);
+			null, null, null, false, false, null, null, now, now);
 		return new ServiceRequestResponse(REQUEST_ID, OWNER_ID,
 			"水电", "成都", "高新区 1 号", "旧房水电改造",
 			ServiceRequestStatus.COMPARING, List.of(candidate), now, now);

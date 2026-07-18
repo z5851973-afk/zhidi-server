@@ -66,6 +66,15 @@ public class Booking extends BaseEntity {
 	@Column(name = "cancelled_at")
 	private Instant cancelledAt;
 
+	@Column(name = "arrival_confirmed_by_owner", nullable = false)
+	private boolean arrivalConfirmedByOwner;
+
+	@Column(name = "arrival_confirmed_by_worker", nullable = false)
+	private boolean arrivalConfirmedByWorker;
+
+	@Column(name = "on_site_at")
+	private Instant onSiteAt;
+
 	protected Booking() {
 	}
 
@@ -156,6 +165,18 @@ public class Booking extends BaseEntity {
 		return cancelledAt;
 	}
 
+	public boolean isArrivalConfirmedByOwner() {
+		return arrivalConfirmedByOwner;
+	}
+
+	public boolean isArrivalConfirmedByWorker() {
+		return arrivalConfirmedByWorker;
+	}
+
+	public Instant getOnSiteAt() {
+		return onSiteAt;
+	}
+
 	public void accept() {
 		this.status = BookingStatus.ACCEPTED;
 	}
@@ -168,13 +189,93 @@ public class Booking extends BaseEntity {
 		this.status = BookingStatus.NOT_SELECTED;
 	}
 
+	public void proposeVisit() {
+		if (this.status != BookingStatus.ACCEPTED) {
+			throw new IllegalStateException(
+				"只有已接单状态(ACCEPTED)才能提出上门时间，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.VISIT_PROPOSED;
+	}
+
+	public void scheduleVisit() {
+		if (this.status != BookingStatus.VISIT_PROPOSED) {
+			throw new IllegalStateException(
+				"只有待确认上门时间状态(VISIT_PROPOSED)才能确认，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.VISIT_SCHEDULED;
+	}
+
+	public void revertToAccepted() {
+		if (this.status != BookingStatus.VISIT_PROPOSED) {
+			throw new IllegalStateException(
+				"只有待确认上门时间状态(VISIT_PROPOSED)才能拒绝，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.ACCEPTED;
+	}
+
+	public void confirmArrivalByOwner() {
+		if (this.status != BookingStatus.VISIT_SCHEDULED
+			&& this.status != BookingStatus.ARRIVAL_PENDING) {
+			throw new IllegalStateException(
+				"只有已约定时间状态才能标记到达，当前状态: " + this.status);
+		}
+		this.arrivalConfirmedByOwner = true;
+		tryAdvanceToArrivalPendingOrOnSite();
+	}
+
+	public void confirmArrivalByWorker() {
+		if (this.status != BookingStatus.VISIT_SCHEDULED
+			&& this.status != BookingStatus.ARRIVAL_PENDING) {
+			throw new IllegalStateException(
+				"只有已约定时间状态才能标记到达，当前状态: " + this.status);
+		}
+		this.arrivalConfirmedByWorker = true;
+		tryAdvanceToArrivalPendingOrOnSite();
+	}
+
+	private void tryAdvanceToArrivalPendingOrOnSite() {
+		if (!arrivalConfirmedByOwner && !arrivalConfirmedByWorker) {
+			return;
+		}
+		if (arrivalConfirmedByOwner && arrivalConfirmedByWorker) {
+			this.status = BookingStatus.ON_SITE;
+			this.onSiteAt = Instant.now();
+		} else {
+			this.status = BookingStatus.ARRIVAL_PENDING;
+		}
+	}
+
 	public boolean canCancelBeforeOnSite() {
 		return switch (status) {
 			case PENDING, ACCEPTED, VISIT_PROPOSED,
 				 VISIT_SCHEDULED, ARRIVAL_PENDING -> true;
 			case ON_SITE, QUOTE_PENDING, READY_TO_START,
-				 REJECTED, CANCELLED, NOT_SELECTED -> false;
+				 REJECTED, CANCELLED, NOT_SELECTED, HIRED -> false;
 		};
+	}
+
+	public void submitQuote() {
+		if (this.status != BookingStatus.ON_SITE) {
+			throw new IllegalStateException(
+				"只有到场后(ON_SITE)才能提交报价，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.QUOTE_PENDING;
+	}
+
+	public void reopenForQuote() {
+		if (this.status != BookingStatus.QUOTE_PENDING) {
+			throw new IllegalStateException(
+				"只有待确认报价状态(QUOTE_PENDING)才能拒绝报价回退，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.ON_SITE;
+	}
+
+	public void hire() {
+		if (this.status != BookingStatus.QUOTE_PENDING) {
+			throw new IllegalStateException(
+				"只有待确认报价状态(QUOTE_PENDING)才能选定，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.HIRED;
 	}
 
 	public void cancel(BookingCancellationActor actor, String cancelReason,

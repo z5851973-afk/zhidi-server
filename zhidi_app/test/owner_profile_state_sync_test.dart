@@ -328,6 +328,7 @@ final class _NoopBookingApi implements OwnerBookingApi {
   Future<RemoteOwnerBooking> cancelBooking(
     String accessToken,
     String bookingId,
+    String reason,
   ) => throw UnsupportedError('not used by profile tests');
 }
 

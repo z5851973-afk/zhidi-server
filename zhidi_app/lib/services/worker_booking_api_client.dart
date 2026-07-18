@@ -38,6 +38,10 @@ final class RemoteWorkerBooking {
     this.cancelledBy,
     this.cancelReason,
     this.cancelledAt,
+    this.arrivalConfirmedByOwner = false,
+    this.arrivalConfirmedByWorker = false,
+    this.onSiteAt,
+    this.proposedTime,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -60,6 +64,14 @@ final class RemoteWorkerBooking {
       cancelReason: _nullableString(json, 'cancelReason'),
       cancelledAt: json['cancelledAt'] != null
           ? DateTime.parse(json['cancelledAt']).toUtc()
+          : null,
+      arrivalConfirmedByOwner: json['arrivalConfirmedByOwner'] == true,
+      arrivalConfirmedByWorker: json['arrivalConfirmedByWorker'] == true,
+      onSiteAt: json['onSiteAt'] != null
+          ? DateTime.parse(json['onSiteAt']).toUtc()
+          : null,
+      proposedTime: json['proposedTime'] != null
+          ? DateTime.parse(json['proposedTime']).toUtc()
           : null,
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
@@ -141,6 +153,10 @@ final class RemoteWorkerBooking {
   final String? cancelledBy;
   final String? cancelReason;
   final DateTime? cancelledAt;
+  final bool arrivalConfirmedByOwner;
+  final bool arrivalConfirmedByWorker;
+  final DateTime? onSiteAt;
+  final DateTime? proposedTime;
   final DateTime createdAt;
   final DateTime updatedAt;
 }
@@ -157,6 +173,7 @@ final class WorkerBookingApiClient implements WorkerBookingApi {
   final http.Client _httpClient;
   final Duration requestTimeout;
 
+  @override
   Future<List<RemoteWorkerBooking>> listWorkerBookings(
     String accessToken,
   ) async {
@@ -164,6 +181,7 @@ final class WorkerBookingApiClient implements WorkerBookingApi {
     return _parseBookingList(response);
   }
 
+  @override
   Future<RemoteWorkerBooking> acceptBooking(
     String accessToken,
     String bookingId,
@@ -175,6 +193,7 @@ final class WorkerBookingApiClient implements WorkerBookingApi {
     return _parseBooking(response);
   }
 
+  @override
   Future<RemoteWorkerBooking> rejectBooking(
     String accessToken,
     String bookingId,

@@ -5,6 +5,6 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record QuoteRequest(
-	@NotEmpty List<@NotNull QuoteItem> items
+	@NotEmpty List<@NotNull QuoteItemRequest> items
 ) {
 }

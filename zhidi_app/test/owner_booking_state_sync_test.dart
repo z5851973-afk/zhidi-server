@@ -72,6 +72,7 @@ void main() {
           RemoteOwnerBooking(
             id: 'remote-booking-accepted',
             ownerUserId: 'owner-user-id',
+            serviceRequestId: 'sr-test-1',
             workerUserId: 'worker-user-id',
             workerName: '模拟器闭环工人',
             trade: '水电',
@@ -163,6 +164,7 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
       serviceAddress: request.serviceAddress,
       remark: request.remark,
       status: 'PENDING',
+      serviceRequestId: 'sr-test-1',
       createdAt: DateTime.utc(2026, 7, 15, 10),
       updatedAt: DateTime.utc(2026, 7, 15, 10),
     );
@@ -178,6 +180,7 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
   Future<RemoteOwnerBooking> cancelBooking(
     String accessToken,
     String bookingId,
+    String reason,
   ) async {
     tokens.add(accessToken);
     return RemoteOwnerBooking(
@@ -189,6 +192,10 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
       serviceCity: '杭州',
       serviceAddress: null,
       remark: null,
+      serviceRequestId: 'sr-test-1',
+      cancelledBy: null,
+      cancelReason: null,
+      cancelledAt: null,
       status: 'CANCELLED',
       createdAt: DateTime.utc(2026, 7, 15, 10),
       updatedAt: DateTime.utc(2026, 7, 15, 11),

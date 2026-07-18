@@ -34,6 +34,9 @@ public class Quote extends BaseEntity {
 	@Column(nullable = false, length = 32)
 	private QuoteStatus status;
 
+	@Column(name = "reject_reason", length = 300)
+	private String rejectReason;
+
 	protected Quote() {
 	}
 
@@ -65,11 +68,16 @@ public class Quote extends BaseEntity {
 		return status;
 	}
 
+	public String getRejectReason() {
+		return rejectReason;
+	}
+
 	public void accept() {
 		this.status = QuoteStatus.ACCEPTED;
 	}
 
-	public void reject() {
+	public void reject(String reason) {
 		this.status = QuoteStatus.REJECTED;
+		this.rejectReason = reason;
 	}
 }

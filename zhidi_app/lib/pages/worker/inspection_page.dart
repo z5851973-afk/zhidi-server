@@ -1,14 +1,14 @@
 // ============================================================
-// 工匠端 — 验收请求/响应页
-// 两个子Tab：待验收 / 已验收
+// 工匠端 — 节点验收管理页（V14 API）
 // ============================================================
 
 import 'package:flutter/material.dart';
 
 import '../../app/worker_app_scope.dart';
-import '../../app/worker_models.dart';
 import '../../design/tokens.dart';
 import '../../design/components.dart';
+import '../../services/inspection_api_client.dart';
+import '../../services/auth_api_client.dart';
 
 const _primary = ZdColors.primary;
 const _textDark = ZdColors.textPrimary;
@@ -17,227 +17,250 @@ const _textLight = ZdColors.textHint;
 const _success = ZdColors.success;
 const _error = ZdColors.error;
 
-class InspectionPage extends StatelessWidget {
-  const InspectionPage({super.key, this.orderId});
-  final String? orderId;
+class InspectionPage extends StatefulWidget {
+  const InspectionPage({super.key, required this.orderId});
+  final String orderId;
+
+  @override
+  State<InspectionPage> createState() => _InspectionPageState();
+}
+
+class _InspectionPageState extends State<InspectionPage> {
+  List<RemoteInspectionNode> _nodes = const [];
+  bool _loading = true;
+  String? _errorMsg;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNodes();
+  }
+
+  Future<void> _loadNodes() async {
+    final state = WorkerAppScope.of(context);
+    final token = state.getAccessToken();
+    if (token == null) {
+      if (mounted) setState(() { _loading = false; _errorMsg = '未登录'; });
+      return;
+    }
+    try {
+      final api = InspectionApiClient();
+      final nodes = await api.getNodes(token, widget.orderId);
+      if (nodes.isEmpty) {
+        final created = await _createDefaultNodes(token);
+        if (mounted) setState(() { _nodes = created; _loading = false; });
+      } else {
+        if (mounted) setState(() { _nodes = nodes; _loading = false; });
+      }
+    } on AuthApiException catch (e) {
+      if (mounted) setState(() { _loading = false; _errorMsg = e.message; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _errorMsg = '加载失败：$e'; });
+    }
+  }
+
+  Future<List<RemoteInspectionNode>> _createDefaultNodes(String token) async {
+    final api = InspectionApiClient();
+    const defaults = [
+      {'name': '水电验收', 'description': '水管、电路布线验收', 'sortOrder': 1},
+      {'name': '木工验收', 'description': '吊顶、柜体结构验收', 'sortOrder': 2},
+      {'name': '油漆验收', 'description': '墙面平整度、颜色均匀度验收', 'sortOrder': 3},
+      {'name': '竣工验收', 'description': '整体装修质量终验', 'sortOrder': 4},
+    ];
+    return await api.createNodes(token, widget.orderId, defaults.map((d) => Map<String, dynamic>.from(d)).toList());
+  }
+
+  Future<void> _requestInspection(String nodeId) async {
+    final state = WorkerAppScope.of(context);
+    // ignore: await_only_futures
+    final token = await state.getAccessToken();
+    if (token == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('登录已过期')));
+      }
+      return;
+    }
+    try {
+      final api = InspectionApiClient();
+      await api.requestInspection(token, nodeId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已申请验收')));
+      }
+      await _loadNodes();
+    } on AuthApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final state = WorkerAppScope.of(context);
-    final all = orderId != null
-        ? state.inspectionRequests.where((r) => r.orderId == orderId).toList()
-        : state.inspectionRequests;
+    return Scaffold(
+      backgroundColor: ZdColors.background,
+      appBar: AppBar(
+        title: const Text('节点验收'),
+        backgroundColor: Colors.white,
+        foregroundColor: _textDark,
+        elevation: 0,
+      ),
+      body: _buildBody(),
+    );
+  }
 
-    final pending = all.where((r) => r.status == WorkerInspectionStatus.pending).toList();
-    final resolved = all.where((r) => r.status != WorkerInspectionStatus.pending).toList();
-
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        backgroundColor: ZdColors.background,
-        appBar: AppBar(
-          title: const Text('验收管理'),
-          backgroundColor: Colors.white,
-          foregroundColor: _textDark,
-          elevation: 0,
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(42),
-            child: Container(
-              color: Colors.white,
-              child: TabBar(
-                labelColor: _primary,
-                unselectedLabelColor: _textMid,
-                indicatorColor: _primary,
-                indicatorSize: TabBarIndicatorSize.label,
-                labelStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                unselectedLabelStyle: const TextStyle(fontSize: 15),
-                tabs: [
-                  Tab(text: '待验收（${pending.length}）'),
-                  Tab(text: '已验收（${resolved.length}）'),
-                ],
-              ),
-            ),
-          ),
-        ),
-        body: TabBarView(
+  Widget _buildBody() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_errorMsg != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            pending.isEmpty ? _empty('暂无待验收请求') : _InspectionList(items: pending, isPending: true),
-            resolved.isEmpty ? _empty('暂无已验收记录') : _InspectionList(items: resolved, isPending: false),
+            Text(_errorMsg!, style: ZdText.caption.copyWith(color: _textLight)),
+            const SizedBox(height: ZdSpacing.md),
+            ZdPrimaryButton(label: '重试', onTap: () { setState(() { _loading = true; _errorMsg = null; }); _loadNodes(); }),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _empty(String text) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.fact_check_outlined, size: 56, color: _textLight),
-          const SizedBox(height: ZdSpacing.md),
-          Text(text, style: ZdText.caption.copyWith(color: _textLight)),
-        ],
-      ),
-    );
-  }
-}
-
-class _InspectionList extends StatelessWidget {
-  const _InspectionList({required this.items, required this.isPending});
-  final List<WorkerInspectionRequest> items;
-  final bool isPending;
-
-  @override
-  Widget build(BuildContext context) {
+      );
+    }
+    if (_nodes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.fact_check_outlined, size: 56, color: _textLight),
+            const SizedBox(height: ZdSpacing.md),
+            Text('暂无验收节点', style: ZdText.caption.copyWith(color: _textLight)),
+          ],
+        ),
+      );
+    }
     return ListView.builder(
       padding: const EdgeInsets.all(ZdSpacing.md),
-      itemCount: items.length,
-      itemBuilder: (context, i) {
-        final item = items[i];
-        return ZdCard(
-          onTap: isPending ? () => _showDetail(context, item) : null,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: (isPending ? _primary : _success).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(ZdRadius.sm),
-                    ),
-                    child: Icon(
-                      isPending ? Icons.pending_actions : Icons.check_circle_outline,
-                      color: isPending ? _primary : _success,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: ZdSpacing.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(item.phaseName, style: ZdText.subtitle),
-                        const SizedBox(height: 2),
-                        Text('请求时间：${_fmt(item.requestTime)}', style: ZdText.tiny),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _statusColor(item.status).withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(ZdRadius.pill),
-                    ),
-                    child: Text(item.statusLabel,
-                        style: ZdText.tiny.copyWith(
-                            color: _statusColor(item.status),
-                            fontWeight: FontWeight.w500)),
-                  ),
-                ],
-              ),
-              if (item.comment != null) ...[
-                const SizedBox(height: ZdSpacing.md),
-                Text('备注：${item.comment}', style: ZdText.caption),
-              ],
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Color _statusColor(WorkerInspectionStatus s) => switch (s) {
-    WorkerInspectionStatus.pending => _primary,
-    WorkerInspectionStatus.passed => _success,
-    WorkerInspectionStatus.failed => _error,
-  };
-
-  String _fmt(DateTime t) => '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
-
-  void _showDetail(BuildContext context, WorkerInspectionRequest item) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(ZdRadius.card)),
+      itemCount: _nodes.length,
+      itemBuilder: (ctx, i) => _NodeCard(
+        node: _nodes[i],
+        onRequestInspection: () => _requestInspection(_nodes[i].id),
       ),
-      builder: (ctx) => _InspectionSheet(item: item),
     );
   }
 }
 
-class _InspectionSheet extends StatelessWidget {
-  const _InspectionSheet({required this.item});
-  final WorkerInspectionRequest item;
+class _NodeCard extends StatelessWidget {
+  const _NodeCard({required this.node, required this.onRequestInspection});
+  final RemoteInspectionNode node;
+  final VoidCallback onRequestInspection;
+
+  Color get _statusColor {
+    switch (node.status) {
+      case 'PENDING': return _textMid;
+      case 'INSPECTING': return _primary;
+      case 'PASSED': return _success;
+      case 'FAILED': return _error;
+      default: return _textMid;
+    }
+  }
+
+  String get _statusLabel {
+    switch (node.status) {
+      case 'PENDING': return '待验收';
+      case 'INSPECTING': return '验收中';
+      case 'PASSED': return '已通过';
+      case 'FAILED': return '未通过';
+      default: return node.status;
+    }
+  }
+
+  IconData get _statusIcon {
+    switch (node.status) {
+      case 'PENDING': return Icons.hourglass_empty;
+      case 'INSPECTING': return Icons.pending_actions;
+      case 'PASSED': return Icons.check_circle_outline;
+      case 'FAILED': return Icons.cancel_outlined;
+      default: return Icons.help_outline;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: ZdSpacing.lg,
-        right: ZdSpacing.lg,
-        top: ZdSpacing.xl,
-        bottom: MediaQuery.of(context).viewInsets.bottom + ZdSpacing.xl,
-      ),
+    return ZdCard(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: _textLight,
-                borderRadius: BorderRadius.circular(2),
+          Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(ZdRadius.sm),
+                ),
+                child: Icon(_statusIcon, color: _statusColor, size: 20),
               ),
-            ),
-          ),
-          const SizedBox(height: ZdSpacing.lg),
-          Text('验收详情', style: ZdText.title),
-          const SizedBox(height: ZdSpacing.lg),
-          _detailRow('工序', item.phaseName),
-          _detailRow('请求时间', '${item.requestTime.year}-${item.requestTime.month}-${item.requestTime.day}'),
-          const SizedBox(height: ZdSpacing.lg),
-          if (item.images.isNotEmpty)
-            Text('业主提交图片', style: ZdText.caption),
-          const SizedBox(height: ZdSpacing.lg),
-          ZdPrimaryButton(
-            label: '通过验收',
-            onTap: () => Navigator.pop(context),
-          ),
-          const SizedBox(height: ZdSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () => Navigator.pop(context),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _error,
-                side: const BorderSide(color: _error),
-                shape: RoundedRectangleBorder(
+              const SizedBox(width: ZdSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(node.name, style: ZdText.subtitle),
+                    if (node.description != null && node.description!.isNotEmpty)
+                      Text(node.description!, style: ZdText.tiny, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(ZdRadius.pill),
                 ),
-                minimumSize: const Size(0, 52),
+                child: Text(_statusLabel, style: ZdText.tiny.copyWith(color: _statusColor, fontWeight: FontWeight.w500)),
               ),
-              child: const Text('未通过'),
-            ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: ZdSpacing.sm),
-      child: Row(
-        children: [
-          SizedBox(width: 72, child: Text(label, style: ZdText.caption)),
-          Expanded(child: Text(value, style: ZdText.body)),
+          if (node.status == 'PENDING') ...[
+            const SizedBox(height: ZdSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: onRequestInspection,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primary,
+                  side: const BorderSide(color: _primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZdRadius.pill)),
+                ),
+                child: const Text('申请验收'),
+              ),
+            ),
+          ],
+          if (node.status == 'FAILED') ...[
+            const SizedBox(height: ZdSpacing.sm),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(ZdSpacing.sm),
+              decoration: BoxDecoration(
+                color: _error.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(ZdRadius.sm),
+              ),
+              child: Text('验收未通过，请整改后重新申请', style: ZdText.tiny.copyWith(color: _error)),
+            ),
+            const SizedBox(height: ZdSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: onRequestInspection,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primary,
+                  side: const BorderSide(color: _primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZdRadius.pill)),
+                ),
+                child: const Text('申请重新验收'),
+              ),
+            ),
+          ],
         ],
       ),
     );

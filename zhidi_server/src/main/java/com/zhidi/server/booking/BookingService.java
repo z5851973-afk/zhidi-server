@@ -11,8 +11,11 @@ import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -25,16 +28,22 @@ public class BookingService {
 	private final WorkerProfileRepository workerProfiles;
 	private final UserRepository users;
 	private final OwnerProfileRepository ownerProfiles;
+	private final VisitProposalRepository visitProposals;
+	private final SimpMessagingTemplate messagingTemplate;
 
 	public BookingService(BookingRepository bookings,
 			ServiceRequestRepository serviceRequests,
 			WorkerProfileRepository workerProfiles, UserRepository users,
-			OwnerProfileRepository ownerProfiles) {
+			OwnerProfileRepository ownerProfiles,
+			VisitProposalRepository visitProposals,
+			SimpMessagingTemplate messagingTemplate) {
 		this.bookings = bookings;
 		this.serviceRequests = serviceRequests;
 		this.workerProfiles = workerProfiles;
 		this.users = users;
 		this.ownerProfiles = ownerProfiles;
+		this.visitProposals = visitProposals;
+		this.messagingTemplate = messagingTemplate;
 	}
 
 	@Transactional
@@ -96,12 +105,14 @@ public class BookingService {
 		for (Booking other : candidates) {
 			if (!other.getId().equals(bookingId) && other.getStatus() == BookingStatus.PENDING) {
 				other.notSelect();
+				pushStatusChange(other);
 			}
 		}
 
 		serviceRequests.findById(booking.getServiceRequestId())
 			.ifPresent(ServiceRequest::selectWorker);
 
+		pushStatusChange(booking);
 		return toResponse(booking);
 	}
 
@@ -120,6 +131,7 @@ public class BookingService {
 				.ifPresent(ServiceRequest::reopen);
 		}
 
+		pushStatusChange(booking);
 		return toResponse(booking);
 	}
 
@@ -130,6 +142,7 @@ public class BookingService {
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
 		booking.cancel(BookingCancellationActor.OWNER, reason, Instant.now());
+		pushStatusChange(booking);
 		return toResponse(booking);
 	}
 
@@ -138,6 +151,7 @@ public class BookingService {
 			String reason) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.cancel(BookingCancellationActor.WORKER, reason, Instant.now());
+		pushStatusChange(booking);
 		return toResponse(booking);
 	}
 
@@ -148,13 +162,146 @@ public class BookingService {
 	}
 
 	private BookingResponse toResponse(Booking booking) {
+		Instant proposedTime = visitProposals
+			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
+				booking.getId(), VisitProposalStatus.ACCEPTED)
+			.map(VisitProposal::getProposedTime)
+			.orElse(null);
+
 		return new BookingResponse(booking.getId(), booking.getServiceRequestId(),
 			booking.getOwnerUserId(), booking.getOwnerName(), booking.getOwnerPhone(),
 			booking.getWorkerUserId(), booking.getWorkerName(), booking.getTrade(),
 			booking.getServiceCity(), booking.getServiceAddress(), booking.getRemark(),
 			booking.getStatus(),
 			booking.getCancelledBy(), booking.getCancelReason(), booking.getCancelledAt(),
+			booking.isArrivalConfirmedByOwner(), booking.isArrivalConfirmedByWorker(),
+			booking.getOnSiteAt(), proposedTime,
 			booking.getCreatedAt(), booking.getUpdatedAt());
+	}
+
+	@Transactional
+	public BookingResponse proposeVisit(UUID workerUserId, UUID bookingId,
+			Instant proposedTime) {
+		Booking booking = findWorkerBooking(workerUserId, bookingId);
+		booking.proposeVisit();
+
+		VisitProposal proposal = new VisitProposal(booking.getId(),
+			VisitProposalActor.WORKER, proposedTime);
+		visitProposals.save(proposal);
+		bookings.save(booking);
+
+		pushStatusChange(booking);
+		return toResponse(booking);
+	}
+
+	@Transactional
+	public BookingResponse acceptVisit(UUID ownerUserId, UUID bookingId) {
+		Booking booking = bookings.findByIdAndOwnerUserId(bookingId, ownerUserId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "booking is not available"));
+		booking.scheduleVisit();
+
+		VisitProposal proposal = visitProposals
+			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
+				booking.getId(), VisitProposalStatus.PROPOSED)
+			.orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT,
+				"NO_PROPOSAL", "no pending visit proposal"));
+		proposal.accept();
+		visitProposals.save(proposal);
+		bookings.save(booking);
+
+		pushStatusChange(booking);
+		return toResponse(booking);
+	}
+
+	@Transactional
+	public BookingResponse rejectVisit(UUID ownerUserId, UUID bookingId,
+			String reason) {
+		Booking booking = bookings.findByIdAndOwnerUserId(bookingId, ownerUserId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "booking is not available"));
+		booking.revertToAccepted();
+
+		VisitProposal proposal = visitProposals
+			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
+				booking.getId(), VisitProposalStatus.PROPOSED)
+			.orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT,
+				"NO_PROPOSAL", "no pending visit proposal"));
+		proposal.reject(reason);
+		visitProposals.save(proposal);
+		bookings.save(booking);
+
+		pushStatusChange(booking);
+		return toResponse(booking);
+	}
+
+	@Transactional
+	public BookingResponse arrive(UUID userId, UUID bookingId, boolean isWorker) {
+		Booking booking;
+		if (isWorker) {
+			booking = findWorkerBooking(userId, bookingId);
+		} else {
+			booking = bookings.findByIdAndOwnerUserId(bookingId, userId)
+				.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+					"BOOKING_NOT_FOUND", "booking is not available"));
+		}
+
+		if (booking.getStatus() == BookingStatus.ON_SITE) {
+			return toResponse(booking);
+		}
+
+		if (isWorker) {
+			booking.confirmArrivalByWorker();
+		} else {
+			booking.confirmArrivalByOwner();
+		}
+		bookings.save(booking);
+
+		pushStatusChange(booking);
+		return toResponse(booking);
+	}
+
+	@Transactional
+	public BookingResponse confirmArrival(UUID userId, UUID bookingId,
+			boolean isWorker) {
+		Booking booking;
+		if (isWorker) {
+			booking = findWorkerBooking(userId, bookingId);
+		} else {
+			booking = bookings.findByIdAndOwnerUserId(bookingId, userId)
+				.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+					"BOOKING_NOT_FOUND", "booking is not available"));
+		}
+
+		if (booking.getStatus() != BookingStatus.ARRIVAL_PENDING) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS",
+				"只有双方已标记到达(ARRIVAL_PENDING)才能确认到场");
+		}
+
+		if (isWorker && !booking.isArrivalConfirmedByOwner()) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"OWNER_NOT_ARRIVED", "业主尚未标记到达");
+		}
+		if (!isWorker && !booking.isArrivalConfirmedByWorker()) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"WORKER_NOT_ARRIVED", "工人尚未标记到达");
+		}
+
+		booking.confirmArrivalByWorker();
+		booking.confirmArrivalByOwner();
+		bookings.save(booking);
+
+		pushStatusChange(booking);
+		return toResponse(booking);
+	}
+
+	private void pushStatusChange(Booking booking) {
+		messagingTemplate.convertAndSend(
+			"/topic/booking/" + booking.getId(),
+			Map.of("bookingId", booking.getId().toString(),
+				"status", booking.getStatus().name(),
+				"timestamp", Instant.now().toString()));
 	}
 
 	private static String normalize(String value, String fallback) {

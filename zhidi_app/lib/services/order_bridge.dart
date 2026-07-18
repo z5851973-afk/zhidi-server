@@ -78,6 +78,14 @@ SharedOrderStatus _workerStatusToShared(WorkerOrderStatus s) {
       return SharedOrderStatus.pending;
     case WorkerOrderStatus.accepted:
       return SharedOrderStatus.accepted;
+    case WorkerOrderStatus.visitProposed:
+    case WorkerOrderStatus.visitScheduled:
+    case WorkerOrderStatus.arrivalPending:
+    case WorkerOrderStatus.onSite:
+    case WorkerOrderStatus.quotePending:
+      return SharedOrderStatus.accepted;
+    case WorkerOrderStatus.hired:
+      return SharedOrderStatus.accepted;
     case WorkerOrderStatus.inProgress:
       return SharedOrderStatus.inProgress;
     case WorkerOrderStatus.completed:

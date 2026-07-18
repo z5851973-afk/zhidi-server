@@ -132,6 +132,12 @@ class WorkerProfile {
 enum WorkerOrderStatus {
   pending, // 待接单
   accepted, // 已接单
+  visitProposed, // 已提出上门时间（等待业主确认）
+  visitScheduled, // 上门时间已确认
+  arrivalPending, // 双方已标记到达，等待确认
+  onSite, // 师傅已到场
+  quotePending, // 报价已提交，等待业主确认
+  hired, // 已被业主选中
   inProgress, // 施工中
   completed, // 已完成
   cancelled, // 已取消
@@ -156,6 +162,10 @@ class WorkerOrder {
     this.phaseIndex,
     this.phaseName,
     this.images = const [],
+    this.proposedTime,
+    this.arrivalConfirmedByOwner = false,
+    this.arrivalConfirmedByWorker = false,
+    this.onSiteAt,
   });
 
   final String id;
@@ -174,10 +184,21 @@ class WorkerOrder {
   final int? phaseIndex;
   final String? phaseName;
   final List<String> images;
+  // 阶段 2: 上门时间与到场确认
+  final DateTime? proposedTime;
+  final bool arrivalConfirmedByOwner;
+  final bool arrivalConfirmedByWorker;
+  final DateTime? onSiteAt;
 
   String get statusLabel => switch (status) {
     WorkerOrderStatus.pending => '待接单',
     WorkerOrderStatus.accepted => '已接单',
+    WorkerOrderStatus.visitProposed => '等待业主确认上门时间',
+    WorkerOrderStatus.visitScheduled => '上门时间已确认',
+    WorkerOrderStatus.arrivalPending => '双方已标记到达',
+    WorkerOrderStatus.onSite => '已到场',
+    WorkerOrderStatus.quotePending => '报价已提交',
+    WorkerOrderStatus.hired => '已被选中',
     WorkerOrderStatus.inProgress => '施工中',
     WorkerOrderStatus.completed => '已完成',
     WorkerOrderStatus.cancelled => '已取消',
@@ -205,6 +226,12 @@ class WorkerOrder {
     String? phaseName,
     bool clearPhaseName = false,
     List<String>? images,
+    DateTime? proposedTime,
+    bool clearProposedTime = false,
+    bool? arrivalConfirmedByOwner,
+    bool? arrivalConfirmedByWorker,
+    DateTime? onSiteAt,
+    bool clearOnSiteAt = false,
   }) => WorkerOrder(
     id: id ?? this.id,
     ownerName: ownerName ?? this.ownerName,
@@ -222,6 +249,10 @@ class WorkerOrder {
     phaseIndex: clearPhaseIndex ? null : (phaseIndex ?? this.phaseIndex),
     phaseName: clearPhaseName ? null : (phaseName ?? this.phaseName),
     images: images ?? this.images,
+    proposedTime: clearProposedTime ? null : (proposedTime ?? this.proposedTime),
+    arrivalConfirmedByOwner: arrivalConfirmedByOwner ?? this.arrivalConfirmedByOwner,
+    arrivalConfirmedByWorker: arrivalConfirmedByWorker ?? this.arrivalConfirmedByWorker,
+    onSiteAt: clearOnSiteAt ? null : (onSiteAt ?? this.onSiteAt),
   );
 
   Map<String, dynamic> toJson() => {
@@ -241,6 +272,10 @@ class WorkerOrder {
     if (phaseIndex != null) 'phaseIndex': phaseIndex,
     if (phaseName != null) 'phaseName': phaseName,
     'images': images,
+    if (proposedTime != null) 'proposedTime': proposedTime!.toIso8601String(),
+    'arrivalConfirmedByOwner': arrivalConfirmedByOwner,
+    'arrivalConfirmedByWorker': arrivalConfirmedByWorker,
+    if (onSiteAt != null) 'onSiteAt': onSiteAt!.toIso8601String(),
   };
 
   factory WorkerOrder.fromJson(Map<String, dynamic> j) => WorkerOrder(
@@ -264,6 +299,14 @@ class WorkerOrder {
     phaseIndex: j['phaseIndex'] as int?,
     phaseName: j['phaseName'] as String?,
     images: List<String>.from((j['images'] as List<dynamic>?) ?? []),
+    proposedTime: j['proposedTime'] != null
+        ? DateTime.parse(j['proposedTime'] as String)
+        : null,
+    arrivalConfirmedByOwner: (j['arrivalConfirmedByOwner'] as bool?) ?? false,
+    arrivalConfirmedByWorker: (j['arrivalConfirmedByWorker'] as bool?) ?? false,
+    onSiteAt: j['onSiteAt'] != null
+        ? DateTime.parse(j['onSiteAt'] as String)
+        : null,
   );
 }
 

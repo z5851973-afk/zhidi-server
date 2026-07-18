@@ -86,6 +86,10 @@ public class ServiceRequest extends BaseEntity {
 		this.status = ServiceRequestStatus.WORKER_SELECTED;
 	}
 
+	public void markAssigned() {
+		this.status = ServiceRequestStatus.ASSIGNED;
+	}
+
 	public void reopen() {
 		this.status = ServiceRequestStatus.OPEN;
 	}

@@ -19,6 +19,10 @@ public record BookingResponse(
 	String cancelledBy,
 	String cancelReason,
 	Instant cancelledAt,
+	boolean arrivalConfirmedByOwner,
+	boolean arrivalConfirmedByWorker,
+	Instant onSiteAt,
+	Instant proposedTime,
 	Instant createdAt,
 	Instant updatedAt
 ) {

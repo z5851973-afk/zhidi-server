@@ -3,13 +3,21 @@ import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 
 import '../../design/tokens.dart';
-import '../../data/price_standards.dart';
 import '../../models/renovation.dart' show Trade;
-import '../price/worker_quote_page.dart';
+import '../../services/service_request_api_client.dart';
+import '../../services/worker_quote_api_client.dart';
+import '../../services/auth_api_client.dart';
+import '../../services/chat_api_client.dart';
+import '../../models/chat_models.dart';
+import '../chat/chat_detail_page.dart';
 import '../renovation/construction_standards_page.dart';
 import '../renovation/trade_select_page.dart';
-import '../renovation/worker_detail_page.dart';
 import 'renovation_archive_page.dart';
+import 'owner_quote_compare_page.dart';
+import 'owner_inspection_page.dart';
+import '../../services/daily_report_api_client.dart';
+import 'owner_payment_page.dart';
+import 'owner_after_sale_page.dart';
 
 const _primary = ZdColors.primary;
 const _bg = ZdColors.background;
@@ -19,7 +27,6 @@ const _textMid = ZdColors.textSecondary;
 const _textLight = Color(0xFF9B8F86);
 const _line = Color(0xFFF0E4D8);
 const _green = ZdColors.success;
-const _greenBg = Color(0xFFEAF7EF);
 const _orangeSoft = Color(0xFFFFF1E7);
 const _gold = Color(0xFFC8871A);
 
@@ -31,12 +38,96 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
+  List<RemoteServiceRequest> _requests = const [];
+  final Map<String, List<RemoteQuote>> _quotes = {};
+  bool _loading = true;
+  String? _error;
+  bool _loaded = false;
+
   @override
-  Widget build(BuildContext context) => const _MyHomeManagementView();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      _loadRequests();
+    }
+  }
+
+  Future<void> _loadRequests() async {
+    final state = OwnerAppScope.of(context);
+    final token = await state.getAccessToken();
+    if (token == null) {
+      if (mounted) setState(() { _loading = false; _error = '请先登录'; });
+      return;
+    }
+    try {
+      final api = ServiceRequestApiClient();
+      final list = await api.listOwnerRequests(token);
+      if (mounted) {
+        setState(() { _requests = list; _loading = false; });
+        _checkAndFetchQuotes(token);
+      }
+    } on AuthApiException catch (e) {
+      if (mounted) setState(() { _loading = false; _error = e.message; });
+    } catch (e) {
+      if (mounted) setState(() { _loading = false; _error = '加载失败：$e'; });
+    }
+  }
+
+  Future<void> _checkAndFetchQuotes(String token) async {
+    for (final req in _requests) {
+      for (final c in req.candidates) {
+        if (c.status == 'QUOTE_PENDING' && !_quotes.containsKey(c.id)) {
+          _fetchQuotesFor(c.id, token);
+        }
+      }
+    }
+  }
+
+  Future<void> _fetchQuotesFor(String bookingId, String token) async {
+    try {
+      final api = WorkerQuoteApiClient();
+      final quotes = await api.listQuotesForBooking(token, bookingId);
+      if (mounted) {
+        setState(() {
+          _quotes[bookingId] = quotes;
+        });
+      }
+    } catch (_) {
+      // 报价加载失败不阻断页面
+    }
+  }
+
+  List<RemoteQuote> _quotesForCandidate(RemoteCandidateBooking c) {
+    return _quotes[c.id] ?? [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _MyHomeManagementView(
+      requests: _requests,
+      loading: _loading,
+      error: _error,
+      onRetry: _loadRequests,
+      quotesForCandidate: _quotesForCandidate,
+    );
+  }
 }
 
 class _MyHomeManagementView extends StatelessWidget {
-  const _MyHomeManagementView();
+  const _MyHomeManagementView({
+    this.requests = const [],
+    this.loading = false,
+    this.error,
+    this.onRetry,
+    this.quotesForCandidate,
+  });
+
+  final List<RemoteServiceRequest> requests;
+  final bool loading;
+  final String? error;
+  final VoidCallback? onRetry;
+  final List<RemoteQuote> Function(RemoteCandidateBooking)? quotesForCandidate;
 
   void _push(BuildContext context, Widget page) {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
@@ -51,16 +142,7 @@ class _MyHomeManagementView extends StatelessWidget {
     final state = OwnerAppScope.of(context);
     final workers = _uniqueServiceWorkers(state.bookedWorkers)
       ..sort((a, b) => a.phaseIndex.compareTo(b.phaseIndex));
-    final currentWorker = _selectCurrentWorker(workers);
-    final serviceListWorkers = currentWorker == null
-        ? workers
-        : workers
-              .where(
-                (worker) => _serviceKey(worker) != _serviceKey(currentWorker),
-              )
-              .toList();
     final cost = _CostSummary.fromState(state, workers);
-    final showProgress = workers.length > 1 || _looksLikeWholeHome(state);
 
     return ColoredBox(
       color: _bg,
@@ -71,56 +153,30 @@ class _MyHomeManagementView extends StatelessWidget {
           children: [
             const _PageHeader(),
             const SizedBox(height: 16),
-            _CurrentServiceCard(
-              key: const Key('my-home-current-service-card'),
-              worker: currentWorker,
+            // ── ServiceRequest 区域 ──
+            _ServiceRequestsSection(
+              requests: requests,
+              loading: loading,
+              error: error,
+              onRetry: onRetry,
               onFindWorker: () => _push(context, const TradeSelectPage()),
-              onDetail: currentWorker == null
-                  ? null
-                  : () => _push(
-                      context,
-                      _TradeServiceDetailPage(worker: currentWorker),
-                    ),
+              onTapRequest: (req) {
+                _push(context, _ServiceRequestDetailPage(
+                  request: req,
+                  quotesForCandidate: quotesForCandidate,
+                ));
+              },
             ),
-            const SizedBox(height: 12),
-            _ServiceListCard(
-              key: const Key('my-home-service-list'),
-              workers: serviceListWorkers,
-              hasCurrentService: currentWorker != null,
-              onFindWorker: () => _push(context, const TradeSelectPage()),
-              onOpenWorker: (worker) =>
-                  _push(context, _TradeServiceDetailPage(worker: worker)),
-            ),
-            if (showProgress) ...[
-              const SizedBox(height: 12),
-              _ProgressCard(workers: workers),
-            ],
             const SizedBox(height: 12),
             _CostCard(
               key: const Key('my-home-cost-card'),
               summary: cost,
-              onDetail: currentWorker == null
-                  ? () => _showHint(context, '先预约师傅后可生成费用明细')
-                  : () => _push(
-                      context,
-                      WorkerQuotePage(
-                        workerName: currentWorker.name,
-                        trade: tradeToPriceData(currentWorker.trade),
-                      ),
-                    ),
+              onDetail: () => _showHint(context, '先预约师傅后可生成费用明细'),
             ),
             const SizedBox(height: 12),
             _DocumentsCard(
               key: const Key('my-home-documents-card'),
-              onQuote: currentWorker == null
-                  ? () => _showHint(context, '暂无报价清单，先开始找师傅')
-                  : () => _push(
-                      context,
-                      WorkerQuotePage(
-                        workerName: currentWorker.name,
-                        trade: tradeToPriceData(currentWorker.trade),
-                      ),
-                    ),
+              onQuote: () => _showHint(context, '暂无报价清单，先开始找师傅'),
               onStandard: () =>
                   _push(context, const ConstructionStandardsPage()),
               onInspection: () => _push(context, const RenovationArchivePage()),
@@ -132,10 +188,6 @@ class _MyHomeManagementView extends StatelessWidget {
     );
   }
 
-  static bool _looksLikeWholeHome(OwnerAppState state) {
-    final type = state.profile.decorationType;
-    return type?.contains('整') == true || type?.contains('全屋') == true;
-  }
 }
 
 class _PageHeader extends StatelessWidget {
@@ -166,415 +218,11 @@ class _PageHeader extends StatelessWidget {
   }
 }
 
-class _CurrentServiceCard extends StatelessWidget {
-  const _CurrentServiceCard({
-    super.key,
-    required this.worker,
-    required this.onFindWorker,
-    required this.onDetail,
-  });
 
-  final BookedWorker? worker;
-  final VoidCallback onFindWorker;
-  final VoidCallback? onDetail;
 
-  @override
-  Widget build(BuildContext context) {
-    final current = worker;
-    return _GlassCard(
-      padding: const EdgeInsets.all(18),
-      child: current == null
-          ? _EmptyCurrentService(onFindWorker: onFindWorker)
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const _SectionTitle(title: '正在服务'),
-                    const Spacer(),
-                    _StatusPill(
-                      label: _serviceStatus(current),
-                      emphasized: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _WorkerAvatar(emoji: current.avatarEmoji, size: 68),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            current.phaseName,
-                            style: const TextStyle(
-                              fontSize: 21,
-                              fontWeight: FontWeight.w800,
-                              color: _textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Text(
-                            _displayWorkerName(current),
-                            style: const TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: _textDark,
-                            ),
-                          ),
-                          const SizedBox(height: 9),
-                          const _CertificationRow(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _orangeSoft,
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.event_available_rounded,
-                        color: _primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        '预约时间',
-                        style: TextStyle(fontSize: 13, color: _textMid),
-                      ),
-                      const Spacer(),
-                      Flexible(
-                        child: Text(
-                          _formatVisitTime(current.bookedAt),
-                          textAlign: TextAlign.right,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: _textDark,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                SizedBox(
-                  width: double.infinity,
-                  height: 46,
-                  child: FilledButton(
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    onPressed: onDetail,
-                    child: const Text(
-                      '查看详情',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-    );
-  }
-}
 
-class _EmptyCurrentService extends StatelessWidget {
-  const _EmptyCurrentService({required this.onFindWorker});
 
-  final VoidCallback onFindWorker;
 
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionTitle(title: '正在服务'),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: _orangeSoft,
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(
-                Icons.home_repair_service_rounded,
-                color: _primary,
-                size: 30,
-              ),
-            ),
-            const SizedBox(width: 14),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '还没有装修服务',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: _textDark,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    '不知道装修第一步？\n知底帮你匹配合适师傅',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.45,
-                      color: _textMid,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          height: 46,
-          child: FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: _primary,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-            ),
-            onPressed: onFindWorker,
-            child: const Text(
-              '开始找师傅',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ServiceListCard extends StatelessWidget {
-  const _ServiceListCard({
-    super.key,
-    required this.workers,
-    required this.hasCurrentService,
-    required this.onFindWorker,
-    required this.onOpenWorker,
-  });
-
-  final List<BookedWorker> workers;
-  final bool hasCurrentService;
-  final VoidCallback onFindWorker;
-  final ValueChanged<BookedWorker> onOpenWorker;
-
-  @override
-  Widget build(BuildContext context) {
-    return _GlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _SectionTitle(title: '我的服务'),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: onFindWorker,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: const Text('新增'),
-                style: TextButton.styleFrom(foregroundColor: _primary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          if (workers.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                hasCurrentService
-                    ? '当前服务已在上方展示，新增其它工种后会在这里管理。'
-                    : '暂无预约工种，首页找到师傅后会自动同步到这里。',
-                style: const TextStyle(fontSize: 13, color: _textMid),
-              ),
-            )
-          else
-            ...workers.map(
-              (worker) => _ServiceRow(
-                key: Key('my-home-service-row-${_serviceKey(worker)}'),
-                worker: worker,
-                onTap: () => onOpenWorker(worker),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ServiceRow extends StatelessWidget {
-  const _ServiceRow({super.key, required this.worker, required this.onTap});
-
-  final BookedWorker worker;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isPendingMatch = worker.name.trim().isEmpty;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: _orangeSoft,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Text(
-                worker.avatarEmoji.isEmpty ? '🏠' : worker.avatarEmoji,
-                style: const TextStyle(fontSize: 22),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    worker.phaseName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: _textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    isPendingMatch ? '待匹配' : _displayWorkerName(worker),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: _textMid),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            _StatusPill(label: isPendingMatch ? '待匹配' : _serviceStatus(worker)),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right_rounded, color: _textLight),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressCard extends StatelessWidget {
-  const _ProgressCard({required this.workers});
-
-  final List<BookedWorker> workers;
-
-  @override
-  Widget build(BuildContext context) {
-    final progressWorkers = workers.take(4).toList();
-    return _GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionTitle(title: '装修进度'),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              for (int i = 0; i < progressWorkers.length; i++) ...[
-                Expanded(
-                  child: _ProgressStep(
-                    label: _progressLabel(progressWorkers[i]),
-                    status: _serviceStatus(progressWorkers[i]),
-                  ),
-                ),
-                if (i != progressWorkers.length - 1)
-                  Container(width: 14, height: 2, color: _line),
-              ],
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProgressStep extends StatelessWidget {
-  const _ProgressStep({required this.label, required this.status});
-
-  final String label;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final done = status == '已完成';
-    final current = status == '施工中';
-    final color = done || current ? _primary : _textLight;
-    return Column(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: done
-                ? _primary
-                : current
-                ? _orangeSoft
-                : const Color(0xFFF4EFEA),
-            borderRadius: BorderRadius.circular(17),
-            border: Border.all(color: done ? _primary : _line),
-          ),
-          child: Icon(
-            done ? Icons.check_rounded : Icons.circle_rounded,
-            size: done ? 18 : 9,
-            color: done ? Colors.white : color,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            color: _textDark,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(status, style: TextStyle(fontSize: 11, color: color)),
-      ],
-    );
-  }
-}
 
 class _CostCard extends StatelessWidget {
   const _CostCard({super.key, required this.summary, required this.onDetail});
@@ -748,433 +396,12 @@ class _DocumentsCard extends StatelessWidget {
   }
 }
 
-class _TradeServiceDetailPage extends StatelessWidget {
-  const _TradeServiceDetailPage({required this.worker});
 
-  final BookedWorker worker;
 
-  @override
-  Widget build(BuildContext context) {
-    final state = OwnerAppScope.of(context);
-    final reports =
-        state.dailyReports
-            .where((report) => report.phaseIndex == worker.phaseIndex)
-            .toList()
-          ..sort(
-            (a, b) => (a.date ?? DateTime(0)).compareTo(b.date ?? DateTime(0)),
-          );
-    final archives = state.archives
-        .where((archive) => archive.phaseIndex == worker.phaseIndex)
-        .toList();
-    final inspections = state.inspections
-        .where((inspection) => inspection.phaseIndex == worker.phaseIndex)
-        .toList();
-    final materialTotal = state.materialEstimates
-        .where((estimate) => estimate.phaseIndex == worker.phaseIndex)
-        .fold<double>(0, (sum, estimate) => sum + estimate.selectedTotal);
-    final laborTotal = _laborPriceFor(worker);
 
-    return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
-        title: Text('${_progressLabel(worker)}服务详情'),
-        backgroundColor: _bg,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: _textDark,
-      ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-          children: [
-            _ServiceWorkerDetailCard(worker: worker),
-            const SizedBox(height: 12),
-            _ServicePriceCard(
-              laborTotal: laborTotal,
-              materialTotal: materialTotal,
-              worker: worker,
-            ),
-            const SizedBox(height: 12),
-            _ServiceLogCard(
-              worker: worker,
-              reports: reports,
-              archives: archives,
-              inspections: inspections,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
-class _ServiceWorkerDetailCard extends StatelessWidget {
-  const _ServiceWorkerDetailCard({required this.worker});
 
-  final BookedWorker worker;
 
-  @override
-  Widget build(BuildContext context) {
-    return _GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _SectionTitle(title: '师傅详情'),
-              const Spacer(),
-              _StatusPill(label: _serviceStatus(worker), emphasized: true),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              _WorkerAvatar(emoji: worker.avatarEmoji, size: 62),
-              const SizedBox(width: 13),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _displayWorkerName(worker),
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w900,
-                        color: _textDark,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '${_progressLabel(worker)} · ${worker.years}年经验 · ${worker.completedOrders}单',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: _textMid),
-                    ),
-                    const SizedBox(height: 8),
-                    const _CertificationRow(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: worker.skills
-                .take(4)
-                .map((skill) => _SoftChip(skill))
-                .toList(),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            height: 42,
-            child: OutlinedButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => WorkerDetailPage(
-                    workerName: _displayWorkerName(worker),
-                    trade: _tradeFromWorker(worker),
-                    distance: worker.distance,
-                  ),
-                ),
-              ),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _primary,
-                side: const BorderSide(color: Color(0xFFFFC7A3)),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: const Text(
-                '查看师傅主页',
-                style: TextStyle(fontWeight: FontWeight.w800),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ServicePriceCard extends StatelessWidget {
-  const _ServicePriceCard({
-    required this.laborTotal,
-    required this.materialTotal,
-    required this.worker,
-  });
-
-  final double laborTotal;
-  final double materialTotal;
-  final BookedWorker worker;
-
-  @override
-  Widget build(BuildContext context) {
-    return _GlassCard(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const _SectionTitle(title: '价格明细'),
-              const Spacer(),
-              Text(
-                _money(laborTotal + materialTotal),
-                style: const TextStyle(
-                  color: _primary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _PriceExpansionTile(
-            title: '人工价格',
-            amount: laborTotal,
-            lines: ['${_progressLabel(worker)}标准人工费', '按知底固定工价计算，施工前确认，不临时加价'],
-          ),
-          _PriceExpansionTile(
-            title: '辅料价格',
-            amount: materialTotal,
-            lines: materialTotal > 0
-                ? const ['辅材清单来自师傅提交，业主确认后下单', '平台保留明细，便于后续验收追溯']
-                : const ['暂无已确认辅材清单', '后续师傅提交后会在这里展开明细'],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PriceExpansionTile extends StatelessWidget {
-  const _PriceExpansionTile({
-    required this.title,
-    required this.amount,
-    required this.lines,
-  });
-
-  final String title;
-  final double amount;
-  final List<String> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: Material(
-        color: Colors.transparent,
-        child: ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 10),
-          title: Text(
-            title,
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: _textDark,
-            ),
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _money(amount),
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: _primary,
-                ),
-              ),
-              const SizedBox(width: 4),
-              const Icon(Icons.expand_more_rounded, color: _textLight),
-            ],
-          ),
-          children: [
-            for (final line in lines)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 6),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('• ', style: TextStyle(color: _primary)),
-                    Expanded(
-                      child: Text(
-                        line,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          height: 1.35,
-                          color: _textMid,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ServiceLogCard extends StatelessWidget {
-  const _ServiceLogCard({
-    required this.worker,
-    required this.reports,
-    required this.archives,
-    required this.inspections,
-  });
-
-  final BookedWorker worker;
-  final List<DailyReport> reports;
-  final List<RenovationArchive> archives;
-  final List<InspectionRequest> inspections;
-
-  @override
-  Widget build(BuildContext context) {
-    final entryPhotos = _entryPhotos();
-    final dailyPhotos = reports.expand((report) => report.imagePaths).toList();
-    final inspectionPhotos = archives
-        .expand((archive) => archive.photoUrls)
-        .toList();
-    return _GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionTitle(title: '施工日志'),
-          const SizedBox(height: 14),
-          _PhotoLogSection(title: '进场拍照', photos: entryPhotos),
-          _PhotoLogSection(title: '每日施工照片', photos: dailyPhotos),
-          _PhotoLogSection(title: '节点验收照片', photos: inspectionPhotos),
-          const SizedBox(height: 4),
-          _StandardInfoBlock(
-            title: '施工工艺',
-            lines: _craftStandards(worker, reports),
-          ),
-          const SizedBox(height: 10),
-          _StandardInfoBlock(
-            title: '验收标准',
-            lines: _inspectionStandards(worker, inspections, archives),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<String> _entryPhotos() {
-    if (reports.isNotEmpty && reports.first.imagePaths.isNotEmpty) {
-      return reports.first.imagePaths.take(2).toList();
-    }
-    return ['https://picsum.photos/seed/${worker.id}-entry/600/400'];
-  }
-}
-
-class _PhotoLogSection extends StatelessWidget {
-  const _PhotoLogSection({required this.title, required this.photos});
-
-  final String title;
-  final List<String> photos;
-
-  @override
-  Widget build(BuildContext context) {
-    final displayPhotos = photos.isEmpty
-        ? ['https://picsum.photos/seed/${title.hashCode}/600/400']
-        : photos.take(4).toList();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: _textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 72,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: displayPhotos.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 8),
-              itemBuilder: (_, index) => ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Image.network(
-                  displayPhotos[index],
-                  width: 96,
-                  height: 72,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => Container(
-                    width: 96,
-                    height: 72,
-                    color: _orangeSoft,
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.image_outlined, color: _primary),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StandardInfoBlock extends StatelessWidget {
-  const _StandardInfoBlock({required this.title, required this.lines});
-
-  final String title;
-  final List<String> lines;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBF7),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: _textDark,
-            ),
-          ),
-          const SizedBox(height: 8),
-          for (final line in lines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: Text(
-                '• $line',
-                style: const TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: _textMid,
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _GlassCard extends StatelessWidget {
   const _GlassCard({required this.child, required this.padding});
@@ -1215,101 +442,8 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _CertificationRow extends StatelessWidget {
-  const _CertificationRow();
 
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.verified_rounded, size: 16, color: _primary),
-        SizedBox(width: 5),
-        Flexible(
-          child: Text(
-            '平台认证施工师傅',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: _gold,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
-class _WorkerAvatar extends StatelessWidget {
-  const _WorkerAvatar({required this.emoji, required this.size});
-
-  final String emoji;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFF1E7), Color(0xFFFFC8A6)],
-        ),
-        borderRadius: BorderRadius.circular(size * .36),
-        border: Border.all(color: Colors.white, width: 2),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x1AFF6A00),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Text(
-        emoji.isEmpty ? '👷' : emoji,
-        style: TextStyle(fontSize: size * .48),
-      ),
-    );
-  }
-}
-
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.label, this.emphasized = false});
-
-  final String label;
-  final bool emphasized;
-
-  @override
-  Widget build(BuildContext context) {
-    final done = label.contains('完成');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: done
-            ? _greenBg
-            : emphasized
-            ? _orangeSoft
-            : const Color(0xFFFFF8F1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          color: done ? _green : _primary,
-        ),
-      ),
-    );
-  }
-}
 
 class _CostMetric extends StatelessWidget {
   const _CostMetric({
@@ -1354,30 +488,6 @@ class _CostMetric extends StatelessWidget {
   }
 }
 
-class _SoftChip extends StatelessWidget {
-  const _SoftChip(this.label);
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: _orangeSoft,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: _primary,
-        ),
-      ),
-    );
-  }
-}
 
 class _DocEntry {
   const _DocEntry(this.icon, this.label, this.onTap);
@@ -1420,35 +530,6 @@ class _CostSummary {
   }
 }
 
-String _serviceStatus(BookedWorker worker) {
-  final raw = worker.status;
-  if (raw.contains('完成')) return '已完成';
-  if (raw.contains('报价')) return '等待报价';
-  if (raw.contains('施工')) return '施工中';
-  if (raw.contains('测量') || raw.contains('上门') || raw.contains('接单')) {
-    return '等待上门测量';
-  }
-  return raw.isEmpty ? '等待上门测量' : raw;
-}
-
-String _progressLabel(BookedWorker worker) {
-  final label = worker.phaseName.trim().isNotEmpty
-      ? worker.phaseName.trim()
-      : worker.trade.trim();
-  if (label.contains('泥瓦')) return '泥瓦';
-  if (label.contains('泥工')) return '泥工';
-  if (label.contains('防水')) return '防水';
-  if (label.contains('水电')) return '水电';
-  if (label.contains('拆')) return '拆除';
-  if (label.contains('木')) return '木工';
-  if (label.contains('油漆') || label.contains('涂')) return '油漆';
-  if (label.contains('安装')) return '安装';
-  return label;
-}
-
-String _displayWorkerName(BookedWorker worker) {
-  return worker.name.trim();
-}
 
 Trade? _tradeFromWorker(BookedWorker worker) {
   final text = '${worker.trade} ${worker.phaseName}';
@@ -1497,104 +578,1596 @@ bool _preferWorker(BookedWorker candidate, BookedWorker current) {
   return false;
 }
 
-BookedWorker? _selectCurrentWorker(List<BookedWorker> workers) {
-  final active = workers.where((worker) => !worker.isCompleted).toList();
-  if (active.isEmpty) return workers.isEmpty ? null : workers.last;
 
-  BookedWorker? best;
-  for (final worker in active) {
-    if (best == null ||
-        _currentServiceScore(worker) > _currentServiceScore(best)) {
-      best = worker;
-    }
-  }
-  return best;
-}
 
-int _currentServiceScore(BookedWorker worker) {
-  final status = worker.status;
-  var score = 0;
-  if (status.contains('施工')) {
-    score = 40000;
-  } else if (status.contains('报价')) {
-    score = 30000;
-  } else if (status.contains('上门') || status.contains('测量')) {
-    score = 20000;
-  } else if (status.contains('确认') || status.contains('接单')) {
-    score = 10000;
-  }
-  score += (worker.bookedAt?.millisecondsSinceEpoch ?? 0) ~/ 1000000000;
-  return score;
-}
 
-double _laborPriceFor(BookedWorker worker) {
-  final base = switch (_tradeFromWorker(worker)) {
-    Trade.demolition => 1600.0,
-    Trade.plumbing => 2600.0,
-    Trade.waterproof => 1800.0,
-    Trade.masonry => 3000.0,
-    Trade.carpentry => 3200.0,
-    Trade.painting => 2200.0,
-    Trade.installation => 1400.0,
-    Trade.cleaning => 800.0,
-    null => 1800.0,
-  };
-  return base + worker.years * 60;
-}
 
-List<String> _craftStandards(BookedWorker worker, List<DailyReport> reports) {
-  final label = _progressLabel(worker);
-  final latestNote = reports.isNotEmpty ? reports.last.note : '';
-  final base = switch (_tradeFromWorker(worker)) {
-    Trade.demolition => ['现场保护后拆除，建筑垃圾分区堆放', '拆改完成后清扫地面并保留影像记录'],
-    Trade.plumbing => ['水电横平竖直，强弱电分槽布线', '管线隐蔽前完成照片留档'],
-    Trade.waterproof => ['基层清理后涂刷防水，阴阳角加强处理', '闭水试验前后拍照留档'],
-    Trade.masonry => ['墙地砖铺贴前先排版，控制空鼓和平整度', '阴阳角、坡度、缝隙按标准验收'],
-    Trade.carpentry => ['基层找平后安装，板材封边和收口留档', '吊顶龙骨间距按标准施工'],
-    Trade.painting => ['基层处理、腻子找平、底漆面漆分步施工', '每道工序干透后再进入下一步'],
-    Trade.installation => ['成品安装前复核尺寸和开孔位置', '安装后进行牢固度和功能检查'],
-    Trade.cleaning => ['开荒清洁按空间分区推进', '玻璃、五金、地面分别验收'],
-    null => ['$label施工过程按平台标准记录', '关键节点拍照留档'],
-  };
-  return latestNote.isEmpty ? base : [latestNote, ...base];
-}
 
-List<String> _inspectionStandards(
-  BookedWorker worker,
-  List<InspectionRequest> inspections,
-  List<RenovationArchive> archives,
-) {
-  final archiveNote = archives.isNotEmpty ? archives.last.inspectionNote : null;
-  final inspectionNote = inspections.isNotEmpty
-      ? inspections.last.inspectorNote
-      : null;
-  final notes = [archiveNote, inspectionNote]
-      .where((note) => note != null && note.trim().isNotEmpty)
-      .cast<String>()
-      .toList();
-  if (notes.isNotEmpty) return notes;
-  return switch (_tradeFromWorker(worker)) {
-    Trade.demolition => ['拆除范围与需求一致，无误拆漏拆', '垃圾清运完成，现场具备下道工序条件'],
-    Trade.plumbing => ['管线走向清晰，开槽深度合理', '通水通电测试正常，隐蔽工程照片完整'],
-    Trade.waterproof => ['防水高度和涂刷遍数达标', '闭水试验无渗漏，节点照片完整'],
-    Trade.masonry => ['砖面平整、缝隙均匀、空鼓率达标', '阴阳角垂直，地漏坡度正确'],
-    Trade.carpentry => ['安装牢固，收口平整，无明显缝隙', '柜体/吊顶尺寸与方案一致'],
-    Trade.painting => ['墙面平整无明显色差、裂纹和流坠', '阴阳角顺直，成品保护完整'],
-    Trade.installation => ['设备安装牢固，功能测试正常', '五金收口整洁，无划伤破损'],
-    Trade.cleaning => ['空间无明显灰尘、胶痕和施工残留', '玻璃、地面、台面清洁达标'],
-    null => ['施工结果符合平台验收标准', '照片、记录、验收结论完整留档'],
-  };
-}
-
-String _formatVisitTime(DateTime? time) {
-  if (time == null) return '待确认上门时间';
-  final period = time.hour < 12 ? '上午' : '下午';
-  final hour = time.hour <= 12 ? time.hour : time.hour - 12;
-  final minute = time.minute.toString().padLeft(2, '0');
-  return '${time.month}月${time.day}日 $period$hour:$minute';
-}
 
 String _money(double value) {
   if (value <= 0) return '¥0';
   return '¥${value.toStringAsFixed(0)}';
+}
+
+// ══════════════════════════════════════════
+// ServiceRequest 区域 — 替代旧 CurrentServiceCard / ServiceListCard
+// ══════════════════════════════════════════
+
+String _tradeLabel(String apiTrade) {
+  return switch (apiTrade) {
+    'demolition' => '拆除',
+    'plumbing' => '水电',
+    'masonry' => '泥瓦',
+    'waterproof' => '防水',
+    'carpentry' => '木工',
+    'painting' => '油漆',
+    'installation' => '安装',
+    _ => apiTrade,
+  };
+}
+
+String _statusLabel(String status) {
+  return switch (status) {
+    'OPEN' => '待匹配',
+    'COMPARING' => '比价中',
+    'WORKER_SELECTED' => '已选定',
+    'ASSIGNED' => '已选定',
+    _ => status,
+  };
+}
+
+Color _statusColor(String status) {
+  return switch (status) {
+    'OPEN' => ZdColors.primary,
+    'COMPARING' => _gold,
+    'WORKER_SELECTED' => _green,
+    'ASSIGNED' => _green,
+    _ => _textMid,
+  };
+}
+
+String _formatDateTime(DateTime? dt) {
+  if (dt == null) return '';
+  final local = dt.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
+
+String _bookingStatusLabel(String status) {
+  return switch (status) {
+    'VISIT_PROPOSED' => '工人已建议上门时间',
+    'VISIT_SCHEDULED' => '上门时间已确认',
+    'ARRIVAL_PENDING' => '双方已标记到达',
+    'ON_SITE' => '师傅已到场',
+    'HIRED' => '已选定',
+    _ => status,
+  };
+}
+
+class _ServiceRequestsSection extends StatelessWidget {
+  const _ServiceRequestsSection({
+    required this.requests,
+    required this.loading,
+    this.error,
+    this.onRetry,
+    required this.onFindWorker,
+    required this.onTapRequest,
+  });
+
+  final List<RemoteServiceRequest> requests;
+  final bool loading;
+  final String? error;
+  final VoidCallback? onRetry;
+  final VoidCallback onFindWorker;
+  final ValueChanged<RemoteServiceRequest> onTapRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  '我的装修需求',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: _textDark,
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: onFindWorker,
+                  icon: const Icon(Icons.add_rounded, size: 18),
+                  label: const Text('找师傅'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: const BorderSide(color: _primary),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (loading) ...[
+              const SizedBox(height: 32),
+              const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              const SizedBox(height: 32),
+            ] else if (error != null) ...[
+              const SizedBox(height: 16),
+              _ErrorBanner(error: error!, onRetry: onRetry),
+            ] else if (requests.isEmpty) ...[
+              const SizedBox(height: 32),
+              _EmptyGuide(onFindWorker: onFindWorker),
+              const SizedBox(height: 16),
+            ] else ...[
+              const SizedBox(height: 12),
+              ...requests.map((r) => _ServiceRequestCard(
+                    request: r,
+                    onTap: () => onTapRequest(r),
+                  )),
+            ],
+          ],
+        ),
+    );
+  }
+}
+
+class _EmptyGuide extends StatelessWidget {
+  const _EmptyGuide({required this.onFindWorker});
+  final VoidCallback onFindWorker;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF7F0),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.home_work_outlined, size: 40, color: _primary.withValues(alpha: 0.6)),
+          const SizedBox(height: 12),
+          const Text(
+            '还没有装修需求',
+            style: TextStyle(fontSize: 14, color: _textMid),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '发布需求后，平台为你匹配同城师傅',
+            style: TextStyle(fontSize: 12, color: _textLight),
+          ),
+          const SizedBox(height: 14),
+          ElevatedButton.icon(
+            onPressed: onFindWorker,
+            icon: const Icon(Icons.search_rounded, size: 18),
+            label: const Text('开始找师傅'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primary,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.error, this.onRetry});
+  final String error;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF0F0),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(error, style: const TextStyle(color: Colors.red, fontSize: 13)),
+          ),
+          if (onRetry != null)
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('重试', style: TextStyle(fontSize: 13)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ServiceRequestCard extends StatelessWidget {
+  const _ServiceRequestCard({required this.request, required this.onTap});
+  final RemoteServiceRequest request;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = _statusColor(request.status);
+    final activeCount = request.candidates
+        .where((c) => c.status != 'CANCELLED')
+        .length;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _line),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: statusColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.handyman_outlined,
+                color: statusColor,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        '${_tradeLabel(request.trade)}师傅',
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: _textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          _statusLabel(request.status),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: statusColor,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${request.serviceCity} · $activeCount位候选师傅 · ${request.candidates.length}次邀请',
+                    style: const TextStyle(fontSize: 12, color: _textLight),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: _textLight),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════
+// ServiceRequest 候选详情页（含取消）
+// ══════════════════════════════════════════
+class _ServiceRequestDetailPage extends StatefulWidget {
+  const _ServiceRequestDetailPage({
+    required this.request,
+    this.quotesForCandidate,
+  });
+
+  final RemoteServiceRequest request;
+  final List<RemoteQuote> Function(RemoteCandidateBooking)? quotesForCandidate;
+
+  @override
+  State<_ServiceRequestDetailPage> createState() =>
+      _ServiceRequestDetailPageState();
+}
+
+class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
+  bool _cancelling = false;
+  bool _visitLoading = false;
+  bool _quoteLoading = false;
+
+  Future<String?> _getToken() async {
+    final state = OwnerAppScope.of(context);
+    final token = await state.getAccessToken();
+    if (token == null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录已过期，请重新登录')),
+      );
+    }
+    return token;
+  }
+
+  void _handleError(Object e) {
+    if (!mounted) return;
+    final msg = e is AuthApiException ? e.message : '操作失败：$e';
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _acceptVisit(RemoteCandidateBooking candidate) async {
+    setState(() => _visitLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = ServiceRequestApiClient();
+      await api.acceptVisit(token, candidate.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已确认上门时间')),
+        );
+        Navigator.pop(context);
+      }
+    } on Exception catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _visitLoading = false);
+    }
+  }
+
+  Future<void> _rejectVisit(RemoteCandidateBooking candidate) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('拒绝上门时间'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('${candidate.workerName} 建议 '
+                '${_formatDateTime(candidate.proposedTime)} 上门'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: '拒绝原因（必填）',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('返回'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('请填写拒绝原因')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认拒绝'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    final reason = reasonController.text.trim();
+    if (reason.isEmpty) return;
+
+    setState(() => _visitLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = ServiceRequestApiClient();
+      await api.rejectVisit(token, candidate.id, reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已拒绝上门时间，工人可重新提出')),
+        );
+        Navigator.pop(context);
+      }
+    } on Exception catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _visitLoading = false);
+    }
+  }
+
+  Future<void> _ownerArrive(RemoteCandidateBooking candidate) async {
+    setState(() => _visitLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = ServiceRequestApiClient();
+      await api.ownerArrive(token, candidate.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已标记到达')),
+        );
+        Navigator.pop(context);
+      }
+    } on Exception catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _visitLoading = false);
+    }
+  }
+
+  Future<void> _ownerConfirmArrival(RemoteCandidateBooking candidate) async {
+    setState(() => _visitLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = ServiceRequestApiClient();
+      await api.ownerConfirmArrival(token, candidate.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已确认师傅到场')),
+        );
+        Navigator.pop(context);
+      }
+    } on Exception catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _visitLoading = false);
+    }
+  }
+
+  Future<void> _acceptQuote(RemoteCandidateBooking candidate, RemoteQuote quote) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认选人'),
+        content: Text(
+          '确定选 ${candidate.workerName} 师傅？选定后其他候选人的预约将自动关闭。',
+          style: const TextStyle(fontSize: 15),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认选择'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _quoteLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = WorkerQuoteApiClient();
+      await api.acceptQuote(token, quote.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已选定 ${candidate.workerName} 师傅')),
+        );
+        Navigator.pop(context);
+      }
+    } on AuthApiException catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _quoteLoading = false);
+    }
+  }
+
+  Future<void> _rejectQuote(RemoteCandidateBooking candidate, RemoteQuote quote) async {
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('拒绝报价'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('确定拒绝 ${candidate.workerName} 的报价？'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: '拒绝原因（必填）',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('返回'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('请填写拒绝原因')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认拒绝'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    final reason = reasonController.text.trim();
+    if (reason.isEmpty) return;
+
+    setState(() => _quoteLoading = true);
+    try {
+      final token = await _getToken();
+      if (token == null) return;
+      final api = WorkerQuoteApiClient();
+      await api.rejectQuote(token, quote.id, reason);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已拒绝报价，工人可重新报价')),
+        );
+        Navigator.pop(context);
+      }
+    } on AuthApiException catch (e) {
+      _handleError(e);
+    } finally {
+      if (mounted) setState(() => _quoteLoading = false);
+    }
+  }
+
+  void _openComparePage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerQuoteComparePage(
+          serviceRequestId: widget.request.id,
+        ),
+      ),
+    );
+  }
+
+  void _openDailyReport(RemoteCandidateBooking candidate) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerDailyReportViewPage(bookingId: candidate.id),
+      ),
+    );
+  }
+
+  void _openInspection(RemoteCandidateBooking candidate) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerInspectionPage(bookingId: candidate.id),
+      ),
+    );
+  }
+
+  void _openChat(RemoteCandidateBooking candidate) async {
+    final state = OwnerAppScope.of(context);
+    final token = await state.getAccessToken();
+    if (token == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('登录已过期，请重新登录')),
+        );
+      }
+      return;
+    }
+
+    // get/create chat room by booking ID
+    final chatApi = ChatApiClient();
+    ChatRoomModel room;
+    try {
+      room = await chatApi.getOrCreateRoom(token, candidate.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法创建聊天：$e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailPage(
+          roomId: room.id,
+          otherUserName: candidate.workerName,
+          accessToken: token,
+          currentUserId: candidate.ownerUserId,
+        ),
+      ),
+    );
+  }
+
+  void _openPayment(RemoteCandidateBooking candidate) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerPaymentPage(bookingId: candidate.id),
+      ),
+    );
+  }
+
+  void _openAfterSale(RemoteCandidateBooking candidate) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerAfterSalePage(bookingId: candidate.id),
+      ),
+    );
+  }
+
+  Future<void> _cancelCandidate(RemoteCandidateBooking candidate) async {
+    if (candidate.status == 'CANCELLED') return;
+
+    final reasonController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('取消候选'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('确定要取消与 ${candidate.workerName} 的预约吗？'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reasonController,
+              decoration: const InputDecoration(
+                labelText: '取消原因（必填）',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('返回'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (reasonController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('请填写取消原因')),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('确认取消'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+    final reason = reasonController.text.trim();
+    if (reason.isEmpty) return;
+
+    setState(() => _cancelling = true);
+    try {
+      // ignore: use_build_context_synchronously
+      final state = OwnerAppScope.of(context);
+      // ignore: await_only_futures
+      final token = await state.getAccessToken();
+      if (token == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期，请重新登录')),
+          );
+        }
+        return;
+      }
+      final api = ServiceRequestApiClient();
+      await api.cancelAsOwner(token, candidate.id, reason);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已取消与 ${candidate.workerName} 的预约')),
+      );
+      Navigator.pop(context); // return to my_home_page
+    } on AuthApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('取消失败：${e.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('取消失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final req = widget.request;
+    final active = req.candidates.where((c) => c.status != 'CANCELLED').toList();
+    final cancelled = req.candidates.where((c) => c.status == 'CANCELLED').toList();
+
+    return Scaffold(
+      backgroundColor: _bg,
+      appBar: AppBar(
+        title: Text('${_tradeLabel(req.trade)}师傅 · 候选'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        foregroundColor: _textDark,
+        surfaceTintColor: Colors.transparent,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          // 需求摘要
+          _GlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _statusColor(req.status).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          _statusLabel(req.status),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _statusColor(req.status),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        req.serviceCity,
+                        style: const TextStyle(fontSize: 13, color: _textLight),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '已邀请 ${req.candidates.length} 位师傅，当前 ${active.length} 位候选',
+                    style: const TextStyle(fontSize: 14, color: _textMid),
+                  ),
+                ],
+              ),
+          ),
+          const SizedBox(height: 12),
+          // 候选列表
+          if (active.isNotEmpty) ...[
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                '候选师傅',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _textDark,
+                ),
+              ),
+            ),
+            ...active.map((c) => _CandidateTile(
+                  candidate: c,
+                  onCancel: _cancelling ? null : () => _cancelCandidate(c),
+                  onAcceptVisit: () => _acceptVisit(c),
+                  onRejectVisit: () => _rejectVisit(c),
+                  onArrive: () => _ownerArrive(c),
+                  onConfirmArrival: () => _ownerConfirmArrival(c),
+                  visitLoading: _visitLoading,
+                  quoteLoading: _quoteLoading,
+                  onAcceptQuote: (quote) => _acceptQuote(c, quote),
+                  onRejectQuote: (quote) => _rejectQuote(c, quote),
+                  quotesFor: widget.quotesForCandidate?.call(c) ?? [],
+                  onViewDailyReport: () => _openDailyReport(c),
+                  onViewInspection: () => _openInspection(c),
+                  onChat: () => _openChat(c),
+                  onPayment: () => _openPayment(c),
+                  onAfterSale: () => _openAfterSale(c),
+                )),
+          ],
+          // 多人比价入口
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _openComparePage,
+              icon: const Icon(Icons.compare_arrows, size: 18),
+              label: const Text('查看所有报价'),
+              style: TextButton.styleFrom(foregroundColor: _primary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (cancelled.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            const Padding(
+              padding: EdgeInsets.only(left: 4, bottom: 8),
+              child: Text(
+                '已取消',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _textLight,
+                ),
+              ),
+            ),
+            ...cancelled.map((c) => _CandidateTile(
+                  candidate: c,
+                  onCancel: null,
+                )),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CandidateTile extends StatelessWidget {
+  const _CandidateTile({
+    required this.candidate,
+    this.onCancel,
+    this.onAcceptVisit,
+    this.onRejectVisit,
+    this.onArrive,
+    this.onConfirmArrival,
+    this.visitLoading = false,
+    this.quoteLoading = false,
+    this.onAcceptQuote,
+    this.onRejectQuote,
+    this.quotesFor = const [],
+    this.onViewDailyReport,
+    this.onViewInspection,
+    this.onChat,
+    this.onPayment,
+    this.onAfterSale,
+  });
+  final RemoteCandidateBooking candidate;
+  final VoidCallback? onCancel;
+  final VoidCallback? onAcceptVisit;
+  final VoidCallback? onRejectVisit;
+  final VoidCallback? onArrive;
+  final VoidCallback? onConfirmArrival;
+  final bool visitLoading;
+  final bool quoteLoading;
+  final void Function(RemoteQuote)? onAcceptQuote;
+  final void Function(RemoteQuote)? onRejectQuote;
+  final List<RemoteQuote> quotesFor;
+  final VoidCallback? onViewDailyReport;
+  final VoidCallback? onViewInspection;
+  final VoidCallback? onChat;
+  final VoidCallback? onPayment;
+  final VoidCallback? onAfterSale;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCancelled = candidate.status == 'CANCELLED';
+    final status = candidate.status;
+    final isVisitFlow = status == 'VISIT_PROPOSED' ||
+        status == 'VISIT_SCHEDULED' ||
+        status == 'ARRIVAL_PENDING' ||
+        status == 'ON_SITE' ||
+        status == 'QUOTE_PENDING' ||
+        status == 'HIRED';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: _primary.withValues(alpha: 0.12),
+                child: Text(
+                  candidate.workerName.isNotEmpty
+                      ? candidate.workerName[0]
+                      : '师',
+                  style: const TextStyle(
+                    color: _primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      candidate.workerName,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: isCancelled ? _textLight : _textDark,
+                      ),
+                    ),
+                    if (isCancelled && candidate.cancelReason != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        candidate.cancelReason!,
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (!isCancelled && !isVisitFlow && onCancel != null)
+                TextButton(
+                  onPressed: onCancel,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                  ),
+                  child: const Text('取消', style: TextStyle(fontSize: 13)),
+                )
+              else if (isCancelled)
+                const Text(
+                  '已取消',
+                  style: TextStyle(fontSize: 12, color: _textLight),
+                ),
+            ],
+          ),
+          if (isVisitFlow) ...[
+            const SizedBox(height: 10),
+            const Divider(height: 1),
+            const SizedBox(height: 10),
+            _VisitFlowSection(
+              status: status,
+              proposedTime: candidate.proposedTime,
+              onSiteAt: candidate.onSiteAt,
+              arrivalConfirmedByOwner: candidate.arrivalConfirmedByOwner,
+              arrivalConfirmedByWorker: candidate.arrivalConfirmedByWorker,
+              onAcceptVisit: onAcceptVisit,
+              onRejectVisit: onRejectVisit,
+              onArrive: onArrive,
+              onConfirmArrival: onConfirmArrival,
+              onCancel: onCancel,
+              loading: visitLoading,
+              quoteLoading: quoteLoading,
+              onAcceptQuote: onAcceptQuote,
+              onRejectQuote: onRejectQuote,
+              quotes: quotesFor,
+              workerName: candidate.workerName,
+              workerUserId: candidate.workerUserId,
+              bookingId: candidate.id,
+              onViewDailyReport: onViewDailyReport,
+              onViewInspection: onViewInspection,
+              onChat: onChat,
+              onPayment: onPayment,
+              onAfterSale: onAfterSale,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _VisitFlowSection extends StatelessWidget {
+  const _VisitFlowSection({
+    required this.status,
+    this.proposedTime,
+    this.onSiteAt,
+    this.arrivalConfirmedByOwner = false,
+    this.arrivalConfirmedByWorker = false,
+    this.onAcceptVisit,
+    this.onRejectVisit,
+    this.onArrive,
+    this.onConfirmArrival,
+    this.onCancel,
+    this.loading = false,
+    this.quotes = const [],
+    this.quoteLoading = false,
+    this.onAcceptQuote,
+    this.onRejectQuote,
+    this.workerName,
+    this.workerUserId,
+    this.bookingId,
+    this.onViewDailyReport,
+    this.onViewInspection,
+    this.onChat,
+    this.onPayment,
+    this.onAfterSale,
+  });
+
+  final String status;
+  final DateTime? proposedTime;
+  final DateTime? onSiteAt;
+  final bool arrivalConfirmedByOwner;
+  final bool arrivalConfirmedByWorker;
+  final VoidCallback? onAcceptVisit;
+  final VoidCallback? onRejectVisit;
+  final VoidCallback? onArrive;
+  final VoidCallback? onConfirmArrival;
+  final VoidCallback? onCancel;
+  final bool loading;
+  final List<RemoteQuote> quotes;
+  final bool quoteLoading;
+  final void Function(RemoteQuote)? onAcceptQuote;
+  final void Function(RemoteQuote)? onRejectQuote;
+  final String? workerName;
+  final String? workerUserId;
+  final String? bookingId;
+  final VoidCallback? onViewDailyReport;
+  final VoidCallback? onViewInspection;
+  final VoidCallback? onChat;
+  final VoidCallback? onPayment;
+  final VoidCallback? onAfterSale;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget statusRow(String label, [Color? color]) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: (color ?? _primary).withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: color ?? _primary,
+          ),
+        ),
+      );
+    }
+
+    Widget actionButton(
+      String label, {
+      VoidCallback? onPressed,
+      Color? color,
+    }) {
+      return SizedBox(
+        height: 32,
+        child: ElevatedButton(
+          onPressed: loading ? null : onPressed,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: color ?? _primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Text(label),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            statusRow(_bookingStatusLabel(status)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (status == 'VISIT_PROPOSED' && proposedTime != null) ...[
+          Text(
+            '工人建议 ${_formatDateTime(proposedTime)} 上门',
+            style: const TextStyle(fontSize: 13, color: _textDark),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              actionButton('确认时间', onPressed: onAcceptVisit),
+              const SizedBox(width: 8),
+              actionButton(
+                '拒绝',
+                onPressed: onRejectVisit,
+                color: Colors.orange,
+              ),
+              const Spacer(),
+              if (onCancel != null)
+                actionButton('取消预约', onPressed: onCancel, color: Colors.red),
+            ],
+          ),
+        ] else if (status == 'VISIT_SCHEDULED' && proposedTime != null) ...[
+          Text(
+            '约定 ${_formatDateTime(proposedTime)} 上门',
+            style: const TextStyle(fontSize: 13, color: _textDark),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              actionButton('我已到达', onPressed: onArrive),
+              const Spacer(),
+              if (onCancel != null)
+                actionButton('取消预约', onPressed: onCancel, color: Colors.red),
+            ],
+          ),
+        ] else if (status == 'ARRIVAL_PENDING') ...[
+          Text(
+            '工人已标记到达，请确认对方已到场',
+            style: const TextStyle(fontSize: 13, color: _textDark),
+          ),
+          const SizedBox(height: 10),
+          actionButton('确认师傅已到场', onPressed: onConfirmArrival),
+        ] else if (status == 'ON_SITE') ...[
+          Text(
+            onSiteAt != null
+                ? '师傅已于 ${_formatDateTime(onSiteAt)} 到场'
+                : '师傅已到场',
+            style: const TextStyle(fontSize: 13, color: _textDark),
+          ),
+        ] else if (status == 'QUOTE_PENDING') ...[
+          Text(
+            '报价单已提交',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Colors.indigo,
+            ),
+          ),
+          if (quotes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...quotes.map((q) => _QuoteSummary(quote: q)),
+            const SizedBox(height: 10),
+            if (quoteLoading) ...[
+              const Center(
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ] else ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: _QuoteActionBtn(
+                      label: '接受报价',
+                      color: _primary,
+                      onPressed: onAcceptQuote != null
+                          ? () => onAcceptQuote!(quotes.first)
+                          : null,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _QuoteActionBtn(
+                      label: '拒绝报价',
+                      color: Colors.orange,
+                      onPressed: onRejectQuote != null
+                          ? () => onRejectQuote!(quotes.first)
+                          : null,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: 8),
+            const Text(
+              '报价信息加载中…',
+              style: TextStyle(fontSize: 13, color: _textLight),
+            ),
+          ],
+        ] else if (status == 'HIRED') ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: _green.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.check_circle, size: 16, color: _green),
+                const SizedBox(width: 6),
+                Text(
+                  workerName != null
+                      ? '已选定 $workerName 师傅'
+                      : '已选定师傅',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: _green,
+                  ),
+                ),
+                if (quotes.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '报价 ¥${quotes.first.totalPrice.toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 13, color: _textDark),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (quotes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _QuoteSummary(quote: quotes.first),
+          ],
+          if (status == 'HIRED') ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            // 联系师傅按钮
+            if (onChat != null)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onChat,
+                  icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                  label: Text('联系${workerName ?? '师傅'}'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF07C160),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            if (onChat != null) const SizedBox(height: 8),
+            // 支付入口
+            if (onPayment != null)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: onPayment,
+                  icon: const Icon(Icons.payment, size: 18),
+                  label: const Text('去支付'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            if (onPayment != null) const SizedBox(height: 8),
+            // 售后入口
+            if (onAfterSale != null)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onAfterSale,
+                  icon: const Icon(Icons.support_agent_outlined, size: 18),
+                  label: const Text('售后'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _primary,
+                    side: const BorderSide(color: _primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+            if (onAfterSale != null) const SizedBox(height: 8),
+            _DailyReportSection(bookingId: bookingId, workerName: workerName),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onViewInspection,
+                icon: const Icon(Icons.fact_check_outlined, size: 18),
+                label: const Text('节点验收'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primary,
+                  side: const BorderSide(color: _primary),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+// ── 报价摘要组件 ──
+class _QuoteSummary extends StatelessWidget {
+  const _QuoteSummary({required this.quote});
+
+  final RemoteQuote quote;
+
+  double get _total {
+    double t = 0;
+    for (final item in quote.items) {
+      t += item.subtotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 0);
+    }
+    return t;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...quote.items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        item.name ?? item.tradeName,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                    Text(
+                      '${item.quantity?.toStringAsFixed(0) ?? '-'}${item.unit ?? ''}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '¥${item.unitPrice?.toStringAsFixed(0) ?? '-'}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '¥${item.subtotal?.toStringAsFixed(0) ?? '-'}',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+          const Divider(height: 1),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Spacer(),
+              const Text('合计 ', style: TextStyle(fontSize: 13)),
+              Text(
+                '¥${_total.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: _primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuoteActionBtn extends StatelessWidget {
+  const _QuoteActionBtn({
+    required this.label,
+    required this.color,
+    this.onPressed,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: Colors.grey.shade300,
+          disabledForegroundColor: Colors.grey.shade500,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          padding: EdgeInsets.zero,
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
+}
+
+
+// ── 施工日报区域（业主端）──
+class _DailyReportSection extends StatefulWidget {
+  const _DailyReportSection({required this.bookingId, this.workerName});
+  final String? bookingId;
+  final String? workerName;
+
+  @override
+  State<_DailyReportSection> createState() => _DailyReportSectionState();
+}
+
+class _DailyReportSectionState extends State<_DailyReportSection> {
+  List<RemoteDailyReport> _reports = const [];
+  bool _loading = true;
+  bool _expanded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReports();
+  }
+
+  Future<void> _loadReports() async {
+    if (widget.bookingId == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final state = OwnerAppScope.of(context);
+    try {
+      final token = await state.getAccessToken();
+      if (token == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      final api = DailyReportApiClient();
+      final list = await api.getReportsByBooking(token, widget.bookingId!);
+      if (mounted) setState(() { _reports = list; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+    if (_reports.isEmpty) return const SizedBox.shrink();
+
+    final latest = _reports.first;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F5F0),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.article_outlined, size: 16, color: _primary),
+              const SizedBox(width: 6),
+              Text('施工日报', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textDark)),
+              const Spacer(),
+              Text(latest.reportDate, style: const TextStyle(fontSize: 12, color: _textMid)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            latest.content,
+            style: const TextStyle(fontSize: 13, color: _textDark),
+            maxLines: _expanded ? null : 2,
+            overflow: _expanded ? null : TextOverflow.ellipsis,
+          ),
+          if (_reports.length > 1 || !_expanded) ...[
+            const SizedBox(height: 4),
+            GestureDetector(
+              onTap: () => setState(() => _expanded = !_expanded),
+              child: Text(
+                _expanded ? '收起' : '展开全部（${_reports.length}篇）',
+                style: const TextStyle(fontSize: 12, color: _primary),
+              ),
+            ),
+          ],
+          if (_expanded)
+            ..._reports.skip(1).map((r) => Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(r.reportDate, style: const TextStyle(fontSize: 12, color: _textMid)),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(r.content, style: const TextStyle(fontSize: 13, color: _textDark)),
+                ],
+              ),
+            )),
+        ],
+      ),
+    );
+  }
 }

@@ -7,3 +7,14 @@
 # Temporary caches
 **/.codex-flutter-home/
 **/.codex-audits/
+
+# IDE
+.idea/
+.vscode/
+
+# Dependencies & SDKs
+.m2/
+flutter/
+
+# Build output (tracked separately in output/)
+/output/

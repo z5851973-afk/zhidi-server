@@ -1,6 +1,7 @@
 package com.zhidi.server.dailyreport;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -8,20 +9,22 @@ public record DailyReportResponse(
 		UUID id,
 		UUID bookingId,
 		UUID workerUserId,
-		String title,
+		LocalDate reportDate,
 		String content,
-		List<String> imageUrls,
-		Instant createdAt
+		List<String> photos,
+		Instant createdAt,
+		Instant updatedAt
 ) {
 	public static DailyReportResponse from(DailyReport report) {
 		return new DailyReportResponse(
 				report.getId(),
 				report.getBookingId(),
 				report.getWorkerUserId(),
-				report.getTitle(),
+				report.getReportDate(),
 				report.getContent(),
-				report.getImageUrls(),
-				report.getCreatedAt()
+				report.getPhotos(),
+				report.getCreatedAt(),
+				report.getUpdatedAt()
 		);
 	}
 }

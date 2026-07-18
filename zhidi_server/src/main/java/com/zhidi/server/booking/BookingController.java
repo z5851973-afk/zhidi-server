@@ -14,6 +14,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -105,6 +106,85 @@ public class BookingController {
 			@Valid @RequestBody BookingCancellationRequest request) {
 		return ApiResponse.ok(
 			bookingService.ownerCancel(principal.userId(), id, request.reason()),
+			traceId());
+	}
+
+	// ——— 阶段 2: 上门时间与到场确认 ———
+
+	@PutMapping("/api/v1/bookings/{id}/visit-proposal")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人提出上门时间")
+	public ApiResponse<BookingResponse> proposeVisit(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @RequestBody VisitProposalRequest request) {
+		return ApiResponse.ok(
+			bookingService.proposeVisit(principal.userId(), id,
+				request.proposedTime()),
+			traceId());
+	}
+
+	@PutMapping("/api/v1/owners/me/bookings/{id}/accept-visit")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主确认上门时间")
+	public ApiResponse<BookingResponse> acceptVisit(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		return ApiResponse.ok(
+			bookingService.acceptVisit(principal.userId(), id), traceId());
+	}
+
+	@PutMapping("/api/v1/owners/me/bookings/{id}/reject-visit")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主拒绝上门时间")
+	public ApiResponse<BookingResponse> rejectVisit(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @RequestBody RejectVisitRequest request) {
+		return ApiResponse.ok(
+			bookingService.rejectVisit(principal.userId(), id, request.reason()),
+			traceId());
+	}
+
+	@PutMapping("/api/v1/owners/me/bookings/{id}/arrive")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主标记我已到达")
+	public ApiResponse<BookingResponse> ownerArrive(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		return ApiResponse.ok(
+			bookingService.arrive(principal.userId(), id, false), traceId());
+	}
+
+	@PutMapping("/api/v1/workers/me/bookings/{id}/arrive")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人标记我已到达")
+	public ApiResponse<BookingResponse> workerArrive(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		return ApiResponse.ok(
+			bookingService.arrive(principal.userId(), id, true), traceId());
+	}
+
+	@PutMapping("/api/v1/owners/me/bookings/{id}/confirm-arrival")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主确认对方已到场")
+	public ApiResponse<BookingResponse> ownerConfirmArrival(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		return ApiResponse.ok(
+			bookingService.confirmArrival(principal.userId(), id, false),
+			traceId());
+	}
+
+	@PutMapping("/api/v1/workers/me/bookings/{id}/confirm-arrival")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人确认对方已到场")
+	public ApiResponse<BookingResponse> workerConfirmArrival(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		return ApiResponse.ok(
+			bookingService.confirmArrival(principal.userId(), id, true),
 			traceId());
 	}
 

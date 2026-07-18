@@ -18,7 +18,7 @@ import '../services/order_bridge.dart' as bridge;
 import '../services/shared_worker_bridge.dart' as shared_workers;
 import '../services/daily_report_api_client.dart';
 import '../services/worker_booking_api_client.dart';
-import '../services/worker_quote_api_client.dart';
+import '../services/worker_quote_api_client.dart' show CatalogSubmitItem, RemoteQuote, WorkerQuoteApiClient;
 import '../services/auth_api_client.dart';
 import '../services/auth_session_store.dart';
 
@@ -84,6 +84,12 @@ class WorkerAppState extends ChangeNotifier {
   List<Quotation> get quotations => List.unmodifiable(_quotations);
   bool get isLoggedIn => _isLoggedIn;
   String? get accessToken => _accessToken;
+
+  /// 获取当前用户 ID（从会话中读取）。
+  Future<String?> getUserId() async {
+    final session = await _sessionStore.read();
+    return session?.userId;
+  }
 
   List<RemoteWorkerBooking> get remoteBookings =>
       List.unmodifiable(_remoteBookings);
@@ -671,7 +677,47 @@ class WorkerAppState extends ChangeNotifier {
     );
   }
 
-  /// 提交报价单
+  /// 提交报价单（阶段 3：服务端固定价格，仅传 name + quantity）
+  Future<RemoteQuote> submitQuote(String bookingId,
+      List<CatalogSubmitItem> items) async {
+    if (_accessToken == null) {
+      throw const AuthApiException(
+        code: 'NOT_AUTHENTICATED',
+        message: '未登录，请先登录',
+      );
+    }
+    final quoteApi = WorkerQuoteApiClient();
+    final remote = await quoteApi.submitQuote(_accessToken!, bookingId, items);
+
+    // 刷新远程预约：报价提交后状态变为 QUOTE_PENDING
+    await fetchRemoteBookings();
+
+    // 添加本地消息
+    final now = DateTime.now();
+    final ownerName = _orders
+        .where((o) => o.id == bookingId)
+        .map((o) => o.ownerName)
+        .firstOrNull ?? '';
+    await _mutate(() {
+      final message = WorkerMessage(
+        id: 'wmsg-quotation-${now.millisecondsSinceEpoch}',
+        title: '报价单已提交',
+        content: '「$ownerName」的报价单已提交，等待业主确认。',
+        category: '报价',
+        createdAt: now,
+        orderId: bookingId,
+      );
+      return {
+        ...toJson(),
+        'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
+      };
+    });
+    _syncOrderToShared(bookingId);
+
+    return remote;
+  }
+
+  /// 提交报价单（旧版 local-first，保留兼容）
   Future<void> submitQuotation(Quotation quotation) async {
     await _mutate(() {
       final next = [quotation, ..._quotations];
@@ -694,29 +740,6 @@ class WorkerAppState extends ChangeNotifier {
       };
     });
     _syncOrderToShared(quotation.orderId);
-
-    // 同步报价到后端
-    if (_accessToken != null) {
-      try {
-        final quoteApi = WorkerQuoteApiClient();
-        await quoteApi.submitQuote(
-          _accessToken!,
-          quotation.orderId,
-          quotation.items
-              .map(
-                (i) => RemoteQuoteItem(
-                  tradeName: i.name,
-                  laborFee: i.total,
-                  auxiliaryFee: 0,
-                  mainMaterialFee: 0,
-                ),
-              )
-              .toList(),
-        );
-      } catch (_) {
-        // 后端同步失败不阻断
-      }
-    }
   }
 
   // ── 远程预约操作 ──
@@ -787,7 +810,26 @@ class WorkerAppState extends ChangeNotifier {
       case 'ACCEPTED':
         status = WorkerOrderStatus.accepted;
         break;
+      case 'VISIT_PROPOSED':
+        status = WorkerOrderStatus.visitProposed;
+        break;
+      case 'VISIT_SCHEDULED':
+        status = WorkerOrderStatus.visitScheduled;
+        break;
+      case 'ARRIVAL_PENDING':
+        status = WorkerOrderStatus.arrivalPending;
+        break;
+      case 'ON_SITE':
+        status = WorkerOrderStatus.onSite;
+        break;
+      case 'QUOTE_PENDING':
+        status = WorkerOrderStatus.quotePending;
+        break;
+      case 'HIRED':
+        status = WorkerOrderStatus.hired;
+        break;
       case 'REJECTED':
+      case 'CANCELLED':
         status = WorkerOrderStatus.cancelled;
         break;
       default:
@@ -803,6 +845,10 @@ class WorkerAppState extends ChangeNotifier {
       description: rb.remark ?? '',
       trade: rb.trade,
       status: status,
+      proposedTime: rb.proposedTime,
+      arrivalConfirmedByOwner: rb.arrivalConfirmedByOwner,
+      arrivalConfirmedByWorker: rb.arrivalConfirmedByWorker,
+      onSiteAt: rb.onSiteAt,
       createdAt: rb.createdAt,
     );
   }
@@ -855,6 +901,24 @@ class WorkerAppState extends ChangeNotifier {
 
   bool isRemoteOrder(String orderId) {
     return _remoteBookings.any((b) => b.id == orderId);
+  }
+
+  /// 获取当前 access token，供 visit flow API 使用
+  String? getAccessToken() => _accessToken;
+
+  /// 用 API 返回的 booking 对象更新本地订单状态
+  void updateOrderFromApi(String bookingId, RemoteWorkerBooking updated) {
+    // 更新本地 orders 列表
+    final orderIdx = _orders.indexWhere((o) => o.id == bookingId);
+    if (orderIdx >= 0) {
+      _orders[orderIdx] = _remoteBookingToOrder(updated);
+    }
+    // 更新 remoteBookings 缓存
+    final rbIdx = _remoteBookings.indexWhere((b) => b.id == bookingId);
+    if (rbIdx >= 0) {
+      _remoteBookings[rbIdx] = updated;
+    }
+    notifyListeners();
   }
 
   /// 提交报价单

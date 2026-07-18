@@ -38,6 +38,8 @@ dependencies:
   share_plus: ^13.2.0
   image_picker: ^1.2.2
   shared_preferences: ^2.5.3
+  stomp_dart_client: ^2.1.0
+  web_socket_channel: ^3.0.2
   http: ^1.5.0
   http_parser: ^4.1.2
   flutter_secure_storage: ^10.3.1

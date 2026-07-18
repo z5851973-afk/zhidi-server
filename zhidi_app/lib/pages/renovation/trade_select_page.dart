@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../models/renovation.dart';
-import '../../data/price_standards.dart';
 import '../price/price_transparency_page.dart';
-import '../price/price_list_page.dart';
-import '../home/worker/worker_list_page.dart';
+import '../home/worker/candidate_picker_page.dart';
+import '../../app/owner_app_scope.dart';
+import '../../services/service_request_api_client.dart';
+import '../../services/auth_api_client.dart';
 import '../../design/tokens.dart';
 
 /// 找师傅 · 工种直达（沉浸式照片卡片版）
@@ -191,27 +192,71 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
     }).toList();
   }
 
-  Future<void> _onTradeTap(Trade trade) async {
-    final serviceType = switch (trade) {
-      Trade.demolition => 'demolition',
-      Trade.plumbing => 'plumbing',
-      Trade.masonry => 'masonry',
-      Trade.waterproof => 'waterproof',
-      Trade.carpentry => 'carpentry',
-      Trade.painting => 'painter',
-      Trade.installation => 'installation',
-      Trade.cleaning => 'cleaning',
-    };
+  /// Trade → 后端 ServiceRequest API 工种枚举值
+  static const Map<Trade, String> _tradeApiValue = {
+    Trade.demolition: 'demolition',
+    Trade.plumbing: 'plumbing',
+    Trade.masonry: 'masonry',
+    Trade.waterproof: 'waterproof',
+    Trade.carpentry: 'carpentry',
+    Trade.painting: 'painting',
+    Trade.installation: 'installation',
+  };
 
-    final worker = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PriceListPage(trade: tradeToPriceData(serviceType)),
-      ),
-    );
-    if (!mounted) return;
-    if (worker != null) {
-      Navigator.of(context).pop(worker);
+  /// 选工种 → 创建 ServiceRequest → CandidatePicker
+  Future<void> _onTradeSelected(Trade trade) async {
+    final apiTrade = _tradeApiValue[trade];
+    if (apiTrade == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂不支持该工种')),
+        );
+      }
+      return;
+    }
+
+    final state = OwnerAppScope.of(context);
+    final token = await state.getAccessToken();
+    if (token == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('登录已过期，请重新登录')),
+        );
+      }
+      return;
+    }
+
+    final api = ServiceRequestApiClient();
+    try {
+      final draft = ServiceRequestDraft(
+        trade: apiTrade,
+        serviceCity: '北京市',
+      );
+      final request = await api.createRequest(token, draft);
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => CandidatePickerPage(
+            requestId: request.id,
+            accessToken: token,
+            trade: apiTrade,
+            serviceCity: request.serviceCity,
+          ),
+        ),
+      );
+    } on AuthApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建需求失败：${e.message}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('创建需求失败：$e')),
+        );
+      }
     }
   }
 
@@ -341,25 +386,15 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
           if (trade == null) {
             _onQuoteTap();
           } else {
-            _onTradeTap(trade);
+            _onTradeSelected(trade);
           }
         },
-        onWorkerTap: () async {
+        onWorkerTap: () {
           final trade = trades[i].trade;
           if (trade == null) {
             _onQuoteTap();
-            return;
-          }
-          final worker = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) =>
-                  WorkerListPage(trade: trade, categoryName: trades[i].label),
-            ),
-          );
-          if (!mounted) return;
-          if (worker != null) {
-            Navigator.of(context).pop(worker);
+          } else {
+            _onTradeSelected(trade);
           }
         },
       ),

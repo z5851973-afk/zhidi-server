@@ -10,6 +10,7 @@ public record QuoteResponse(
 	UUID workerUserId,
 	List<QuoteItem> items,
 	QuoteStatus status,
+	String rejectReason,
 	Instant createdAt,
 	Instant updatedAt
 ) {

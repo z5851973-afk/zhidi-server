@@ -14,11 +14,13 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@Tag(name = "报价", description = "工人提交报价和查询报价接口")
+@Tag(name = "报价", description = "工人提交报价、查询报价和工种价格目录接口")
 public class QuoteController {
 
 	private final QuoteService quoteService;
@@ -54,6 +56,49 @@ public class QuoteController {
 	public ApiResponse<List<QuoteResponse>> listForWorker(
 			@AuthenticationPrincipal CurrentUserPrincipal principal) {
 		return ApiResponse.ok(quoteService.listForWorker(principal.userId()),
+			traceId());
+	}
+
+	@GetMapping("/api/v1/service-catalog")
+	@PreAuthorize("hasAnyRole('WORKER', 'OWNER')")
+	@Operation(summary = "获取工种价格目录")
+	public ApiResponse<List<ServiceCatalogResponse>> getCatalog(
+			@RequestParam("category") String category) {
+		return ApiResponse.ok(quoteService.getCatalog(category), traceId());
+	}
+
+	@PutMapping("/api/v1/quotes/{quoteId}/accept")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主接受报价（选定该工人）")
+	public ApiResponse<QuoteResponse> acceptQuote(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID quoteId) {
+		return ApiResponse.ok(
+			quoteService.acceptQuote(principal.userId(), quoteId),
+			traceId());
+	}
+
+	@PutMapping("/api/v1/quotes/{quoteId}/reject")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主拒绝报价（工人可重新报价）")
+	public ApiResponse<QuoteResponse> rejectQuote(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID quoteId,
+			@Valid @RequestBody RejectQuoteRequest request) {
+		return ApiResponse.ok(
+			quoteService.rejectQuote(principal.userId(), quoteId,
+				request.reason()),
+			traceId());
+	}
+
+	@GetMapping("/api/v1/service-requests/{requestId}/quotes")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "查看某需求下所有报价（比价视图）")
+	public ApiResponse<List<QuoteResponse>> listQuotesForServiceRequest(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID requestId) {
+		return ApiResponse.ok(
+			quoteService.listQuotesForServiceRequest(requestId),
 			traceId());
 	}
 

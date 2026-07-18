@@ -11,6 +11,11 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 40MB
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 3000ms
 
 management:
   endpoints:
@@ -25,6 +30,21 @@ management:
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
+tencent:
+  sms:
+    secret-id: ${TENCENT_SMS_SECRET_ID:}
+    secret-key: ${TENCENT_SMS_SECRET_KEY:}
+    app-id: ${TENCENT_SMS_APP_ID:}
+    sign-name: ${TENCENT_SMS_SIGN_NAME:置地帮}
+    template-ids:
+      verify-code: ${TENCENT_SMS_VERIFY_TEMPLATE:1234567}
+      booking-notify: ${TENCENT_SMS_BOOKING_TEMPLATE:1234568}
+  cos:
+    secret-id: ${TENCENT_COS_SECRET_ID:${TENCENT_SMS_SECRET_ID:}}
+    secret-key: ${TENCENT_COS_SECRET_KEY:${TENCENT_SMS_SECRET_KEY:}}
+    bucket: ${TENCENT_COS_BUCKET:zhidi-uploads-1234567890}
+    region: ${TENCENT_COS_REGION:ap-guangzhou}
 
 zhidi:
   upload:

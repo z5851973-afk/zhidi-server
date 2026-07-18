@@ -9,4 +9,6 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID> {
 	List<Quote> findByBookingIdOrderByCreatedAtDesc(UUID bookingId);
 
 	List<Quote> findByWorkerUserIdOrderByCreatedAtDesc(UUID workerUserId);
+
+	List<Quote> findByBookingIdInOrderByCreatedAtDesc(List<UUID> bookingIds);
 }

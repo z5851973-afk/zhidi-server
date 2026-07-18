@@ -1,16 +1,16 @@
 package com.zhidi.server.dailyreport;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.NotNull;
+import java.time.LocalDate;
 import java.util.List;
 
 public record DailyReportRequest(
-		@NotBlank(message = "标题不能为空")
-		@Size(max = 200, message = "标题最长200字")
-		String title,
+		@NotNull(message = "日期不能为空")
+		LocalDate reportDate,
 
 		@NotBlank(message = "内容不能为空")
 		String content,
 
-		List<String> imageUrls
+		List<String> photos
 ) {}

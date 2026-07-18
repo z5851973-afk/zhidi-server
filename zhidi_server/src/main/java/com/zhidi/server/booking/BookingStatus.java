@@ -11,5 +11,6 @@ public enum BookingStatus {
 	READY_TO_START,
 	REJECTED,
 	CANCELLED,
-	NOT_SELECTED
+	NOT_SELECTED,
+	HIRED
 }

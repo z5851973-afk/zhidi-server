@@ -10,10 +10,11 @@ final class RemoteDailyReport {
     required this.id,
     required this.bookingId,
     required this.workerUserId,
-    required this.title,
+    required this.reportDate,
     required this.content,
-    required this.imageUrls,
+    required this.photos,
     required this.createdAt,
+    this.updatedAt,
   });
 
   factory RemoteDailyReport.fromJson(Map<String, dynamic> json) {
@@ -21,39 +22,41 @@ final class RemoteDailyReport {
       id: _requiredString(json, 'id'),
       bookingId: _requiredString(json, 'bookingId'),
       workerUserId: _requiredString(json, 'workerUserId'),
-      title: _requiredString(json, 'title'),
+      reportDate: _requiredString(json, 'reportDate'),
       content: _requiredString(json, 'content'),
-      imageUrls: (json['imageUrls'] as List<dynamic>)
-          .map((e) => e as String)
-          .toList(),
+      photos: (json['photos'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ?? const [],
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String).toUtc()
+          : null,
     );
   }
 
   final String id;
   final String bookingId;
   final String workerUserId;
-  final String title;
+  final String reportDate;
   final String content;
-  final List<String> imageUrls;
+  final List<String> photos;
   final DateTime createdAt;
+  final DateTime? updatedAt;
 }
 
 abstract interface class DailyReportApi {
   Future<RemoteDailyReport> submitReport(
     String accessToken,
     String bookingId,
-    String title,
+    String reportDate,
     String content,
-    List<String> imageUrls,
+    List<String> photos,
   );
 
   Future<List<RemoteDailyReport>> getReportsByBooking(
     String accessToken,
     String bookingId,
   );
-
-  Future<List<RemoteDailyReport>> getMyReports(String accessToken);
 }
 
 final class DailyReportApiClient implements DailyReportApi {
@@ -72,17 +75,17 @@ final class DailyReportApiClient implements DailyReportApi {
   Future<RemoteDailyReport> submitReport(
     String accessToken,
     String bookingId,
-    String title,
+    String reportDate,
     String content,
-    List<String> imageUrls,
+    List<String> photos,
   ) async {
     final response = await _post(
-      '/api/v1/bookings/$bookingId/reports',
+      '/api/v1/bookings/$bookingId/daily-reports',
       accessToken,
       jsonEncode({
-        'title': title,
+        'reportDate': reportDate,
         'content': content,
-        'imageUrls': imageUrls,
+        'photos': photos,
       }),
     );
     return _parseReport(response);
@@ -94,23 +97,13 @@ final class DailyReportApiClient implements DailyReportApi {
     String bookingId,
   ) async {
     final response = await _get(
-      '/api/v1/bookings/$bookingId/reports',
+      '/api/v1/bookings/$bookingId/daily-reports',
       accessToken,
     );
     return _parseReportList(response);
   }
 
-  @override
-  Future<List<RemoteDailyReport>> getMyReports(String accessToken) async {
-    final response = await _get('/api/v1/workers/me/reports', accessToken);
-    return _parseReportList(response);
-  }
-
-  Future<http.Response> _post(
-    String path,
-    String accessToken,
-    String body,
-  ) async {
+  Future<http.Response> _post(String path, String accessToken, String body) async {
     final uri = baseUrl.replace(path: path);
     try {
       return await _httpClient
@@ -142,20 +135,12 @@ RemoteDailyReport _parseReport(http.Response response) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! Map<String, dynamic>) {
-    throw AuthApiException(
-      code: 'INVALID_RESPONSE',
-      message: '服务器响应缺少数据',
-      statusCode: response.statusCode,
-    );
+    throw AuthApiException(code: 'INVALID_RESPONSE', message: '服务器响应缺少数据', statusCode: response.statusCode);
   }
   try {
     return RemoteDailyReport.fromJson(data);
   } on FormatException {
-    throw AuthApiException(
-      code: 'INVALID_RESPONSE',
-      message: '服务器响应格式异常',
-      statusCode: response.statusCode,
-    );
+    throw AuthApiException(code: 'INVALID_RESPONSE', message: '服务器响应格式异常', statusCode: response.statusCode);
   }
 }
 
@@ -163,22 +148,12 @@ List<RemoteDailyReport> _parseReportList(http.Response response) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! List<dynamic>) {
-    throw AuthApiException(
-      code: 'INVALID_RESPONSE',
-      message: '服务器响应缺少数据列表',
-      statusCode: response.statusCode,
-    );
+    throw AuthApiException(code: 'INVALID_RESPONSE', message: '服务器响应缺少数据列表', statusCode: response.statusCode);
   }
   try {
-    return data
-        .map((e) => RemoteDailyReport.fromJson(e as Map<String, dynamic>))
-        .toList();
+    return data.map((e) => RemoteDailyReport.fromJson(e as Map<String, dynamic>)).toList();
   } on FormatException {
-    throw AuthApiException(
-      code: 'INVALID_RESPONSE',
-      message: '服务器响应格式异常',
-      statusCode: response.statusCode,
-    );
+    throw AuthApiException(code: 'INVALID_RESPONSE', message: '服务器响应格式异常', statusCode: response.statusCode);
   }
 }
 
@@ -186,36 +161,22 @@ Map<String, dynamic> _parseEnvelope(http.Response response) {
   final Map<String, dynamic> envelope;
   try {
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
-    if (decoded is! Map<String, dynamic>) {
-      throw const FormatException('response must be a JSON object');
-    }
+    if (decoded is! Map<String, dynamic>) throw const FormatException('response must be a JSON object');
     envelope = decoded;
   } on FormatException {
-    throw AuthApiException(
-      code: 'INVALID_RESPONSE',
-      message: '服务器响应格式异常',
-      statusCode: response.statusCode,
-    );
+    throw AuthApiException(code: 'INVALID_RESPONSE', message: '服务器响应格式异常', statusCode: response.statusCode);
   }
 
   final apiCode = envelope['code'];
   final apiMessage = envelope['message'];
-  if (apiCode != 'OK' ||
-      response.statusCode < 200 ||
-      response.statusCode >= 300) {
-    throw AuthApiException(
-      code: apiCode is String ? apiCode : 'REQUEST_FAILED',
-      message: apiMessage is String ? apiMessage : '请求失败',
-      statusCode: response.statusCode,
-    );
+  if (apiCode != 'OK' || response.statusCode < 200 || response.statusCode >= 300) {
+    throw AuthApiException(code: apiCode is String ? apiCode : 'REQUEST_FAILED', message: apiMessage is String ? apiMessage : '请求失败', statusCode: response.statusCode);
   }
   return envelope;
 }
 
 String _requiredString(Map<String, dynamic> json, String key) {
   final value = json[key];
-  if (value is! String || value.isEmpty) {
-    throw FormatException('$key must be a non-empty string');
-  }
+  if (value is! String || value.isEmpty) throw FormatException('$key must be a non-empty string');
   return value;
 }

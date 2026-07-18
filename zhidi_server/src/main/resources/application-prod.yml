@@ -1,7 +1,7 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/zhidi?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
-    username: ${DB_USER:zhidi}
+    url: jdbc:mysql://${DB_HOST:localhost}:3306/zhidi_prod?useSSL=true&serverTimezone=Asia/Shanghai&characterEncoding=UTF-8
+    username: ${DB_USERNAME:zhidi}
     password: ${DB_PASSWORD}
     hikari:
       maximum-pool-size: 10
@@ -25,7 +25,12 @@ auth:
     ttl: PT720H
 
 server:
-  port: ${SERVER_PORT:8080}
+  port: 8443
+  ssl:
+    key-store: ${SSL_KEYSTORE_PATH:/etc/ssl/zhidi.p12}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:}
+    key-store-type: PKCS12
+    enabled: true
 
 zhidi:
   upload:

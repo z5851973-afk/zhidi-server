@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../design/tokens.dart';
+import '../../../services/auth_api_client.dart';
 import '../../../services/service_request_api_client.dart';
 import '../../../services/worker_directory_api_client.dart';
 
@@ -14,6 +15,7 @@ class CandidatePickerPage extends StatefulWidget {
   const CandidatePickerPage({
     super.key,
     required this.requestId,
+    required this.accessToken,
     required this.trade,
     required this.serviceCity,
     this.serviceRequestApi,
@@ -21,6 +23,7 @@ class CandidatePickerPage extends StatefulWidget {
   });
 
   final String requestId;
+  final String accessToken;
   final String trade;
   final String serviceCity;
   final ServiceRequestApi? serviceRequestApi;
@@ -76,13 +79,19 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
     if (target.contains('水电') && t.contains('水电')) return true;
     if (target.contains('防水') && t.contains('防水')) return true;
     if ((target.contains('泥') || target.contains('瓦')) &&
-        (t.contains('泥') || t.contains('瓦'))) return true;
+        (t.contains('泥') || t.contains('瓦'))) {
+      return true;
+    }
     if (target.contains('木') && t.contains('木')) return true;
     if ((target.contains('漆') || target.contains('油')) &&
-        (t.contains('漆') || t.contains('油'))) return true;
+        (t.contains('漆') || t.contains('油'))) {
+      return true;
+    }
     if (target.contains('安装') && t.contains('安装')) return true;
     if ((target.contains('清洁') || target.contains('保洁')) &&
-        (t.contains('清洁') || t.contains('保洁'))) return true;
+        (t.contains('清洁') || t.contains('保洁'))) {
+      return true;
+    }
     if (target.contains('拆') && t.contains('拆')) return true;
     return false;
   }
@@ -96,7 +105,7 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
     if (_addingIds.contains(uid)) return;
     setState(() => _addingIds = {..._addingIds, uid});
     try {
-      await _api.addCandidate(widget.requestId, uid);
+      await _api.addCandidate(widget.accessToken, widget.requestId, uid);
       if (!mounted) return;
       setState(() {
         _candidateIds = {..._candidateIds, uid};
@@ -177,7 +186,7 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
               ? const Center(child: Text('暂无匹配师傅', style: ZdText.caption))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
                   itemCount: _workers.length,
                   itemBuilder: (_, i) {
                     final worker = _workers[i];

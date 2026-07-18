@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -103,6 +104,9 @@ class BookingControllerTest {
 
 	@MockitoBean
 	OperationLogRepository operationLogs;
+
+	@MockitoBean
+	VisitProposalRepository visitProposals;
 
 	@Test
 	void ownerCreatesBookingUsingPrincipalIdentity() throws Exception {
@@ -218,6 +222,94 @@ class BookingControllerTest {
 		verify(bookingService, never()).workerCancel(any(), any(), any());
 	}
 
+	@Test
+	void workerProposesVisitTime() throws Exception {
+		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
+		when(bookingService.proposeVisit(any(), any(), any()))
+			.thenReturn(response(BookingStatus.VISIT_PROPOSED));
+
+		mvc.perform(put("/api/v1/bookings/{id}/visit-proposal", BOOKING_ID)
+				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER))
+				.contentType(APPLICATION_JSON)
+				.content("{\"proposedTime\":\"2026-07-18T09:00:00Z\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("VISIT_PROPOSED"));
+	}
+
+	@Test
+	void ownerAcceptsVisit() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(bookingService.acceptVisit(OWNER_ID, BOOKING_ID))
+			.thenReturn(response(BookingStatus.VISIT_SCHEDULED));
+
+		mvc.perform(put("/api/v1/owners/me/bookings/{id}/accept-visit", BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("VISIT_SCHEDULED"));
+	}
+
+	@Test
+	void ownerRejectsVisit() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(bookingService.rejectVisit(OWNER_ID, BOOKING_ID, "时间不合适"))
+			.thenReturn(response(BookingStatus.ACCEPTED));
+
+		mvc.perform(put("/api/v1/owners/me/bookings/{id}/reject-visit", BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
+				.contentType(APPLICATION_JSON)
+				.content("{\"reason\":\"时间不合适\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("ACCEPTED"));
+	}
+
+	@Test
+	void workerArrives() throws Exception {
+		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
+		var resp = response(BookingStatus.ARRIVAL_PENDING);
+		when(bookingService.arrive(WORKER_ID, BOOKING_ID, true)).thenReturn(resp);
+
+		mvc.perform(put("/api/v1/workers/me/bookings/{id}/arrive", BOOKING_ID)
+				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("ARRIVAL_PENDING"));
+	}
+
+	@Test
+	void ownerArrives() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		var resp = response(BookingStatus.ON_SITE);
+		when(bookingService.arrive(OWNER_ID, BOOKING_ID, false)).thenReturn(resp);
+
+		mvc.perform(put("/api/v1/owners/me/bookings/{id}/arrive", BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("ON_SITE"));
+	}
+
+	@Test
+	void workerConfirmArrival() throws Exception {
+		givenDatabaseUser(WORKER_ID, "16600000002", UserRole.WORKER);
+		var resp = response(BookingStatus.ON_SITE);
+		when(bookingService.confirmArrival(WORKER_ID, BOOKING_ID, true)).thenReturn(resp);
+
+		mvc.perform(put("/api/v1/workers/me/bookings/{id}/confirm-arrival", BOOKING_ID)
+				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("ON_SITE"));
+	}
+
+	@Test
+	void ownerConfirmArrival() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		var resp = response(BookingStatus.ON_SITE);
+		when(bookingService.confirmArrival(OWNER_ID, BOOKING_ID, false)).thenReturn(resp);
+
+		mvc.perform(put("/api/v1/owners/me/bookings/{id}/confirm-arrival", BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.data.status").value("ON_SITE"));
+	}
+
 	private void givenDatabaseUser(UUID userId, String phone, UserRole role) {
 		User user = Mockito.mock(User.class);
 		when(user.getPhone()).thenReturn(phone);
@@ -236,6 +328,8 @@ class BookingControllerTest {
 			OWNER_ID, "林业主", "16600000001",
 			WORKER_ID, "周师傅",
 			"泥工", "杭州", "西湖区", "厨房墙砖铺贴", status,
-			null, null, null, now, now);
+			null, null, null,
+			false, false, null, null,
+			now, now);
 	}
 }

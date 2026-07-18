@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'auth_api_client.dart';
+import 'worker_booking_api_client.dart';
 
 abstract interface class ServiceRequestApi {
   Future<RemoteServiceRequest> createRequest(
@@ -29,6 +30,45 @@ abstract interface class ServiceRequestApi {
     String accessToken,
     String bookingId,
     String reason,
+  );
+
+  // ——— 阶段 2: 上门时间与到场确认 ———
+
+  Future<RemoteCandidateBooking> proposeVisit(
+    String accessToken,
+    String bookingId,
+    DateTime proposedTime,
+  );
+
+  Future<RemoteCandidateBooking> acceptVisit(
+    String accessToken,
+    String bookingId,
+  );
+
+  Future<RemoteCandidateBooking> rejectVisit(
+    String accessToken,
+    String bookingId,
+    String reason,
+  );
+
+  Future<RemoteCandidateBooking> ownerArrive(
+    String accessToken,
+    String bookingId,
+  );
+
+  Future<RemoteCandidateBooking> workerArrive(
+    String accessToken,
+    String bookingId,
+  );
+
+  Future<RemoteCandidateBooking> ownerConfirmArrival(
+    String accessToken,
+    String bookingId,
+  );
+
+  Future<RemoteCandidateBooking> workerConfirmArrival(
+    String accessToken,
+    String bookingId,
   );
 }
 
@@ -107,6 +147,101 @@ final class ServiceRequestApiClient implements ServiceRequestApi {
     return _parseCandidateBooking(response);
   }
 
+  // ——— 阶段 2: 上门时间与到场确认 ———
+
+  @override
+  Future<RemoteCandidateBooking> proposeVisit(
+    String accessToken,
+    String bookingId,
+    DateTime proposedTime,
+  ) async {
+    final response = await _put(
+      '/api/v1/bookings/$bookingId/visit-proposal',
+      accessToken,
+      jsonEncode({'proposedTime': proposedTime.toUtc().toIso8601String()}),
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> acceptVisit(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final response = await _put(
+      '/api/v1/owners/me/bookings/$bookingId/accept-visit',
+      accessToken,
+      null,
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> rejectVisit(
+    String accessToken,
+    String bookingId,
+    String reason,
+  ) async {
+    final response = await _put(
+      '/api/v1/owners/me/bookings/$bookingId/reject-visit',
+      accessToken,
+      jsonEncode({'reason': reason}),
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> ownerArrive(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final response = await _put(
+      '/api/v1/owners/me/bookings/$bookingId/arrive',
+      accessToken,
+      null,
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> workerArrive(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final response = await _put(
+      '/api/v1/workers/me/bookings/$bookingId/arrive',
+      accessToken,
+      null,
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> ownerConfirmArrival(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final response = await _put(
+      '/api/v1/owners/me/bookings/$bookingId/confirm-arrival',
+      accessToken,
+      null,
+    );
+    return _parseCandidateBooking(response);
+  }
+
+  @override
+  Future<RemoteCandidateBooking> workerConfirmArrival(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final response = await _put(
+      '/api/v1/workers/me/bookings/$bookingId/confirm-arrival',
+      accessToken,
+      null,
+    );
+    return _parseCandidateBooking(response);
+  }
+
   Future<http.Response> _get(String path, String accessToken) async {
     final request = http.Request('GET', baseUrl.resolve(path))
       ..headers.addAll({
@@ -144,6 +279,42 @@ final class ServiceRequestApiClient implements ServiceRequestApi {
         'content-type': 'application/json',
       })
       ..body = body;
+
+    try {
+      return await (() async {
+        final streamedResponse = await _httpClient.send(request);
+        return http.Response.fromStream(streamedResponse);
+      })().timeout(requestTimeout);
+    } on TimeoutException {
+      throw const AuthApiException(
+        code: 'NETWORK_TIMEOUT',
+        message: '请求超时，请稍后重试',
+      );
+    } catch (_) {
+      throw const AuthApiException(
+        code: 'NETWORK_UNAVAILABLE',
+        message: '无法连接服务器，请检查网络',
+      );
+    }
+  }
+
+  Future<http.Response> _put(
+    String path,
+    String accessToken,
+    String? body,
+  ) async {
+    final headers = <String, String>{
+      'accept': 'application/json',
+      'authorization': 'Bearer $accessToken',
+    };
+    if (body != null) {
+      headers['content-type'] = 'application/json';
+    }
+    final request = http.Request('PUT', baseUrl.resolve(path))
+      ..headers.addAll(headers);
+    if (body != null) {
+      request.body = body;
+    }
 
     try {
       return await (() async {
@@ -248,6 +419,10 @@ final class RemoteCandidateBooking {
     this.cancelledBy,
     this.cancelReason,
     this.cancelledAt,
+    this.arrivalConfirmedByOwner = false,
+    this.arrivalConfirmedByWorker = false,
+    this.onSiteAt,
+    this.proposedTime,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -271,6 +446,14 @@ final class RemoteCandidateBooking {
       cancelledAt: json['cancelledAt'] != null
           ? DateTime.parse(json['cancelledAt']).toUtc()
           : null,
+      arrivalConfirmedByOwner: json['arrivalConfirmedByOwner'] == true,
+      arrivalConfirmedByWorker: json['arrivalConfirmedByWorker'] == true,
+      onSiteAt: json['onSiteAt'] != null
+          ? DateTime.parse(json['onSiteAt']).toUtc()
+          : null,
+      proposedTime: json['proposedTime'] != null
+          ? DateTime.parse(json['proposedTime']).toUtc()
+          : null,
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
     );
@@ -291,8 +474,36 @@ final class RemoteCandidateBooking {
   final String? cancelledBy;
   final String? cancelReason;
   final DateTime? cancelledAt;
+  final bool arrivalConfirmedByOwner;
+  final bool arrivalConfirmedByWorker;
+  final DateTime? onSiteAt;
+  final DateTime? proposedTime;
   final DateTime createdAt;
   final DateTime updatedAt;
+
+  RemoteWorkerBooking toRemoteWorkerBooking() => RemoteWorkerBooking(
+    id: id,
+    serviceRequestId: serviceRequestId,
+    ownerUserId: ownerUserId,
+    ownerName: ownerName,
+    ownerPhone: ownerPhone,
+    workerUserId: workerUserId,
+    workerName: workerName,
+    trade: trade,
+    serviceCity: serviceCity,
+    serviceAddress: serviceAddress,
+    remark: remark,
+    status: status,
+    cancelledBy: cancelledBy,
+    cancelReason: cancelReason,
+    cancelledAt: cancelledAt,
+    arrivalConfirmedByOwner: arrivalConfirmedByOwner,
+    arrivalConfirmedByWorker: arrivalConfirmedByWorker,
+    onSiteAt: onSiteAt,
+    proposedTime: proposedTime,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+  );
 }
 
 RemoteServiceRequest _parseServiceRequest(http.Response response) {

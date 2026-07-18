@@ -552,6 +552,13 @@ class OwnerAppState extends ChangeNotifier {
     area: remote.area,
   );
 
+  /// 获取当前有效 accessToken，若过期或未登录返回 null。
+  Future<String?> getAccessToken() async {
+    final session = await _sessionStore.read();
+    if (session == null || session.isExpiredAt(DateTime.now())) return null;
+    return session.accessToken;
+  }
+
   Future<void> _clearAuthenticatedState() async {
     await _sessionStore.clear();
     await _mutate(() {
@@ -688,7 +695,7 @@ class OwnerAppState extends ChangeNotifier {
             id: r.id,
             workerId: r.workerUserId,
             date: r.createdAt,
-            imagePaths: r.imageUrls,
+            imagePaths: r.photos,
             note: r.content,
             phaseIndex: 0,
           ),
@@ -843,7 +850,7 @@ class OwnerAppState extends ChangeNotifier {
     // localId 格式 "rm-{uuid}"
     final remoteId = localId.startsWith('rm-') ? localId.substring(3) : localId;
     try {
-      await _bookingApi.cancelBooking(session.accessToken, remoteId);
+      await _bookingApi.cancelBooking(session.accessToken, remoteId, '业主主动取消');
     } catch (error) {
       await _handleProfileError(error);
       rethrow;

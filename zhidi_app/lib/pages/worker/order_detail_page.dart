@@ -9,10 +9,17 @@ import '../../app/worker_app_scope.dart';
 import '../../app/worker_app_state.dart';
 import '../../design/tokens.dart';
 import '../../design/components.dart';
+import '../../services/service_request_api_client.dart';
+import '../../services/auth_api_client.dart';
+import '../../services/worker_booking_api_client.dart';
+import '../../services/chat_api_client.dart';
+import '../../models/chat_models.dart';
 import 'daily_report_page.dart';
 import 'inspection_page.dart';
 import 'quotation_form_page.dart';
 import 'worker_earnings_page.dart';
+import '../chat/chat_detail_page.dart';
+import 'worker_settlement_page.dart';
 
 const _primary = ZdColors.primary;
 const _textDark = ZdColors.textPrimary;
@@ -68,6 +75,12 @@ class _StatusHeader extends StatelessWidget {
   Color get _badgeColor => switch (order.status) {
     WorkerOrderStatus.pending => _primary,
     WorkerOrderStatus.accepted => Colors.blue,
+    WorkerOrderStatus.visitProposed => Colors.orange,
+    WorkerOrderStatus.visitScheduled => Colors.blue,
+    WorkerOrderStatus.arrivalPending => Colors.teal,
+    WorkerOrderStatus.onSite => _success,
+    WorkerOrderStatus.quotePending => Colors.indigo,
+    WorkerOrderStatus.hired => _success,
     WorkerOrderStatus.inProgress => _success,
     WorkerOrderStatus.completed => _textMid,
     WorkerOrderStatus.cancelled => _error,
@@ -76,6 +89,12 @@ class _StatusHeader extends StatelessWidget {
   Color get _badgeBg => switch (order.status) {
     WorkerOrderStatus.pending => _primary.withValues(alpha: 0.1),
     WorkerOrderStatus.accepted => Colors.blue.withValues(alpha: 0.1),
+    WorkerOrderStatus.visitProposed => Colors.orange.withValues(alpha: 0.1),
+    WorkerOrderStatus.visitScheduled => Colors.blue.withValues(alpha: 0.1),
+    WorkerOrderStatus.arrivalPending => Colors.teal.withValues(alpha: 0.1),
+    WorkerOrderStatus.onSite => _success.withValues(alpha: 0.1),
+    WorkerOrderStatus.quotePending => Colors.indigo.withValues(alpha: 0.1),
+    WorkerOrderStatus.hired => _success.withValues(alpha: 0.1),
     WorkerOrderStatus.inProgress => _success.withValues(alpha: 0.1),
     WorkerOrderStatus.completed => _textMid.withValues(alpha: 0.1),
     WorkerOrderStatus.cancelled => _error.withValues(alpha: 0.1),
@@ -464,104 +483,161 @@ class _BottomBar extends StatelessWidget {
         );
 
       case WorkerOrderStatus.accepted:
-        final quotation = WorkerAppScope.of(
-          context,
-        ).getOrderQuotation(order.id);
-        // 无上门时间 → 先约时间
-        if (order.visitTime == null) {
-          return ZdPrimaryButton(
-            label: '约定上门时间',
-            onTap: () => _showVisitTimePicker(context, order),
-          );
-        }
-        // 已约时间但未上门 → 确认已上门
-        if (!order.hasVisited) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ZdPrimaryButton(
-                label: '确认已上门',
-                onTap: () async {
-                  await WorkerAppScope.of(context).markOrderVisited(order.id);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(const SnackBar(content: Text('已标记上门')));
-                  }
-                },
-              ),
-              const SizedBox(height: ZdSpacing.sm),
-              _outlineBtn('修改上门时间', () => _showVisitTimePicker(context, order)),
-            ],
-          );
-        }
-        // 已上门但未报价 → 填报价单
-        if (quotation == null) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ZdPrimaryButton(
-                label: '提交报价单',
-                onTap: () => _openQuotation(context, order),
-              ),
-              const SizedBox(height: ZdSpacing.sm),
-              _outlineBtn('修改上门时间', () => _showVisitTimePicker(context, order)),
-            ],
-          );
-        }
-        // 已上门且已报价 → 可开始施工
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _outlineBtn(
-                    '修改上门时间',
-                    () => _showVisitTimePicker(context, order),
-                  ),
-                ),
-                const SizedBox(width: ZdSpacing.md),
-                Expanded(
-                  child: ZdPrimaryButton(
-                    label: '开始施工',
-                    onTap: () async {
-                      await WorkerAppScope.of(context).startOrder(order.id);
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(const SnackBar(content: Text('已开始施工')));
-                      }
-                    },
-                  ),
-                ),
-              ],
+            ZdPrimaryButton(
+              label: '提出上门时间',
+              onTap: () => _showProposeVisitTimePicker(context, order),
             ),
             const SizedBox(height: ZdSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: _outlineBtn('提交日报', () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DailyReportPage(orderId: order.id),
-                      ),
-                    );
-                  }),
+            SizedBox(
+              width: double.infinity,
+              child: _outlineBtn(
+                '联系业主',
+                () => _openWorkerChat(context, order, state),
+              ),
+            ),
+          ],
+        );
+
+      case WorkerOrderStatus.visitProposed:
+        return Container(
+          height: 52,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(ZdRadius.pill),
+            color: Colors.orange.shade50,
+          ),
+          child: const Center(
+            child: Text(
+              '等待业主确认上门时间',
+              style: TextStyle(fontSize: 15, color: ZdColors.textSecondary),
+            ),
+          ),
+        );
+
+      case WorkerOrderStatus.visitScheduled:
+        return ZdPrimaryButton(
+          label: '我已到达',
+          onTap: () => _workerArrive(context, order),
+        );
+
+      case WorkerOrderStatus.arrivalPending:
+        return ZdPrimaryButton(
+          label: '确认业主已到场',
+          onTap: () => _workerConfirmArrival(context, order),
+        );
+
+      case WorkerOrderStatus.onSite:
+        final quotation = WorkerAppScope.of(context).getOrderQuotation(order.id);
+        if (quotation == null) {
+          return ZdPrimaryButton(
+            label: '提交报价单',
+            onTap: () => _openQuotation(context, order),
+          );
+        }
+        return ZdPrimaryButton(
+          label: '开始施工',
+          onTap: () async {
+            await WorkerAppScope.of(context).startOrder(order.id);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('已开始施工')),
+              );
+            }
+          },
+        );
+
+      case WorkerOrderStatus.quotePending:
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.indigo.shade50,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.hourglass_empty, size: 18, color: Colors.indigo),
+              SizedBox(width: 8),
+              Text(
+                '报价已提交，等待业主确认',
+                style: TextStyle(
+                  color: Colors.indigo,
+                  fontWeight: FontWeight.w500,
+                  fontSize: 14,
                 ),
-                const SizedBox(width: ZdSpacing.md),
-                Expanded(
-                  child: _outlineBtn('发起验收', () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => InspectionPage(orderId: order.id),
-                      ),
-                    );
-                  }),
+              ),
+            ],
+          ),
+        );
+
+      case WorkerOrderStatus.hired:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              decoration: BoxDecoration(
+                color: _success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.check_circle, size: 18, color: _success),
+                  SizedBox(width: 8),
+                  Text(
+                    '已被选中',
+                    style: TextStyle(
+                      color: _success,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: ZdSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _openWorkerChat(context, order, state),
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('联系业主'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(ZdRadius.md),
+                  ),
                 ),
-              ],
+              ),
+            ),
+            const SizedBox(height: ZdSpacing.sm),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => WorkerSettlementPage(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.account_balance_wallet_outlined),
+                label: const Text('查看结算'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _primary,
+                  side: const BorderSide(color: _primary),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(ZdRadius.md),
+                  ),
+                ),
+              ),
             ),
           ],
         );
@@ -602,6 +678,13 @@ class _BottomBar extends StatelessWidget {
                   child: _outlineBtn(
                     '报价单',
                     () => _openQuotation(context, order),
+                  ),
+                ),
+                const SizedBox(width: ZdSpacing.md),
+                Expanded(
+                  child: _outlineBtn(
+                    '联系业主',
+                    () => _openWorkerChat(context, order, state),
                   ),
                 ),
               ],
@@ -788,9 +871,9 @@ class _BottomBar extends StatelessWidget {
     );
   }
 
-  void _showVisitTimePicker(BuildContext context, WorkerOrder order) {
+  void _showProposeVisitTimePicker(BuildContext context, WorkerOrder order) {
     var visitTime =
-        order.visitTime ??
+        order.proposedTime ??
         DateTime(
           DateTime.now().year,
           DateTime.now().month,
@@ -805,7 +888,7 @@ class _BottomBar extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(ZdRadius.card),
           ),
-          title: Text('约定上门时间', style: ZdText.title),
+          title: Text('提出上门时间', style: ZdText.title),
           content: GestureDetector(
             onTap: () async {
               final date = await showDatePicker(
@@ -861,10 +944,33 @@ class _BottomBar extends StatelessWidget {
               label: '确认',
               height: 40,
               onTap: () async {
-                await WorkerAppScope.of(
-                  context,
-                ).updateOrderVisitTime(order.id, visitTime);
-                if (ctx.mounted) Navigator.pop(ctx);
+                try {
+                  final token = state.getAccessToken();
+                  if (token == null) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('登录已过期')),
+                      );
+                    }
+                    return;
+                  }
+                  final api = ServiceRequestApiClient();
+                  final result = await api.proposeVisit(token, order.id, visitTime);
+                  state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } on AuthApiException catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text(e.message)),
+                    );
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(content: Text('操作失败：$e')),
+                    );
+                  }
+                }
               },
             ),
           ],
@@ -873,10 +979,136 @@ class _BottomBar extends StatelessWidget {
     );
   }
 
+  Future<void> _workerArrive(BuildContext context, WorkerOrder order) async {
+    try {
+      final token = state.getAccessToken();
+      if (token == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期')),
+          );
+        }
+        return;
+      }
+      final api = ServiceRequestApiClient();
+      final result = await api.workerArrive(token, order.id);
+      state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已标记到达')),
+        );
+      }
+    } on AuthApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败：$e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _workerConfirmArrival(BuildContext context, WorkerOrder order) async {
+    try {
+      // ignore: await_only_futures
+      final token = await state.getAccessToken();
+      if (token == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期')),
+          );
+        }
+        return;
+      }
+      final api = ServiceRequestApiClient();
+      final result = await api.workerConfirmArrival(token, order.id);
+      state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已确认业主到场')),
+        );
+      }
+    } on AuthApiException catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('操作失败：$e')),
+        );
+      }
+    }
+  }
+
   static void _openQuotation(BuildContext context, WorkerOrder order) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => QuotationFormPage(order: order)),
+    );
+  }
+
+  static void _openWorkerChat(
+    BuildContext context,
+    WorkerOrder order,
+    WorkerAppState state,
+  ) async {
+    final accessToken = state.getAccessToken();
+    if (accessToken == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录已过期，请重新登录')),
+      );
+      return;
+    }
+
+    RemoteWorkerBooking? remote;
+    try {
+      remote = state.remoteBookings.firstWhere((b) => b.id == order.id);
+    } catch (_) {
+      // remote booking not found in local cache
+    }
+
+    final currentUserId = remote?.workerUserId ?? await state.getUserId();
+    if (currentUserId == null) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('登录已过期，请重新登录')),
+      );
+      return;
+    }
+
+    // get/create chat room by booking ID
+    final chatApi = ChatApiClient();
+    ChatRoomModel room;
+    try {
+      room = await chatApi.getOrCreateRoom(accessToken, order.id);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法创建聊天：$e')),
+        );
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailPage(
+          roomId: room.id,
+          otherUserName: order.ownerName,
+          accessToken: accessToken,
+          currentUserId: currentUserId,
+        ),
+      ),
     );
   }
 }

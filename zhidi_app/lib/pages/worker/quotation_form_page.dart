@@ -2,14 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../app/worker_app_scope.dart';
 import '../../app/worker_app_state.dart';
-import '../../app/quotation_templates.dart';
-
-/// 带全局 index 的模版项（解决分组后 index 错位）
-class _IndexedTemplate {
-  const _IndexedTemplate(this.index, this.item);
-  final int index;
-  final QuotationTemplateItem item;
-}
+import '../../services/service_catalog_api_client.dart';
+import '../../services/worker_quote_api_client.dart';
+import '../../services/auth_api_client.dart';
 
 class QuotationFormPage extends StatefulWidget {
   const QuotationFormPage({super.key, required this.order});
@@ -21,100 +16,131 @@ class QuotationFormPage extends StatefulWidget {
 }
 
 class _QuotationFormPageState extends State<QuotationFormPage> {
-  late final List<QuotationTemplateItem> _templates;
+  List<CatalogItem>? _catalog;
+  bool _loading = true;
+  String? _error;
 
-  /// 选中的项：key = 全局 template index
-  final Map<int, _Selection> _selections = {};
+  /// 选中的项：key = catalog item name
+  final Map<String, double> _quantities = {};
+
+  // 中文分类映射
+  static final _catLabel = <String, String>{
+    'PLUMBING': '水电',
+    'ELECTRICAL': '水电',
+    'CARPENTRY': '木工',
+    'PAINTING': '油漆',
+    'MASONRY': '泥瓦',
+    'DEMOLITION': '拆除',
+  };
+
+  // 分类图标/颜色
+  static const _catMeta = <String, _CatMeta>{
+    'PLUMBING': _CatMeta(Icons.water_drop_outlined, Colors.blue),
+    'ELECTRICAL': _CatMeta(Icons.bolt_outlined, Colors.amber),
+    'CARPENTRY': _CatMeta(Icons.carpenter_outlined, Colors.brown),
+    'PAINTING': _CatMeta(Icons.format_paint_outlined, Colors.teal),
+    'MASONRY': _CatMeta(Icons.grid_view_outlined, Colors.orange),
+    'DEMOLITION': _CatMeta(Icons.delete_outline, Colors.red),
+  };
 
   WorkerOrder get _order => widget.order;
 
   @override
   void initState() {
     super.initState();
-    _templates = quotationTemplateForTrade(_order.trade);
+    _loadCatalog();
   }
 
-  // ── 按 category → phase → [_IndexedTemplate] ──
-  Map<String, List<_IndexedTemplate>> _phasesOf(QuotationItemCategory cat) {
-    final map = <String, List<_IndexedTemplate>>{};
-    for (var i = 0; i < _templates.length; i++) {
-      final t = _templates[i];
-      if (t.category != cat) continue;
-      final phase = t.phase.isEmpty ? '通用' : t.phase;
-      map.putIfAbsent(phase, () => []).add(_IndexedTemplate(i, t));
+  Future<void> _loadCatalog() async {
+    final app = WorkerAppScope.of(context);
+    final token = app.accessToken;
+    if (token == null) {
+      setState(() {
+        _loading = false;
+        _error = '未登录';
+      });
+      return;
+    }
+    try {
+      final api = ServiceCatalogApiClient();
+      final items = await api.getCatalog(token, _order.trade);
+      setState(() {
+        _catalog = items;
+        _loading = false;
+      });
+    } on AuthApiException catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e.message;
+      });
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = '加载价格目录失败：$e';
+      });
+    }
+  }
+
+  // 按 category 分组
+  Map<String, List<CatalogItem>> _grouped() {
+    final map = <String, List<CatalogItem>>{};
+    if (_catalog == null) return map;
+    for (final item in _catalog!) {
+      map.putIfAbsent(item.category, () => []).add(item);
     }
     return map;
   }
 
-  // ── 是否勾选 ──
-  bool _isSelected(int idx) => _selections.containsKey(idx);
+  double _quantityOf(String name) => _quantities[name] ?? 0;
 
-  _Selection _sel(int idx) =>
-      _selections[idx] ?? _Selection(quantity: 1, specIndex: 0);
-
-  // ── 汇总 ──
-  double _categoryTotal(QuotationItemCategory cat) {
+  double get _grandTotal {
+    if (_catalog == null) return 0;
     double total = 0;
-    for (var i = 0; i < _templates.length; i++) {
-      if (_templates[i].category == cat && _isSelected(i)) {
-        total += _templates[i].unitPrice * _sel(i).quantity;
-      }
+    for (final item in _catalog!) {
+      final qty = _quantityOf(item.name);
+      if (qty > 0) total += item.unitPrice * qty;
     }
     return total;
   }
 
-  double get _grandTotal =>
-      _categoryTotal(QuotationItemCategory.labor) +
-      _categoryTotal(QuotationItemCategory.auxiliary) +
-      _categoryTotal(QuotationItemCategory.mainMaterial);
+  bool get _hasSelection => _quantities.values.any((q) => q > 0);
 
-  // ── 提交 ──
-  List<QuotationItem> _buildItems() {
-    final items = <QuotationItem>[];
-    for (var i = 0; i < _templates.length; i++) {
-      if (!_isSelected(i)) continue;
-      final t = _templates[i];
-      final s = _sel(i);
-      String spec = '';
-      if (t.specs.isNotEmpty && s.specIndex < t.specs.length) {
-        spec = t.specs[s.specIndex];
+  Future<void> _submit() async {
+    if (_catalog == null || !_hasSelection) return;
+
+    final items = <CatalogSubmitItem>[];
+    for (final item in _catalog!) {
+      final qty = _quantityOf(item.name);
+      if (qty > 0) {
+        items.add(CatalogSubmitItem(name: item.name, quantity: qty));
       }
-      items.add(QuotationItem(
-        name: t.name,
-        category: t.category,
-        spec: spec,
-        unitPrice: t.unitPrice,
-        quantity: s.quantity,
-        unit: t.unit,
-      ));
     }
-    return items;
-  }
-
-  Future<void> _submit(WorkerAppState app) async {
-    final items = _buildItems();
     if (items.isEmpty) return;
 
-    final now = DateTime.now();
-    final quotation = Quotation(
-      id: 'qt-${now.millisecondsSinceEpoch}',
-      orderId: _order.id,
-      items: items,
-      createdAt: now,
-    );
+    try {
+      final app = WorkerAppScope.of(context);
+      await app.submitQuote(_order.id, items);
 
-    await app.submitQuotation(quotation);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('报价单已提交')),
-    );
-    Navigator.of(context).pop();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('报价已提交')),
+      );
+      Navigator.of(context).pop();
+    } on AuthApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('提交失败：$e')),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final app = WorkerAppScope.of(context);
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -155,54 +181,15 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 80),
-        children: [
-          _CategorySection(
-            title: '人工费',
-            icon: Icons.person_outline,
-            color: Colors.indigo,
-            phases: _phasesOf(QuotationItemCategory.labor),
-            isSelected: _isSelected,
-            sel: _sel,
-            onToggle: _toggle,
-            onQtyChanged: _setQty,
-            onSpecChanged: _setSpec,
-          ),
-          _CategorySection(
-            title: '辅料',
-            icon: Icons.build_outlined,
-            color: Colors.amber.shade700,
-            phases: _phasesOf(QuotationItemCategory.auxiliary),
-            isSelected: _isSelected,
-            sel: _sel,
-            onToggle: _toggle,
-            onQtyChanged: _setQty,
-            onSpecChanged: _setSpec,
-          ),
-          _CategorySection(
-            title: '主材',
-            icon: Icons.construction_outlined,
-            color: Colors.teal,
-            phases: _phasesOf(QuotationItemCategory.mainMaterial),
-            isSelected: _isSelected,
-            sel: _sel,
-            onToggle: _toggle,
-            onQtyChanged: _setQty,
-            onSpecChanged: _setSpec,
-          ),
-        ],
-      ),
+      body: _buildBody(cs),
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: FilledButton.icon(
-            onPressed: _selections.isNotEmpty
-                ? () => _submit(app)
-                : null,
+            onPressed: _hasSelection ? _submit : null,
             icon: const Icon(Icons.send),
             label: Text(
-              _selections.isNotEmpty
+              _hasSelection
                   ? '提交报价单（¥${_grandTotal.toStringAsFixed(0)}）'
                   : '请勾选报价项目',
             ),
@@ -215,75 +202,104 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
     );
   }
 
-  // ── 操作 ──
-  void _toggle(int idx) {
+  Widget _buildBody(ColorScheme cs) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(_error!, style: TextStyle(color: cs.error)),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _loadCatalog();
+              },
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    }
+    final grouped = _grouped();
+    if (grouped.isEmpty) {
+      return Center(
+        child: Text(
+          '该工种暂无价格项目',
+          style: TextStyle(color: cs.onSurfaceVariant),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.only(bottom: 80),
+      children: grouped.entries.map((e) {
+        final meta = _catMeta[e.key] ?? _CatMeta(Icons.build_outlined, cs.primary);
+        return _CategoryCard(
+          label: _catLabel[e.key] ?? e.key,
+          icon: meta.icon,
+          color: meta.color,
+          items: e.value,
+          quantityOf: _quantityOf,
+          onQtyChanged: _setQty,
+        );
+      }).toList(),
+    );
+  }
+
+  void _setQty(String name, double qty) {
     setState(() {
-      if (_selections.containsKey(idx)) {
-        _selections.remove(idx);
+      if (qty <= 0) {
+        _quantities.remove(name);
       } else {
-        _selections[idx] = _Selection(quantity: 1, specIndex: 0);
+        _quantities[name] = qty;
       }
     });
   }
-
-  void _setQty(int idx, double qty) {
-    setState(() {
-      _selections[idx] = _sel(idx).copyWith(quantity: qty);
-    });
-  }
-
-  void _setSpec(int idx, int specIndex) {
-    setState(() {
-      _selections[idx] = _sel(idx).copyWith(specIndex: specIndex);
-    });
-  }
 }
 
-// ── 选中状态 ──
-class _Selection {
-  const _Selection({required this.quantity, required this.specIndex});
-  final double quantity;
-  final int specIndex;
-
-  _Selection copyWith({double? quantity, int? specIndex}) => _Selection(
-        quantity: quantity ?? this.quantity,
-        specIndex: specIndex ?? this.specIndex,
-      );
-}
-
-// ═══════════════════════════════════════════
-// 大分类区块
-// ═══════════════════════════════════════════
-class _CategorySection extends StatelessWidget {
-  const _CategorySection({
-    required this.title,
-    required this.icon,
-    required this.color,
-    required this.phases,
-    required this.isSelected,
-    required this.sel,
-    required this.onToggle,
-    required this.onQtyChanged,
-    required this.onSpecChanged,
-  });
-
-  final String title;
+class _CatMeta {
+  const _CatMeta(this.icon, this.color);
   final IconData icon;
   final Color color;
-  final Map<String, List<_IndexedTemplate>> phases;
-  final bool Function(int) isSelected;
-  final _Selection Function(int) sel;
-  final void Function(int) onToggle;
-  final void Function(int, double) onQtyChanged;
-  final void Function(int, int) onSpecChanged;
+}
+
+// ── 分类卡片 ──
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.items,
+    required this.quantityOf,
+    required this.onQtyChanged,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final List<CatalogItem> items;
+  final double Function(String) quantityOf;
+  final void Function(String, double) onQtyChanged;
+
+  double get _catTotal {
+    double t = 0;
+    for (final item in items) {
+      final q = quantityOf(item.name);
+      if (q > 0) t += item.unitPrice * q;
+    }
+    return t;
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (phases.isEmpty) return const SizedBox.shrink();
-
     final cs = Theme.of(context).colorScheme;
-    final catTotal = _calcTotal();
-
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Padding(
@@ -295,277 +311,145 @@ class _CategorySection extends StatelessWidget {
               children: [
                 Icon(icon, size: 20, color: color),
                 const SizedBox(width: 8),
-                Text(title,
+                Text(label,
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600)),
                 const Spacer(),
-                Text('小计 ¥${catTotal.toStringAsFixed(0)}',
+                Text('小计 ¥${_catTotal.toStringAsFixed(0)}',
                     style: TextStyle(color: cs.primary, fontSize: 13)),
               ],
             ),
             const SizedBox(height: 10),
-            ...phases.entries.map((e) => _PhaseGroup(
-                  phaseName: e.key,
-                  items: e.value,
-                  isSelected: isSelected,
-                  sel: sel,
-                  onToggle: onToggle,
-                  onQtyChanged: onQtyChanged,
-                  onSpecChanged: onSpecChanged,
+            ...items.map((item) => _CatalogItemRow(
+                  item: item,
+                  quantity: quantityOf(item.name),
+                  onQtyChanged: (q) => onQtyChanged(item.name, q),
                 )),
           ],
         ),
       ),
     );
   }
-
-  double _calcTotal() {
-    double t = 0;
-    for (final list in phases.values) {
-      for (final it in list) {
-        if (isSelected(it.index)) {
-          t += it.item.unitPrice * sel(it.index).quantity;
-        }
-      }
-    }
-    return t;
-  }
 }
 
-// ═══════════════════════════════════════════
-// 施工步骤分组
-// ═══════════════════════════════════════════
-class _PhaseGroup extends StatelessWidget {
-  const _PhaseGroup({
-    required this.phaseName,
-    required this.items,
-    required this.isSelected,
-    required this.sel,
-    required this.onToggle,
-    required this.onQtyChanged,
-    required this.onSpecChanged,
-  });
-
-  final String phaseName;
-  final List<_IndexedTemplate> items;
-  final bool Function(int) isSelected;
-  final _Selection Function(int) sel;
-  final void Function(int) onToggle;
-  final void Function(int, double) onQtyChanged;
-  final void Function(int, int) onSpecChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 4),
-          child: Row(
-            children: [
-              Container(
-                width: 4,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: cs.primary,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                phaseName,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
-                ),
-              ),
-            ],
-          ),
-        ),
-        ...items.map((it) => _TemplateItemCard(
-              index: it.index,
-              item: it.item,
-              isSelected: isSelected,
-              sel: sel,
-              onToggle: onToggle,
-              onQtyChanged: onQtyChanged,
-              onSpecChanged: onSpecChanged,
-            )),
-        const SizedBox(height: 4),
-      ],
-    );
-  }
-}
-
-// ═══════════════════════════════════════════
-// 单条模版项卡片
-// ═══════════════════════════════════════════
-class _TemplateItemCard extends StatelessWidget {
-  const _TemplateItemCard({
-    required this.index,
+// ── 单行目录项 ──
+class _CatalogItemRow extends StatelessWidget {
+  const _CatalogItemRow({
     required this.item,
-    required this.isSelected,
-    required this.sel,
-    required this.onToggle,
+    required this.quantity,
     required this.onQtyChanged,
-    required this.onSpecChanged,
   });
 
-  final int index;
-  final QuotationTemplateItem item;
-  final bool Function(int) isSelected;
-  final _Selection Function(int) sel;
-  final void Function(int) onToggle;
-  final void Function(int, double) onQtyChanged;
-  final void Function(int, int) onSpecChanged;
+  final CatalogItem item;
+  final double quantity;
+  final ValueChanged<double> onQtyChanged;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final checked = isSelected(index);
-    final selection = sel(index);
+    final selected = quantity > 0;
+    final subtotal = item.unitPrice * quantity;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
-        color: checked ? cs.primaryContainer.withValues(alpha: 0.15) : cs.surface,
+        color: selected
+            ? cs.primaryContainer.withValues(alpha: 0.15)
+            : cs.surface,
         borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => onToggle(index),
+          onTap: () => onQtyChanged(selected ? 0 : 1),
           borderRadius: BorderRadius.circular(8),
           splashColor: cs.primary.withValues(alpha: 0.2),
           highlightColor: cs.primary.withValues(alpha: 0.1),
           child: Container(
             decoration: BoxDecoration(
               border: Border.all(
-                color: checked ? cs.primary.withValues(alpha: 0.4) : cs.outlineVariant,
+                color: selected
+                    ? cs.primary.withValues(alpha: 0.4)
+                    : cs.outlineVariant,
               ),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            children: [
-              // ── 第一行：勾选 + 名称 + 单价 ──
-              Row(
+              padding: const EdgeInsets.all(10),
+              child: Column(
                 children: [
-                  SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: Checkbox(
-                      value: checked,
-                      onChanged: (_) => onToggle(index),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      item.name,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: checked ? cs.onSurface : cs.outline,
-                        fontWeight:
-                            checked ? FontWeight.w500 : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '¥${item.unitPrice.toStringAsFixed(0)}/${item.unit}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: cs.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-              // ── 勾选后展开：规格选择 + 数量 ──
-              if (checked) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const SizedBox(width: 32),
-                    // 规格选择
-                    if (item.specs.isNotEmpty) ...[
-                      Expanded(
-                        flex: 3,
-                        child: _SpecSelector(
-                          specs: item.specs,
-                          selectedIndex: selection.specIndex.clamp(
-                              0, item.specs.length - 1),
-                          onChanged: (i) => onSpecChanged(index, i),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: Checkbox(
+                          value: selected,
+                          onChanged: (_) =>
+                              onQtyChanged(selected ? 0 : 1),
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
                         ),
                       ),
                       const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          item.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: selected ? cs.onSurface : cs.outline,
+                            fontWeight: selected
+                                ? FontWeight.w500
+                                : FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          '¥${item.unitPrice.toStringAsFixed(0)}/${item.unit}',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
                     ],
-                    // 数量输入
-                    Expanded(
-                      flex: item.specs.isEmpty ? 3 : 2,
-                      child: _QtyStepper(
-                        value: selection.quantity,
-                        onChanged: (v) => onQtyChanged(index, v),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // 小计
-                    Text(
-                      '¥${(item.unitPrice * selection.quantity).toStringAsFixed(0)}',
-                      style: TextStyle(
-                        color: cs.primary,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
+                  ),
+                  if (selected) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const SizedBox(width: 32),
+                        Expanded(
+                          flex: 2,
+                          child: _QtyStepper(
+                            value: quantity,
+                            onChanged: onQtyChanged,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '¥${subtotal.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: cs.primary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
-                ),
-              ],
-            ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
-    ),
-    ),
-    );
-  }
-}
-
-// ── 规格下拉 ──
-class _SpecSelector extends StatelessWidget {
-  const _SpecSelector({
-    required this.specs,
-    required this.selectedIndex,
-    required this.onChanged,
-  });
-
-  final List<String> specs;
-  final int selectedIndex;
-  final ValueChanged<int> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<int>(
-      key: ValueKey(selectedIndex),
-      initialValue: selectedIndex,
-      decoration: const InputDecoration(
-        labelText: '规格',
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        isDense: true,
-      ),
-      style: const TextStyle(fontSize: 13),
-      items: List.generate(
-          specs.length,
-          (i) => DropdownMenuItem(
-              value: i, child: Text(specs[i], style: const TextStyle(fontSize: 13))),
-        ),
-      onChanged: (v) {
-        if (v != null) onChanged(v);
-      },
     );
   }
 }
@@ -580,7 +464,6 @@ class _QtyStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: cs.outlineVariant),
@@ -600,7 +483,8 @@ class _QtyStepper extends StatelessWidget {
                   ? value.toInt().toString()
                   : value.toStringAsFixed(1),
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w500),
             ),
           ),
           _stepBtn(Icons.add, () => onChanged(value + 1)),

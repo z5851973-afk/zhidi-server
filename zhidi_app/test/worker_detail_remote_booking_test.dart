@@ -86,6 +86,7 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
       serviceCity: request.serviceCity ?? '杭州',
       serviceAddress: request.serviceAddress,
       remark: request.remark,
+      serviceRequestId: 'sr-test-1',
       status: 'PENDING',
       createdAt: DateTime.utc(2026, 7, 15, 10),
       updatedAt: DateTime.utc(2026, 7, 15, 10),
@@ -99,7 +100,7 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
 
   @override
   Future<RemoteOwnerBooking> cancelBooking(
-      String accessToken, String bookingId) async {
+      String accessToken, String bookingId, String reason) async {
     return RemoteOwnerBooking(
       id: bookingId,
       ownerUserId: 'owner-user-id',
@@ -109,6 +110,10 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
       serviceCity: '杭州',
       serviceAddress: null,
       remark: null,
+      serviceRequestId: 'sr-test-1',
+      cancelledBy: null,
+      cancelReason: null,
+      cancelledAt: null,
       status: 'CANCELLED',
       createdAt: DateTime.utc(2026, 7, 15, 10),
       updatedAt: DateTime.utc(2026, 7, 15, 11),

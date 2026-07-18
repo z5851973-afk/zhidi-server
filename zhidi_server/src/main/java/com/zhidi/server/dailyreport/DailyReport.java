@@ -4,7 +4,7 @@ import com.zhidi.server.common.persistence.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
-import java.util.ArrayList;
+import java.time.LocalDate;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -26,60 +26,43 @@ public class DailyReport extends BaseEntity {
 		columnDefinition = "BINARY(16)")
 	private UUID workerUserId;
 
-	@Column(nullable = false, length = 200)
-	private String title;
+	@Column(name = "report_date", nullable = false)
+	private LocalDate reportDate;
 
-	@Column(nullable = false, length = 2000)
+	@Column(nullable = false, columnDefinition = "TEXT")
 	private String content;
 
-	@Column(name = "image_urls", columnDefinition = "TEXT")
-	private String imageUrls;
+	@JdbcTypeCode(SqlTypes.JSON)
+	@Column(columnDefinition = "JSON")
+	private List<String> photos;
 
 	protected DailyReport() {
 	}
 
-	private DailyReport(UUID bookingId, UUID workerUserId, String title, String content,
-			List<String> imageUrls) {
+	private DailyReport(UUID bookingId, UUID workerUserId, LocalDate reportDate,
+			String content, List<String> photos) {
 		this.bookingId = Objects.requireNonNull(bookingId);
 		this.workerUserId = Objects.requireNonNull(workerUserId);
-		this.title = Objects.requireNonNull(title);
+		this.reportDate = Objects.requireNonNull(reportDate);
 		this.content = Objects.requireNonNull(content);
-		this.imageUrls = imageUrls.isEmpty() ? null : String.join(",", imageUrls);
+		this.photos = (photos == null || photos.isEmpty()) ? null : List.copyOf(photos);
 	}
 
-	public static DailyReport create(UUID bookingId, UUID workerUserId, String title,
-			String content, List<String> imageUrls) {
-		List<String> safe = imageUrls != null ? List.copyOf(imageUrls) : Collections.emptyList();
-		return new DailyReport(bookingId, workerUserId, title, content, safe);
+	public static DailyReport create(UUID bookingId, UUID workerUserId,
+			LocalDate reportDate, String content, List<String> photos) {
+		return new DailyReport(bookingId, workerUserId, reportDate, content, photos);
 	}
 
-	public UUID getBookingId() {
-		return bookingId;
+	public UUID getBookingId() { return bookingId; }
+	public UUID getWorkerUserId() { return workerUserId; }
+	public LocalDate getReportDate() { return reportDate; }
+	public String getContent() { return content; }
+	public List<String> getPhotos() {
+		return photos != null ? Collections.unmodifiableList(photos) : Collections.emptyList();
 	}
 
-	public UUID getWorkerUserId() {
-		return workerUserId;
-	}
-
-	public String getTitle() {
-		return title;
-	}
-
-	public String getContent() {
-		return content;
-	}
-
-	public List<String> getImageUrls() {
-		if (imageUrls == null || imageUrls.isBlank()) {
-			return Collections.emptyList();
-		}
-		List<String> result = new ArrayList<>();
-		for (String url : imageUrls.split(",")) {
-			String trimmed = url.trim();
-			if (!trimmed.isEmpty()) {
-				result.add(trimmed);
-			}
-		}
-		return Collections.unmodifiableList(result);
+	public void updateContent(String content, List<String> photos) {
+		this.content = Objects.requireNonNull(content);
+		this.photos = (photos == null || photos.isEmpty()) ? null : List.copyOf(photos);
 	}
 }
