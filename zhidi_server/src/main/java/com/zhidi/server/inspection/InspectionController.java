@@ -40,8 +40,10 @@ public class InspectionController {
 
 	@GetMapping("/bookings/{bookingId}/inspection-nodes")
 	public ApiResponse<List<InspectionNodeResponse>> getNodes(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID bookingId) {
-		return ApiResponse.ok(inspectionService.getNodes(bookingId), traceId());
+		return ApiResponse.ok(
+			inspectionService.getNodes(principal.userId(), bookingId), traceId());
 	}
 
 	@PutMapping("/inspection-nodes/{nodeId}/request-inspection")
@@ -67,8 +69,10 @@ public class InspectionController {
 
 	@GetMapping("/inspection-nodes/{nodeId}/records")
 	public ApiResponse<List<InspectionRecordResponse>> getRecords(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID nodeId) {
-		return ApiResponse.ok(inspectionService.getRecords(nodeId), traceId());
+		return ApiResponse.ok(
+			inspectionService.getRecords(principal.userId(), nodeId), traceId());
 	}
 
 	private String traceId() {

@@ -4,8 +4,9 @@ CREATE TABLE daily_reports (
     worker_user_id BINARY(16) NOT NULL,
     report_date DATE NOT NULL,
     content TEXT NOT NULL,
-    photos JSON NULL,
-    created_at DATETIME(6) NOT NULL,
+	photos JSON NULL,
+	version BIGINT NOT NULL DEFAULT 0,
+	created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     CONSTRAINT fk_daily_reports_booking FOREIGN KEY (booking_id) REFERENCES bookings(id),
     CONSTRAINT uk_daily_reports_booking_date UNIQUE KEY (booking_id, report_date)
@@ -17,8 +18,9 @@ CREATE TABLE inspection_nodes (
     name VARCHAR(100) NOT NULL,
     description TEXT NULL,
     status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
-    sort_order INT NOT NULL DEFAULT 0,
-    created_at DATETIME(6) NOT NULL,
+	sort_order INT NOT NULL DEFAULT 0,
+	version BIGINT NOT NULL DEFAULT 0,
+	created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     CONSTRAINT fk_inspection_nodes_booking FOREIGN KEY (booking_id) REFERENCES bookings(id)
 );
@@ -33,8 +35,10 @@ CREATE TABLE inspection_records (
     result VARCHAR(16) NOT NULL,
     comment TEXT NULL,
     photos JSON NULL,
-    version INT NOT NULL DEFAULT 1,
-    created_at DATETIME(6) NOT NULL,
+	inspection_version INT NOT NULL DEFAULT 1,
+	version BIGINT NOT NULL DEFAULT 0,
+	created_at DATETIME(6) NOT NULL,
+	updated_at DATETIME(6) NOT NULL,
     CONSTRAINT fk_inspection_records_node FOREIGN KEY (node_id) REFERENCES inspection_nodes(id),
     CONSTRAINT ck_inspection_records_result CHECK (result IN ('PASS', 'FAIL'))
 );

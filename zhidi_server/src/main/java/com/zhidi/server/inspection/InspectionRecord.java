@@ -38,8 +38,8 @@ public class InspectionRecord extends BaseEntity {
 	@Column(columnDefinition = "JSON")
 	private List<String> photos;
 
-	@Column(nullable = false)
-	private int version;
+	@Column(name = "inspection_version", nullable = false)
+	private int inspectionVersion;
 
 	protected InspectionRecord() {
 	}
@@ -52,7 +52,7 @@ public class InspectionRecord extends BaseEntity {
 		this.result = Objects.requireNonNull(result);
 		this.comment = comment;
 		this.photos = (photos == null || photos.isEmpty()) ? null : List.copyOf(photos);
-		this.version = version;
+		this.inspectionVersion = version;
 	}
 
 	public static InspectionRecord create(UUID nodeId, UUID inspectorUserId,
@@ -69,5 +69,5 @@ public class InspectionRecord extends BaseEntity {
 	public List<String> getPhotos() {
 		return photos != null ? Collections.unmodifiableList(photos) : Collections.emptyList();
 	}
-	public int getVersion() { return version; }
+	public int getInspectionVersion() { return inspectionVersion; }
 }

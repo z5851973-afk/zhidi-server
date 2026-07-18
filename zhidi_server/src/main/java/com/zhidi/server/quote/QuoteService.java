@@ -55,6 +55,12 @@ public class QuoteService {
 				(existing, duplicate) -> existing));
 
 		List<QuoteItem> items = request.items().stream().map(reqItem -> {
+			if (reqItem.quantity() == null
+					|| reqItem.quantity().compareTo(BigDecimal.ZERO) <= 0
+					|| reqItem.quantity().compareTo(new BigDecimal("100000")) > 0) {
+				throw new BusinessException(HttpStatus.BAD_REQUEST,
+					"INVALID_QUANTITY", "项目数量必须大于 0 且不超过 100000");
+			}
 			ServiceCatalog catalog = catalogByName.get(reqItem.name());
 			if (catalog == null) {
 				throw new BusinessException(HttpStatus.BAD_REQUEST,
@@ -82,7 +88,8 @@ public class QuoteService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<QuoteResponse> listForBooking(UUID bookingId) {
+	public List<QuoteResponse> listForBooking(UUID userId, UUID bookingId) {
+		requireParticipant(userId, bookingId);
 		return quotes.findByBookingIdOrderByCreatedAtDesc(bookingId)
 			.stream().map(this::toResponse).toList();
 	}
@@ -203,7 +210,11 @@ public class QuoteService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<QuoteResponse> listQuotesForServiceRequest(UUID serviceRequestId) {
+	public List<QuoteResponse> listQuotesForServiceRequest(UUID ownerUserId,
+			UUID serviceRequestId) {
+		serviceRequests.findByIdAndOwnerUserId(serviceRequestId, ownerUserId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"SERVICE_REQUEST_NOT_FOUND", "装修需求不存在"));
 		List<Booking> bookingsForRequest = bookings
 			.findByServiceRequestIdOrderByCreatedAtAsc(serviceRequestId);
 		List<UUID> bookingIds = bookingsForRequest.stream()
@@ -227,6 +238,18 @@ public class QuoteService {
 				return totalA.compareTo(totalB);
 			})
 			.toList();
+	}
+
+	private Booking requireParticipant(UUID userId, UUID bookingId) {
+		Booking booking = bookings.findById(bookingId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在"));
+		if (!booking.getOwnerUserId().equals(userId)
+				&& !booking.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在");
+		}
+		return booking;
 	}
 
 	/**

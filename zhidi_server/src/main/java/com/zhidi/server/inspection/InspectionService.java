@@ -48,7 +48,8 @@ public class InspectionService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<InspectionNodeResponse> getNodes(UUID bookingId) {
+	public List<InspectionNodeResponse> getNodes(UUID userId, UUID bookingId) {
+		requireParticipant(userId, bookingId);
 		return nodeRepository.findByBookingIdOrderBySortOrderAsc(bookingId)
 			.stream()
 			.map(InspectionNodeResponse::from)
@@ -101,10 +102,10 @@ public class InspectionService {
 				"INVALID_NODE_STATUS", "只有验收中的节点才能执行验收操作");
 		}
 
-		int nextVersion = recordRepository.findByNodeIdOrderByVersionDesc(nodeId)
+		int nextVersion = recordRepository.findByNodeIdOrderByInspectionVersionDesc(nodeId)
 			.stream()
 			.findFirst()
-			.map(r -> r.getVersion() + 1)
+			.map(r -> r.getInspectionVersion() + 1)
 			.orElse(1);
 
 		InspectionRecord record = InspectionRecord.create(nodeId, inspectorUserId,
@@ -122,10 +123,26 @@ public class InspectionService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<InspectionRecordResponse> getRecords(UUID nodeId) {
-		return recordRepository.findByNodeIdOrderByVersionDesc(nodeId)
+	public List<InspectionRecordResponse> getRecords(UUID userId, UUID nodeId) {
+		InspectionNode node = nodeRepository.findById(nodeId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"NODE_NOT_FOUND", "施工节点不存在"));
+		requireParticipant(userId, node.getBookingId());
+		return recordRepository.findByNodeIdOrderByInspectionVersionDesc(nodeId)
 			.stream()
 			.map(InspectionRecordResponse::from)
 			.toList();
+	}
+
+	private Booking requireParticipant(UUID userId, UUID bookingId) {
+		Booking booking = bookingRepository.findById(bookingId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在"));
+		if (!booking.getOwnerUserId().equals(userId)
+				&& !booking.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在");
+		}
+		return booking;
 	}
 }

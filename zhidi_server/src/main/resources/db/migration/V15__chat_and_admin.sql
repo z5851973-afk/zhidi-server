@@ -1,5 +1,5 @@
 -- 聊天室（一个 booking 一个聊天室）
-CREATE TABLE chat_rooms (
+CREATE TABLE IF NOT EXISTS chat_rooms (
     id BINARY(16) PRIMARY KEY,
     booking_id BINARY(16) NOT NULL UNIQUE,
     owner_user_id BINARY(16) NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE chat_rooms (
 );
 
 -- 消息表
-CREATE TABLE chat_messages (
+CREATE TABLE IF NOT EXISTS chat_messages (
     id BINARY(16) PRIMARY KEY,
     room_id BINARY(16) NOT NULL,
     sender_user_id BINARY(16) NOT NULL,
@@ -35,10 +35,10 @@ SELECT UNHEX(REPLACE('00000000-0000-0000-0000-000000000001', '-', '')),
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE phone = '13800000000');
 
 INSERT INTO user_roles (user_id, role)
-SELECT UNHEX(REPLACE('00000000-0000-0000-0000-000000000001', '-', '')),
-       'ADMIN'
-WHERE NOT EXISTS (
-    SELECT 1 FROM user_roles ur
-    JOIN users u ON ur.user_id = u.id
-    WHERE u.phone = '13800000000' AND ur.role = 'ADMIN'
-);
+SELECT u.id, 'ADMIN'
+FROM users u
+WHERE u.phone = '13800000000'
+  AND NOT EXISTS (
+      SELECT 1 FROM user_roles ur
+      WHERE ur.user_id = u.id AND ur.role = 'ADMIN'
+  );

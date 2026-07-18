@@ -50,7 +50,15 @@ public class DailyReportService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<DailyReportResponse> findByBooking(UUID bookingId) {
+	public List<DailyReportResponse> findByBooking(UUID userId, UUID bookingId) {
+		Booking booking = bookingRepository.findById(bookingId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在"));
+		if (!booking.getOwnerUserId().equals(userId)
+				&& !booking.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"BOOKING_NOT_FOUND", "预约不存在");
+		}
 		return reportRepository.findByBookingIdOrderByReportDateDesc(bookingId)
 				.stream()
 				.map(DailyReportResponse::from)

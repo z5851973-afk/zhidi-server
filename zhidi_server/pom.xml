@@ -89,6 +89,24 @@
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-data-redis</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.tencentcloudapi</groupId>
+			<artifactId>tencentcloud-sdk-java-sms</artifactId>
+			<version>3.1.1077</version>
+		</dependency>
+		<dependency>
+			<groupId>com.qcloud</groupId>
+			<artifactId>cos_api</artifactId>
+			<version>5.6.212</version>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>

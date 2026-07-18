@@ -18,6 +18,9 @@ spring:
     timeout: 3000ms
 
 management:
+  health:
+    redis:
+      enabled: false
   endpoints:
     web:
       exposure:
@@ -33,6 +36,7 @@ springdoc:
 
 tencent:
   sms:
+    enabled: ${TENCENT_SMS_ENABLED:false}
     secret-id: ${TENCENT_SMS_SECRET_ID:}
     secret-key: ${TENCENT_SMS_SECRET_KEY:}
     app-id: ${TENCENT_SMS_APP_ID:}
@@ -41,6 +45,7 @@ tencent:
       verify-code: ${TENCENT_SMS_VERIFY_TEMPLATE:1234567}
       booking-notify: ${TENCENT_SMS_BOOKING_TEMPLATE:1234568}
   cos:
+    enabled: ${TENCENT_COS_ENABLED:false}
     secret-id: ${TENCENT_COS_SECRET_ID:${TENCENT_SMS_SECRET_ID:}}
     secret-key: ${TENCENT_COS_SECRET_KEY:${TENCENT_SMS_SECRET_KEY:}}
     bucket: ${TENCENT_COS_BUCKET:zhidi-uploads-1234567890}

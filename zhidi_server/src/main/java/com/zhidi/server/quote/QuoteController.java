@@ -45,8 +45,9 @@ public class QuoteController {
 	@PreAuthorize("hasAnyRole('OWNER', 'WORKER')")
 	@Operation(summary = "查看某预约的报价列表")
 	public ApiResponse<List<QuoteResponse>> listForBooking(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID bookingId) {
-		return ApiResponse.ok(quoteService.listForBooking(bookingId),
+		return ApiResponse.ok(quoteService.listForBooking(principal.userId(), bookingId),
 			traceId());
 	}
 
@@ -98,7 +99,7 @@ public class QuoteController {
 			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID requestId) {
 		return ApiResponse.ok(
-			quoteService.listQuotesForServiceRequest(requestId),
+			quoteService.listQuotesForServiceRequest(principal.userId(), requestId),
 			traceId());
 	}
 

@@ -46,8 +46,10 @@ public class AfterSaleController {
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "查询售后工单详情")
 	public ApiResponse<AfterSaleResponse> getAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID id) {
-		return ApiResponse.ok(afterSaleService.getAfterSale(id), traceId());
+		return ApiResponse.ok(
+			afterSaleService.getAfterSale(principal.userId(), id), traceId());
 	}
 
 	@GetMapping("/api/v1/after-sales")
@@ -70,7 +72,7 @@ public class AfterSaleController {
 	}
 
 	private static String traceId() {
-		return MDC.get(TraceIdFilter.TRACE_ID_KEY);
+		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
 
 	// — 请求体 DTO —

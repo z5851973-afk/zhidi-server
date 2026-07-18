@@ -178,10 +178,18 @@ public class Booking extends BaseEntity {
 	}
 
 	public void accept() {
+		if (this.status != BookingStatus.PENDING) {
+			throw new IllegalStateException(
+				"只有待接单状态(PENDING)才能接单，当前状态: " + this.status);
+		}
 		this.status = BookingStatus.ACCEPTED;
 	}
 
 	public void reject() {
+		if (this.status != BookingStatus.PENDING) {
+			throw new IllegalStateException(
+				"只有待接单状态(PENDING)才能拒单，当前状态: " + this.status);
+		}
 		this.status = BookingStatus.REJECTED;
 	}
 

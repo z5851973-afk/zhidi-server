@@ -78,10 +78,15 @@ public class PaymentOrderService {
 	}
 
 	@Transactional(readOnly = true)
-	public PaymentOrderResponse getOrder(UUID orderId) {
+	public PaymentOrderResponse getOrder(UUID userId, UUID orderId) {
 		PaymentOrder order = paymentOrders.findById(orderId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"ORDER_NOT_FOUND", "支付订单不存在"));
+		if (!order.getOwnerUserId().equals(userId)
+				&& !order.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在");
+		}
 		return PaymentOrderResponse.from(order);
 	}
 
@@ -123,8 +128,7 @@ public class PaymentOrderService {
 			throw new BusinessException(HttpStatus.CONFLICT,
 				"INVALID_STATUS", "只有已支付订单才能申请退款");
 		}
-
-		order.markRefunded();
-		return PaymentOrderResponse.from(paymentOrders.saveAndFlush(order));
+		throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+			"REFUND_PROVIDER_NOT_CONFIGURED", "退款渠道尚未开通");
 	}
 }

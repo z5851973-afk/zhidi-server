@@ -22,7 +22,7 @@ public record InspectionRecordResponse(
 				record.getResult(),
 				record.getComment(),
 				record.getPhotos(),
-				record.getVersion(),
+				record.getInspectionVersion(),
 				record.getCreatedAt()
 		);
 	}

@@ -13,6 +13,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -22,6 +23,8 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class BookingService {
+	private static final Set<BookingStatus> TERMINAL = Set.of(
+		BookingStatus.REJECTED, BookingStatus.CANCELLED, BookingStatus.NOT_SELECTED);
 
 	private final BookingRepository bookings;
 	private final ServiceRequestRepository serviceRequests;
@@ -80,7 +83,9 @@ public class BookingService {
 
 		Booking booking = Booking.createCandidate(serviceRequest, ownerUserId,
 			ownerName, owner.getPhone(), worker.getUserId(), worker.getName());
-		return toResponse(bookings.saveAndFlush(booking));
+		Booking saved = bookings.saveAndFlush(booking);
+		syncServiceRequestStatus(serviceRequest.getId());
+		return toResponse(saved);
 	}
 
 	@Transactional(readOnly = true)
@@ -99,19 +104,7 @@ public class BookingService {
 	public BookingResponse accept(UUID workerUserId, UUID bookingId) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.accept();
-
-		List<Booking> candidates = bookings
-			.findByServiceRequestIdOrderByCreatedAtAsc(booking.getServiceRequestId());
-		for (Booking other : candidates) {
-			if (!other.getId().equals(bookingId) && other.getStatus() == BookingStatus.PENDING) {
-				other.notSelect();
-				pushStatusChange(other);
-			}
-		}
-
-		serviceRequests.findById(booking.getServiceRequestId())
-			.ifPresent(ServiceRequest::selectWorker);
-
+		syncServiceRequestStatus(booking.getServiceRequestId());
 		pushStatusChange(booking);
 		return toResponse(booking);
 	}
@@ -120,17 +113,7 @@ public class BookingService {
 	public BookingResponse reject(UUID workerUserId, UUID bookingId) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.reject();
-
-		long pendingCount = bookings
-			.findByServiceRequestIdOrderByCreatedAtAsc(booking.getServiceRequestId())
-			.stream()
-			.filter(b -> b.getStatus() == BookingStatus.PENDING)
-			.count();
-		if (pendingCount == 0) {
-			serviceRequests.findById(booking.getServiceRequestId())
-				.ifPresent(ServiceRequest::reopen);
-		}
-
+		syncServiceRequestStatus(booking.getServiceRequestId());
 		pushStatusChange(booking);
 		return toResponse(booking);
 	}
@@ -142,6 +125,7 @@ public class BookingService {
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
 		booking.cancel(BookingCancellationActor.OWNER, reason, Instant.now());
+		syncServiceRequestStatus(booking.getServiceRequestId());
 		pushStatusChange(booking);
 		return toResponse(booking);
 	}
@@ -151,6 +135,7 @@ public class BookingService {
 			String reason) {
 		Booking booking = findWorkerBooking(workerUserId, bookingId);
 		booking.cancel(BookingCancellationActor.WORKER, reason, Instant.now());
+		syncServiceRequestStatus(booking.getServiceRequestId());
 		pushStatusChange(booking);
 		return toResponse(booking);
 	}
@@ -159,6 +144,12 @@ public class BookingService {
 		return bookings.findByIdAndWorkerUserId(bookingId, workerUserId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
+	}
+
+	private void syncServiceRequestStatus(UUID requestId) {
+		serviceRequests.findById(requestId).ifPresent(request ->
+			request.syncActiveCandidateCount(
+				bookings.countActiveCandidates(requestId, TERMINAL)));
 	}
 
 	private BookingResponse toResponse(Booking booking) {
@@ -199,13 +190,12 @@ public class BookingService {
 		Booking booking = bookings.findByIdAndOwnerUserId(bookingId, ownerUserId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
-		booking.scheduleVisit();
-
 		VisitProposal proposal = visitProposals
 			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
 				booking.getId(), VisitProposalStatus.PROPOSED)
 			.orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT,
 				"NO_PROPOSAL", "no pending visit proposal"));
+		booking.scheduleVisit();
 		proposal.accept();
 		visitProposals.save(proposal);
 		bookings.save(booking);
@@ -220,13 +210,12 @@ public class BookingService {
 		Booking booking = bookings.findByIdAndOwnerUserId(bookingId, ownerUserId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"BOOKING_NOT_FOUND", "booking is not available"));
-		booking.revertToAccepted();
-
 		VisitProposal proposal = visitProposals
 			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
 				booking.getId(), VisitProposalStatus.PROPOSED)
 			.orElseThrow(() -> new BusinessException(HttpStatus.CONFLICT,
 				"NO_PROPOSAL", "no pending visit proposal"));
+		booking.revertToAccepted();
 		proposal.reject(reason);
 		visitProposals.save(proposal);
 		bookings.save(booking);

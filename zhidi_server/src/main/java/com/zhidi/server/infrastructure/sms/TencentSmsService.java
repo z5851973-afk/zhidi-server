@@ -15,7 +15,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty(value = "tencent.sms.secret-id")
+@ConditionalOnProperty(prefix = "tencent.sms", name = "enabled", havingValue = "true")
 public class TencentSmsService implements SmsService {
 
 	private static final Logger log = LoggerFactory.getLogger(TencentSmsService.class);

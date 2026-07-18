@@ -63,7 +63,7 @@ public class SettlementController {
 	}
 
 	private static String traceId() {
-		return MDC.get(TraceIdFilter.TRACE_ID_KEY);
+		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
 
 	public record FreezeRequest(@NotBlank String reason) {}

@@ -45,10 +45,18 @@ public class AfterSaleService {
 	}
 
 	@Transactional(readOnly = true)
-	public AfterSaleResponse getAfterSale(UUID afterSaleId) {
+	public AfterSaleResponse getAfterSale(UUID userId, UUID afterSaleId) {
 		AfterSale afterSale = afterSales.findById(afterSaleId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"AFTER_SALE_NOT_FOUND", "售后工单不存在"));
+		Booking booking = bookings.findById(afterSale.getBookingId())
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"AFTER_SALE_NOT_FOUND", "售后工单不存在"));
+		if (!booking.getOwnerUserId().equals(userId)
+				&& !booking.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"AFTER_SALE_NOT_FOUND", "售后工单不存在");
+		}
 		return AfterSaleResponse.from(afterSale);
 	}
 

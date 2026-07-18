@@ -82,6 +82,16 @@ public class ServiceRequest extends BaseEntity {
 		this.status = Objects.requireNonNull(status);
 	}
 
+	public void syncActiveCandidateCount(long activeCandidateCount) {
+		if (status == ServiceRequestStatus.WORKER_SELECTED
+				|| status == ServiceRequestStatus.CANCELLED) {
+			return;
+		}
+		this.status = activeCandidateCount >= 2
+			? ServiceRequestStatus.COMPARING
+			: ServiceRequestStatus.OPEN;
+	}
+
 	public void selectWorker() {
 		this.status = ServiceRequestStatus.WORKER_SELECTED;
 	}

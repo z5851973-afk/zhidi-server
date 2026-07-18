@@ -19,7 +19,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty(value = "tencent.cos.secret-id")
+@ConditionalOnProperty(prefix = "tencent.cos", name = "enabled", havingValue = "true")
 public class TencentCosStorageService implements FileStorageService {
 
 	private static final Logger log = LoggerFactory.getLogger(TencentCosStorageService.class);

@@ -27,7 +27,7 @@ public class ChatRoomService {
 
 	@Transactional
 	public ChatRoom getOrCreateRoom(UUID bookingId, UUID userId) {
-		return chatRooms.findByBookingId(bookingId).orElseGet(() -> {
+		ChatRoom room = chatRooms.findByBookingId(bookingId).orElseGet(() -> {
 			Booking booking = bookings.findById(bookingId)
 				.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 					"BOOKING_NOT_FOUND", "booking not found"));
@@ -36,10 +36,15 @@ public class ChatRoomService {
 				throw new BusinessException(HttpStatus.FORBIDDEN,
 					"ACCESS_DENIED", "not a participant of this booking");
 			}
-			ChatRoom room = ChatRoom.create(bookingId,
+			ChatRoom createdRoom = ChatRoom.create(bookingId,
 				booking.getOwnerUserId(), booking.getWorkerUserId());
-			return chatRooms.save(room);
+			return chatRooms.save(createdRoom);
 		});
+		if (!room.isParticipant(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"ROOM_NOT_FOUND", "chat room not found");
+		}
+		return room;
 	}
 
 	@Transactional

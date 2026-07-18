@@ -44,8 +44,10 @@ public class DailyReportController {
 
 	@GetMapping("/bookings/{bookingId}/daily-reports")
 	public ApiResponse<List<DailyReportResponse>> getByBooking(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID bookingId) {
-		return ApiResponse.ok(reportService.findByBooking(bookingId), traceId());
+		return ApiResponse.ok(
+			reportService.findByBooking(principal.userId(), bookingId), traceId());
 	}
 
 	private String traceId() {

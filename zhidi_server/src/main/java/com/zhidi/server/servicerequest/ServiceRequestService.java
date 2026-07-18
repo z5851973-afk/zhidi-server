@@ -74,13 +74,13 @@ public class ServiceRequestService {
 		if (bookings.existsByServiceRequestIdAndWorkerUserId(requestId,
 			req.workerUserId())) {
 			throw new BusinessException(HttpStatus.CONFLICT,
-				"CANDIDANT_ALREADY_EXISTS", "该工匠已经是候选");
+					"CANDIDATE_ALREADY_EXISTS", "该工匠已经是候选");
 		}
 
 		long active = bookings.countActiveCandidates(requestId, TERMINAL);
 		if (active >= 3) {
 			throw new BusinessException(HttpStatus.CONFLICT,
-				"CANDIDANT_LIMIT_REACHED", "同一装修需求最多选择 3 位候选师傅");
+					"CANDIDATE_LIMIT_REACHED", "同一装修需求最多选择 3 位候选师傅");
 		}
 
 		String ownerName = ownerProfiles.findByUserId(ownerUserId)
@@ -118,8 +118,7 @@ public class ServiceRequestService {
 		List<Booking> candidates = bookings
 			.findByServiceRequestIdOrderByCreatedAtAsc(requestId);
 		for (Booking b : candidates) {
-			if (b.getStatus() == BookingStatus.PENDING
-					|| b.getStatus() == BookingStatus.ACCEPTED) {
+			if (b.canCancelBeforeOnSite()) {
 				b.cancel(BookingCancellationActor.OWNER, "需求已取消", now);
 			}
 		}
@@ -130,11 +129,7 @@ public class ServiceRequestService {
 
 	private void syncStatus(ServiceRequest request) {
 		long active = bookings.countActiveCandidates(request.getId(), TERMINAL);
-		if (active == 0) {
-			request.setStatus(ServiceRequestStatus.OPEN);
-		} else if (active <= 3) {
-			request.setStatus(ServiceRequestStatus.COMPARING);
-		}
+		request.syncActiveCandidateCount(active);
 	}
 
 	private ServiceRequestResponse toResponse(ServiceRequest request) {

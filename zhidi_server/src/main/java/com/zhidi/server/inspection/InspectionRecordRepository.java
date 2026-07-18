@@ -8,5 +8,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface InspectionRecordRepository extends JpaRepository<InspectionRecord, UUID> {
 
-	List<InspectionRecord> findByNodeIdOrderByVersionDesc(UUID nodeId);
+	List<InspectionRecord> findByNodeIdOrderByInspectionVersionDesc(UUID nodeId);
 }
