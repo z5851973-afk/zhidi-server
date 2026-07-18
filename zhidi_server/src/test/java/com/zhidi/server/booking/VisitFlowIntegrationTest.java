@@ -134,6 +134,7 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 	void confirmArrivalBeforeBothArrivedReturnsConflict() {
 		// 跳过 VISIT_PROPOSED 直接设置状态到 VISIT_SCHEDULED 来测试 confirm-arrival
 		Booking booking = bookings.findById(acceptedBooking.id()).orElseThrow();
+		booking.proposeVisit();
 		booking.scheduleVisit();
 		bookings.saveAndFlush(booking);
 

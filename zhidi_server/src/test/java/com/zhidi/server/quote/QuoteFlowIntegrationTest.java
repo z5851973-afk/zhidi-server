@@ -141,6 +141,21 @@ class QuoteFlowIntegrationTest extends MySqlContainerSupport {
 	}
 
 	@Test
+	void submitQuoteRejectsNonPositiveQuantity() {
+		UUID bookingId = createOnSiteBooking();
+
+		Throwable error = catchThrowable(() -> quoteService.submit(
+			worker.getId(), bookingId,
+			new QuoteRequest(List.of(new QuoteItemRequest(
+				"门套安装", BigDecimal.ZERO, null)))));
+
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class, ex -> {
+			assertThat(ex.status().value()).isEqualTo(400);
+			assertThat(ex.code()).isEqualTo("INVALID_QUANTITY");
+		});
+	}
+
+	@Test
 	void submitQuoteWithWrongUnitPriceFails() {
 		UUID bookingId = createOnSiteBooking();
 
@@ -231,7 +246,8 @@ class QuoteFlowIntegrationTest extends MySqlContainerSupport {
 			new QuoteItemRequest("门套安装", new BigDecimal("2"), null)
 		)));
 
-		List<QuoteResponse> quotes = quoteService.listForBooking(bookingId);
+		List<QuoteResponse> quotes = quoteService.listForBooking(
+			owner.getId(), bookingId);
 		assertThat(quotes).hasSize(1);
 		QuoteItem item = quotes.get(0).items().get(0);
 		assertThat(item.unitPrice()).isEqualByComparingTo("200.00");
@@ -455,12 +471,30 @@ class QuoteFlowIntegrationTest extends MySqlContainerSupport {
 				new QuoteItemRequest("门套安装", new BigDecimal("1"), null))));
 
 		List<QuoteResponse> quotes = quoteService
-			.listQuotesForServiceRequest(sr.getId());
+			.listQuotesForServiceRequest(owner.getId(), sr.getId());
 
 		assertThat(quotes).hasSize(2);
 		// Cheapest first (门套安装 1×200 = 200 < 吊顶安装 50×120 = 6000)
 		assertThat(quotes.get(0).workerUserId()).isEqualTo(worker2.getId());
 		assertThat(quotes.get(1).workerUserId()).isEqualTo(worker.getId());
+	}
+
+	@Test
+	void unrelatedOwnerCannotReadBookingOrRequestQuotes() {
+		UUID bookingId = createOnSiteBooking();
+		User unrelated = createUser("13800138306", UserRole.OWNER);
+		UUID requestId = bookings.findById(bookingId).orElseThrow()
+			.getServiceRequestId();
+
+		Throwable bookingError = catchThrowable(() ->
+			quoteService.listForBooking(unrelated.getId(), bookingId));
+		Throwable requestError = catchThrowable(() ->
+			quoteService.listQuotesForServiceRequest(unrelated.getId(), requestId));
+
+		assertThat(bookingError).isInstanceOfSatisfying(BusinessException.class,
+			ex -> assertThat(ex.code()).isEqualTo("BOOKING_NOT_FOUND"));
+		assertThat(requestError).isInstanceOfSatisfying(BusinessException.class,
+			ex -> assertThat(ex.code()).isEqualTo("SERVICE_REQUEST_NOT_FOUND"));
 	}
 
 	// ── helpers ──

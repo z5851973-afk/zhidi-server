@@ -52,7 +52,8 @@ import org.springframework.web.bind.annotation.RestController;
 	"auth.jwt.secret=integration-test-secret-at-least-thirty-two-bytes-long"
 })
 @AutoConfigureMockMvc
-@Import(JwtSecurityIntegrationTest.ProbeController.class)
+@Import({JwtSecurityIntegrationTest.ProbeController.class,
+	com.zhidi.server.support.RoadmapPersistenceTestConfig.class})
 class JwtSecurityIntegrationTest {
 
 	private static final UUID USER_ID =

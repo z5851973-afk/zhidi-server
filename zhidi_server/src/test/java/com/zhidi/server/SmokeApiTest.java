@@ -51,7 +51,8 @@ import org.springframework.web.bind.annotation.RestController;
 		+ "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration"
 })
 @AutoConfigureMockMvc
-@Import(SmokeApiTest.ValidationProbeController.class)
+@Import({SmokeApiTest.ValidationProbeController.class,
+	com.zhidi.server.support.RoadmapPersistenceTestConfig.class})
 class SmokeApiTest {
 	private static final UUID USER_ID =
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000088");

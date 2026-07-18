@@ -18,8 +18,6 @@ import com.zhidi.server.support.MySqlContainerSupport;
 import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -130,7 +129,8 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.createNodes(worker.getId(), bookingId, List.of(
 			new CreateNodeRequest("水电验收", "检查水电管线", 1)));
 
-		List<InspectionNodeResponse> nodes = inspectionService.getNodes(bookingId);
+		List<InspectionNodeResponse> nodes = inspectionService.getNodes(
+			owner.getId(), bookingId);
 		UUID nodeId = nodes.get(0).id();
 		assertThat(nodes.get(0).status()).isEqualTo(InspectionNodeStatus.PENDING);
 
@@ -149,7 +149,8 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		assertThat(record.version()).isEqualTo(1);
 
 		// Node status is PASSED
-		InspectionNodeResponse node = inspectionService.getNodes(bookingId).get(0);
+		InspectionNodeResponse node = inspectionService.getNodes(
+			owner.getId(), bookingId).get(0);
 		assertThat(node.status()).isEqualTo(InspectionNodeStatus.PASSED);
 	}
 
@@ -160,7 +161,7 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.createNodes(worker.getId(), bookingId, List.of(
 			new CreateNodeRequest("水电验收", "检查水电管线", 1)));
 
-		UUID nodeId = inspectionService.getNodes(bookingId).get(0).id();
+		UUID nodeId = inspectionService.getNodes(owner.getId(), bookingId).get(0).id();
 
 		// Worker requests inspection
 		inspectionService.requestInspection(worker.getId(), nodeId);
@@ -169,23 +170,25 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.inspect(owner.getId(), nodeId,
 			new InspectRequest(InspectionResult.FAIL, "线路不整齐，需整改", null));
 
-		InspectionNodeResponse node = inspectionService.getNodes(bookingId).get(0);
+		InspectionNodeResponse node = inspectionService.getNodes(
+			owner.getId(), bookingId).get(0);
 		assertThat(node.status()).isEqualTo(InspectionNodeStatus.FAILED);
 
 		// Worker fixes and re-requests
 		inspectionService.requestInspection(worker.getId(), nodeId);
-		node = inspectionService.getNodes(bookingId).get(0);
+		node = inspectionService.getNodes(owner.getId(), bookingId).get(0);
 		assertThat(node.status()).isEqualTo(InspectionNodeStatus.INSPECTING);
 
 		// Owner passes on second inspection
 		inspectionService.inspect(owner.getId(), nodeId,
 			new InspectRequest(InspectionResult.PASS, "整改后通过", null));
 
-		node = inspectionService.getNodes(bookingId).get(0);
+		node = inspectionService.getNodes(owner.getId(), bookingId).get(0);
 		assertThat(node.status()).isEqualTo(InspectionNodeStatus.PASSED);
 
 		// Records history has two versions
-		List<InspectionRecordResponse> records = inspectionService.getRecords(nodeId);
+		List<InspectionRecordResponse> records = inspectionService.getRecords(
+			owner.getId(), nodeId);
 		assertThat(records).hasSize(2);
 		assertThat(records.get(0).version()).isEqualTo(2);
 		assertThat(records.get(0).result()).isEqualTo(InspectionResult.PASS);
@@ -200,7 +203,7 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.createNodes(worker.getId(), bookingId, List.of(
 			new CreateNodeRequest("水电验收", null, 1)));
 
-		UUID nodeId = inspectionService.getNodes(bookingId).get(0).id();
+		UUID nodeId = inspectionService.getNodes(owner.getId(), bookingId).get(0).id();
 
 		Throwable error = catchThrowable(() ->
 			inspectionService.inspect(owner.getId(), nodeId,
@@ -219,7 +222,7 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.createNodes(worker.getId(), bookingId, List.of(
 			new CreateNodeRequest("水电验收", null, 1)));
 
-		UUID nodeId = inspectionService.getNodes(bookingId).get(0).id();
+		UUID nodeId = inspectionService.getNodes(owner.getId(), bookingId).get(0).id();
 		inspectionService.requestInspection(worker.getId(), nodeId);
 
 		Throwable error = catchThrowable(() ->
@@ -239,7 +242,7 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		inspectionService.createNodes(worker.getId(), bookingId, List.of(
 			new CreateNodeRequest("水电验收", null, 1)));
 
-		UUID nodeId = inspectionService.getNodes(bookingId).get(0).id();
+		UUID nodeId = inspectionService.getNodes(owner.getId(), bookingId).get(0).id();
 
 		Throwable error = catchThrowable(() ->
 			inspectionService.requestInspection(owner.getId(), nodeId));
@@ -247,6 +250,20 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 		assertThat(error).isInstanceOfSatisfying(BusinessException.class, ex -> {
 			assertThat(ex.status().value()).isEqualTo(403);
 			assertThat(ex.code()).isEqualTo("NOT_WORKER");
+		});
+	}
+
+	@Test
+	void unrelatedUserCannotReadInspectionNodes() {
+		UUID bookingId = createHiredBooking();
+		User unrelated = createUser("13800138222", UserRole.OWNER);
+
+		Throwable error = catchThrowable(() ->
+			inspectionService.getNodes(unrelated.getId(), bookingId));
+
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class, ex -> {
+			assertThat(ex.status()).isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+			assertThat(ex.code()).isEqualTo("BOOKING_NOT_FOUND");
 		});
 	}
 
@@ -258,17 +275,10 @@ class InspectionIntegrationTest extends MySqlContainerSupport {
 			serviceRequests.findById(requestId).orElseThrow(),
 			owner.getId(), "张业主", owner.getPhone(),
 			worker.getId(), "李师傅"));
-		booking.accept();
-		bookings.saveAndFlush(booking);
-
-		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
-			.truncatedTo(ChronoUnit.MINUTES);
-		bookingService.proposeVisit(worker.getId(), booking.getId(), proposedTime);
-		bookingService.acceptVisit(owner.getId(), booking.getId());
-		bookingService.arrive(worker.getId(), booking.getId(), true);
-		bookingService.arrive(owner.getId(), booking.getId(), false);
-		booking.hire();
-		return bookings.saveAndFlush(booking).getId();
+		ReflectionTestUtils.setField(booking, "status",
+			com.zhidi.server.booking.BookingStatus.HIRED);
+		booking = bookings.saveAndFlush(booking);
+		return booking.getId();
 	}
 
 	private User createUser(String phone, UserRole role) {

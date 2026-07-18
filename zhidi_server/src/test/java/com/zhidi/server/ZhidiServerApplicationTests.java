@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
+@org.springframework.context.annotation.Import(com.zhidi.server.support.RoadmapPersistenceTestConfig.class)
 @SpringBootTest(properties = {
 	"spring.autoconfigure.exclude="
 		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"

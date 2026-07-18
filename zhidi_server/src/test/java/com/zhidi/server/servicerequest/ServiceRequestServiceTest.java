@@ -126,7 +126,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
 			ex -> {
 				assertThat(ex.status().value()).isEqualTo(409);
-				assertThat(ex.code()).isEqualTo("CANDIDANT_LIMIT_REACHED");
+				assertThat(ex.code()).isEqualTo("CANDIDATE_LIMIT_REACHED");
 			});
 	}
 
@@ -144,7 +144,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
 			ex -> {
 				assertThat(ex.status().value()).isEqualTo(409);
-				assertThat(ex.code()).isEqualTo("CANDIDANT_ALREADY_EXISTS");
+				assertThat(ex.code()).isEqualTo("CANDIDATE_ALREADY_EXISTS");
 			});
 	}
 

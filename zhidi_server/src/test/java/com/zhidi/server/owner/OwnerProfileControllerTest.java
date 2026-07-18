@@ -39,6 +39,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+@org.springframework.context.annotation.Import(com.zhidi.server.support.RoadmapPersistenceTestConfig.class)
 @SpringBootTest(properties = {
 	"spring.autoconfigure.exclude="
 		+ "org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,"

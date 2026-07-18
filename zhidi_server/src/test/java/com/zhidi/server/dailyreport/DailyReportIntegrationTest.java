@@ -19,9 +19,7 @@ import com.zhidi.server.support.MySqlContainerSupport;
 import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,6 +27,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -108,7 +107,8 @@ class DailyReportIntegrationTest extends MySqlContainerSupport {
 		assertThat(updated.content()).isEqualTo("更新后的内容");
 		assertThat(updated.photos()).hasSize(1);
 
-		List<DailyReportResponse> reports = reportService.findByBooking(bookingId);
+		List<DailyReportResponse> reports = reportService.findByBooking(
+			owner.getId(), bookingId);
 		assertThat(reports).hasSize(1);
 	}
 
@@ -144,10 +144,25 @@ class DailyReportIntegrationTest extends MySqlContainerSupport {
 		reportService.submit(worker.getId(), bookingId,
 			new DailyReportRequest(today, "当天内容", null));
 
-		List<DailyReportResponse> reports = reportService.findByBooking(bookingId);
+		List<DailyReportResponse> reports = reportService.findByBooking(
+			owner.getId(), bookingId);
 		assertThat(reports).hasSize(2);
 		assertThat(reports.get(0).reportDate()).isEqualTo(today);
 		assertThat(reports.get(1).reportDate()).isEqualTo(today.minusDays(1));
+	}
+
+	@Test
+	void unrelatedUserCannotReadDailyReports() {
+		UUID bookingId = createHiredBooking();
+		User unrelated = createUser("13800138212", UserRole.OWNER);
+
+		Throwable error = catchThrowable(() ->
+			reportService.findByBooking(unrelated.getId(), bookingId));
+
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class, ex -> {
+			assertThat(ex.status()).isEqualTo(org.springframework.http.HttpStatus.NOT_FOUND);
+			assertThat(ex.code()).isEqualTo("BOOKING_NOT_FOUND");
+		});
 	}
 
 	private UUID createHiredBooking() {
@@ -158,17 +173,9 @@ class DailyReportIntegrationTest extends MySqlContainerSupport {
 			serviceRequests.findById(requestId).orElseThrow(),
 			owner.getId(), "张业主", owner.getPhone(),
 			worker.getId(), "李师傅"));
-		booking.accept();
-		bookings.saveAndFlush(booking);
-
-		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
-			.truncatedTo(ChronoUnit.MINUTES);
-		bookingService.proposeVisit(worker.getId(), booking.getId(), proposedTime);
-		bookingService.acceptVisit(owner.getId(), booking.getId());
-		bookingService.arrive(worker.getId(), booking.getId(), true);
-		bookingService.arrive(owner.getId(), booking.getId(), false);
-		booking.hire();
-		return bookings.saveAndFlush(booking).getId();
+		ReflectionTestUtils.setField(booking, "status", BookingStatus.HIRED);
+		booking = bookings.saveAndFlush(booking);
+		return booking.getId();
 	}
 
 	private User createUser(String phone, UserRole role) {

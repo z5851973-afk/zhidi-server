@@ -61,8 +61,9 @@ void main() {
     var candidates = [...addedCandidates];
     return MockClient((request) async {
       final url = request.url.toString();
-      if (request.method == 'POST' && url.contains('/candidates')) {
-        // extract workerUserId from body
+      if (request.method == 'POST' &&
+          url.contains(
+              '/api/v1/owners/me/service-requests/request-1/candidates')) {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         final workerUserId = body['workerUserId'] as String;
         candidates.add(workerUserId);
@@ -71,34 +72,35 @@ void main() {
             'code': 'OK',
             'message': 'success',
             'data': {
-              'id': 'sr-1',
+              'id': 'request-1',
               'ownerUserId': 'owner-1',
               'trade': '水电',
               'serviceCity': '成都',
               'serviceAddress': null,
               'remark': null,
               'status': 'OPEN',
+              'candidates': candidates
+                  .map((id) => {
+                        'id': 'bk-$id',
+                        'serviceRequestId': 'request-1',
+                        'ownerUserId': 'owner-1',
+                        'ownerName': '业主',
+                        'ownerPhone': '13800000000',
+                        'workerUserId': id,
+                        'workerName': id == 'worker-a' ? '张师傅' : '李师傅',
+                        'trade': '水电',
+                        'serviceCity': '成都',
+                        'serviceAddress': null,
+                        'remark': null,
+                        'status': 'PENDING',
+                        'arrivalConfirmedByOwner': false,
+                        'arrivalConfirmedByWorker': false,
+                        'createdAt': '2026-07-01T00:00:00Z',
+                        'updatedAt': '2026-07-01T00:00:00Z',
+                      })
+                  .toList(),
               'createdAt': '2026-07-01T00:00:00Z',
               'updatedAt': '2026-07-01T00:00:00Z',
-              'candidates': candidates.map((id) => {
-                'id': 'bk-$id',
-                'serviceRequestId': 'sr-1',
-                'ownerUserId': 'owner-1',
-                'ownerName': '业主',
-                'ownerPhone': '13800000000',
-                'workerUserId': id,
-                'workerName': id == 'worker-a' ? '张师傅' : '李师傅',
-                'trade': '水电',
-                'serviceCity': '成都',
-                'serviceAddress': null,
-                'remark': null,
-                'status': 'PENDING',
-                'cancelledBy': null,
-                'cancelReason': null,
-                'cancelledAt': null,
-                'createdAt': '2026-07-01T00:00:00Z',
-                'updatedAt': '2026-07-01T00:00:00Z',
-              }).toList(),
             },
           }),
           200,
@@ -115,8 +117,8 @@ void main() {
   }) {
     return MaterialApp(
       home: CandidatePickerPage(
+        requestId: 'request-1',
         accessToken: 'test-token',
-        requestId: 'sr-1',
         trade: '水电',
         serviceCity: '成都',
         workerDirectoryApi: WorkerDirectoryApiClient(

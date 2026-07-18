@@ -147,7 +147,7 @@ class BookingServiceIntegrationTest extends MySqlContainerSupport {
 	}
 
 	@Test
-	void acceptElectsWinnerMarksOthersNotSelectedAdvancesServiceRequest() {
+	void candidatesAcceptIndependentlyAndRemainComparable() {
 		workerProfiles.saveAndFlush(WorkerProfile.create(otherWorker.getId(), "李师傅",
 			"杭州", "泥工", 8, new BigDecimal("580.00"), "老房翻新"));
 		BookingResponse first = service.create(owner.getId(), new BookingRequest(
@@ -157,16 +157,14 @@ class BookingServiceIntegrationTest extends MySqlContainerSupport {
 			otherWorker.getId(), "泥工", "杭州", null, null));
 
 		service.accept(worker.getId(), first.id());
+		service.accept(otherWorker.getId(), second.id());
 
-		// 当选者状态为 ACCEPTED
 		assertThat(bookings.findById(first.id())).get()
 			.extracting(Booking::getStatus).isEqualTo(BookingStatus.ACCEPTED);
-		// 其他候选人 NOT_SELECTED
 		assertThat(bookings.findById(second.id())).get()
-			.extracting(Booking::getStatus).isEqualTo(BookingStatus.NOT_SELECTED);
-		// ServiceRequest 推进到 WORKER_SELECTED
+			.extracting(Booking::getStatus).isEqualTo(BookingStatus.ACCEPTED);
 		assertThat(serviceRequests.findById(srId)).get()
-			.extracting(ServiceRequest::getStatus).isEqualTo(ServiceRequestStatus.WORKER_SELECTED);
+			.extracting(ServiceRequest::getStatus).isEqualTo(ServiceRequestStatus.COMPARING);
 	}
 
 	@Test
@@ -193,7 +191,6 @@ class BookingServiceIntegrationTest extends MySqlContainerSupport {
 		BookingResponse only = service.create(owner.getId(), new BookingRequest(
 			worker.getId(), "泥工", "杭州", null, null));
 		UUID srId = only.serviceRequestId();
-		service.accept(worker.getId(), only.id());
 
 		service.reject(worker.getId(), only.id());
 
