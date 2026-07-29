@@ -71,6 +71,7 @@ zhidi/
 - 2026-07-29 已修复工人端“完善工人资料”保存失败只显示泛化错误的问题：`PUT /api/v1/workers/me` 现在会保留后端错误 envelope（如 `UNAUTHORIZED/access token invalid`），资料页遇到 401 会清除工人端本地登录态并提示“登录已过期，请重新登录”，避免已删除测试账号的旧 token 继续卡在资料页。新增 `auth_api_client_test.dart` 与 `worker_profile_onboarding_test.dart` 回归，连同 `worker_session_state_test.dart` 和 `flutter analyze` 通过；已重新构建公网工人端 debug APK，安装到 `emulator-5556` 并清空旧本地状态，当前工人端回到干净登录页。
 - 2026-07-29 已同步修复业主端验证码登录重复点击问题：`LoginPage` 在登录请求 pending 时会立即忽略后续点击，避免同一验证码被连续提交。新增 Widget 回归测试 `repeated login taps send only one owner login request`，与工人端登录测试一起通过；`flutter analyze` 无问题。已重新构建公网业主端 debug APK，安装到 `emulator-5554` 并清空业主端本地旧状态。
 - 2026-07-29 已按“业主直连工人、平台只做保障”的产品初心微调业主端“找师傅”页：保留现有沉浸式照片工种卡，不改成平台派单/分配模式；顶部说明从“平台马上匹配”改为“看资料、看案例、看工价，自己选师傅”；工种卡可用状态从“X位可接单/0位可接单”调整为“X位可预约/暂无可约 · 先看工价”，弱化平台分配感并降低 0 人状态的挫败感。已通过 `test/trade_select_page_visual_test.dart`、双端登录回归测试与 `flutter analyze`，并重新构建安装业主端公网 debug APK 到 `emulator-5554`。
+- 2026-07-29 已修复业主端“我的家”预选候选师傅后误显示施工流程的问题：顶部工作台会根据候选状态切换为候选预约阶段或施工阶段；`PENDING/ACCEPTED/VISIT/ARRIVAL/ON_SITE/QUOTE_PENDING` 显示“师傅 · 候选”、预约/报价进度、预约记录与报价比价，不再显示“施工中/施工记录/验收”；只有 `HIRED` 后才进入施工项目文案。新增 `preselected candidate does not show construction workflow` 回归，相关“我的家/报价/验收”测试与 `flutter analyze` 通过；已重新构建并安装业主端公网 debug APK 到 `emulator-5554`。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。

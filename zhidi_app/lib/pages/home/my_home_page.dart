@@ -348,7 +348,11 @@ class _ProjectWorkbenchCard extends StatelessWidget {
   final VoidCallback onOpenPayment;
   final VoidCallback onConfirmArrival;
 
-  String get _projectName => '${_tradeLabel(request.trade)}改造项目';
+  bool get _isConstructionStarted => candidate.status == 'HIRED';
+
+  String get _projectName => _isConstructionStarted
+      ? '${_tradeLabel(request.trade)}改造项目'
+      : '${_tradeLabel(request.trade)}师傅 · 候选';
 
   String get _stageLabel {
     return switch (candidate.status) {
@@ -362,13 +366,24 @@ class _ProjectWorkbenchCard extends StatelessWidget {
   }
 
   int get _progressIndex {
+    if (!_isConstructionStarted) {
+      return switch (candidate.status) {
+        'PENDING' => 0,
+        'ACCEPTED' || 'VISIT_PROPOSED' || 'VISIT_SCHEDULED' => 1,
+        'ARRIVAL_PENDING' || 'ON_SITE' => 2,
+        'QUOTE_PENDING' => 3,
+        _ => 0,
+      };
+    }
     return switch (candidate.status) {
-      'PENDING' || 'ACCEPTED' || 'VISIT_PROPOSED' || 'VISIT_SCHEDULED' => 0,
-      'ARRIVAL_PENDING' || 'ON_SITE' || 'QUOTE_PENDING' => 1,
       'HIRED' => 1,
       _ => 0,
     };
   }
+
+  List<String> get _progressSteps => _isConstructionStarted
+      ? const ['待开工', '施工中', '待验收', '已完成']
+      : const ['待接单', '待上门', '待报价', '待选定'];
 
   String get _primaryLabel {
     return switch (candidate.status) {
@@ -454,7 +469,7 @@ class _ProjectWorkbenchCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '开工时间：${_formatDateTime(candidate.onSiteAt ?? candidate.proposedTime).isEmpty ? '待确认' : _formatDateTime(candidate.onSiteAt ?? candidate.proposedTime)}',
+                      '${_isConstructionStarted ? '开工时间' : '上门时间'}：${_formatDateTime(candidate.onSiteAt ?? candidate.proposedTime).isEmpty ? '待确认' : _formatDateTime(candidate.onSiteAt ?? candidate.proposedTime)}',
                       style: const TextStyle(fontSize: 12, color: _textMid),
                     ),
                   ],
@@ -472,30 +487,47 @@ class _ProjectWorkbenchCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          _ProjectProgressStrip(currentIndex: _progressIndex),
+          _ProjectProgressStrip(
+            currentIndex: _progressIndex,
+            steps: _progressSteps,
+          ),
           const SizedBox(height: 18),
           _WorkbenchSection(
-            title: '施工记录',
-            trailing: '查看详情 >',
+            title: _isConstructionStarted ? '施工记录' : '预约记录',
+            trailing: _isConstructionStarted ? '查看详情 >' : '查看候选 >',
             onTap: onOpenDetail,
-            child: const Text(
-              '日报、现场照片和施工说明会在师傅提交后同步展示。',
-              style: TextStyle(fontSize: 13, color: _textMid, height: 1.45),
+            child: Text(
+              _isConstructionStarted
+                  ? '日报、现场照片和施工说明会在师傅提交后同步展示。'
+                  : '当前只是候选/预约阶段，师傅接单、确认上门和报价后，您再决定是否选定。',
+              style: const TextStyle(
+                fontSize: 13,
+                color: _textMid,
+                height: 1.45,
+              ),
             ),
           ),
           const SizedBox(height: 10),
           _WorkbenchSection(
-            title: '验收',
-            trailing: '进入验收 >',
-            onTap: onOpenInspection,
-            child: const Row(
+            title: _isConstructionStarted ? '验收' : '报价与比价',
+            trailing: _isConstructionStarted ? '进入验收 >' : '查看报价 >',
+            onTap: _isConstructionStarted ? onOpenInspection : onOpenQuote,
+            child: Row(
               children: [
-                Icon(Icons.fact_check_outlined, size: 18, color: _primary),
-                SizedBox(width: 8),
+                Icon(
+                  _isConstructionStarted
+                      ? Icons.fact_check_outlined
+                      : Icons.receipt_long_outlined,
+                  size: 18,
+                  color: _primary,
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '平台验收标准保障，验收通过后再进入付款。',
-                    style: TextStyle(fontSize: 13, color: _textMid),
+                    _isConstructionStarted
+                        ? '平台验收标准保障，验收通过后再进入付款。'
+                        : '师傅上门后提交报价，您可以对比后再最终选择。',
+                    style: const TextStyle(fontSize: 13, color: _textMid),
                   ),
                 ),
               ],
@@ -540,12 +572,15 @@ class _ProjectWorkbenchCard extends StatelessWidget {
 }
 
 class _ProjectProgressStrip extends StatelessWidget {
-  const _ProjectProgressStrip({required this.currentIndex});
+  const _ProjectProgressStrip({
+    required this.currentIndex,
+    required this.steps,
+  });
   final int currentIndex;
+  final List<String> steps;
 
   @override
   Widget build(BuildContext context) {
-    const steps = ['待开工', '施工中', '待验收', '已完成'];
     return Row(
       children: [
         for (var i = 0; i < steps.length; i++) ...[

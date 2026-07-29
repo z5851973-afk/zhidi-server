@@ -225,6 +225,58 @@ void main() {
     expect(confirmedArrival, isTrue);
   });
 
+  testWidgets('preselected candidate does not show construction workflow',
+      (tester) async {
+    final state = await OwnerAppState.memory(
+      store: MemoryOwnerStore(),
+      sessionStore: MemoryAuthSessionStore(
+        AuthSession(
+          accessToken: 'owner-token',
+          tokenType: 'Bearer',
+          expiresAt: DateTime.now().add(const Duration(days: 1)),
+          userId: 'owner-user-id',
+          phone: '13555555555',
+          roles: const ['OWNER'],
+        ),
+      ),
+      profileApi: _ProfileApi(),
+      bookingApi: _EmptyBookingApi(),
+    );
+    final api = ServiceRequestApiClient(
+      baseUrl: Uri.parse('http://example.test'),
+      httpClient: MockClient((request) async {
+        return http.Response.bytes(
+          utf8.encode(jsonEncode({
+            'code': 'OK',
+            'message': 'success',
+            'data': [
+              _serviceRequestJson(candidateStatus: 'PENDING'),
+            ],
+          })),
+          200,
+          headers: const {'content-type': 'application/json; charset=utf-8'},
+        );
+      }),
+    );
+
+    await tester.pumpWidget(
+      OwnerAppScope(
+        state: state,
+        child: MaterialApp(
+          home: Scaffold(body: MyHomePage(serviceRequestApi: api)),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('水电师傅 · 候选'), findsOneWidget);
+    expect(find.text('待接单'), findsWidgets);
+    expect(find.text('待报价'), findsOneWidget);
+    expect(find.text('施工中'), findsNothing);
+    expect(find.text('施工记录'), findsNothing);
+    expect(find.text('验收'), findsNothing);
+  });
+
   testWidgets(
     'shows the current single-trade service without whole-home timeline',
     (tester) async {
