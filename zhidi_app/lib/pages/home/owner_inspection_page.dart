@@ -20,8 +20,14 @@ const _success = ZdColors.success;
 const _error = ZdColors.error;
 
 class OwnerInspectionPage extends StatefulWidget {
-  const OwnerInspectionPage({super.key, required this.bookingId});
+  const OwnerInspectionPage({
+    super.key,
+    required this.bookingId,
+    this.api,
+  });
+
   final String bookingId;
+  final InspectionApi? api;
 
   @override
   State<OwnerInspectionPage> createState() => _OwnerInspectionPageState();
@@ -31,10 +37,13 @@ class _OwnerInspectionPageState extends State<OwnerInspectionPage> {
   List<RemoteInspectionNode> _nodes = const [];
   bool _loading = true;
   String? _errorMsg;
+  bool _loadStarted = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadStarted) return;
+    _loadStarted = true;
     _loadNodes();
   }
 
@@ -46,7 +55,7 @@ class _OwnerInspectionPageState extends State<OwnerInspectionPage> {
       return;
     }
     try {
-      final api = InspectionApiClient();
+      final api = widget.api ?? InspectionApiClient();
       final nodes = await api.getNodes(token, widget.bookingId);
       if (mounted) setState(() { _nodes = nodes; _loading = false; });
     } on AuthApiException catch (e) {

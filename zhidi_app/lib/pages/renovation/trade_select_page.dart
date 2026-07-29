@@ -5,6 +5,7 @@ import '../home/worker/candidate_picker_page.dart';
 import '../../app/owner_app_scope.dart';
 import '../../services/service_request_api_client.dart';
 import '../../services/auth_api_client.dart';
+import '../../services/worker_directory_api_client.dart';
 import '../../design/tokens.dart';
 
 /// 找师傅 · 工种直达（沉浸式照片卡片版）
@@ -47,8 +48,15 @@ class _TradeCardData {
 class TradeSelectPage extends StatefulWidget {
   /// 可选：传入后预筛对应工种（designer / inspector / maintenance 等）
   final String? serviceType;
+  final WorkerDirectoryApi? workerDirectoryApi;
+  final ServiceRequestApi? serviceRequestApi;
 
-  const TradeSelectPage({super.key, this.serviceType});
+  const TradeSelectPage({
+    super.key,
+    this.serviceType,
+    this.workerDirectoryApi,
+    this.serviceRequestApi,
+  });
 
   @override
   State<TradeSelectPage> createState() => _TradeSelectPageState();
@@ -63,6 +71,13 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
 
   // 工种数据
   late final List<_TradeCardData> _allTrades;
+  Map<Trade, int> _remoteWorkerCounts = const {};
+
+  WorkerDirectoryApi get _workerDirectoryApi =>
+      widget.workerDirectoryApi ?? WorkerDirectoryApiClient();
+
+  ServiceRequestApi get _serviceRequestApi =>
+      widget.serviceRequestApi ?? ServiceRequestApiClient();
 
   /// serviceType → 预筛标签（designer/inspector/maintenance 等旧入口）
   static const Map<String, List<String>> _serviceTypeFilter = {
@@ -173,6 +188,7 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
             filterTags.any((f) => t.label.contains(f));
       }).toList();
     }
+    _loadRemoteWorkerCounts();
   }
 
   @override
@@ -183,13 +199,62 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
 
   // ── 过滤 ──
   List<_TradeCardData> get _filteredTrades {
-    if (_searchQuery.isEmpty) return _allTrades;
+    final source = _allTrades.map(_withRemoteCount).toList();
+    if (_searchQuery.isEmpty) return source;
     final q = _searchQuery.toLowerCase();
-    return _allTrades.where((t) {
+    return source.where((t) {
       return t.label.contains(q) ||
           t.tags.any((tag) => tag.contains(q)) ||
           t.stageLabel.contains(q);
     }).toList();
+  }
+
+  _TradeCardData _withRemoteCount(_TradeCardData data) {
+    final trade = data.trade;
+    if (trade == null) return data;
+    return _TradeCardData(
+      trade: data.trade,
+      label: data.label,
+      stageLabel: data.stageLabel,
+      stepLabel: data.stepLabel,
+      workerCount: _remoteWorkerCounts[trade] ?? data.workerCount,
+      tags: data.tags,
+      photoAsset: data.photoAsset,
+      fallbackColors: data.fallbackColors,
+      imageAlignment: data.imageAlignment,
+    );
+  }
+
+  Future<void> _loadRemoteWorkerCounts() async {
+    try {
+      final workers = await _workerDirectoryApi.listWorkers();
+      final next = <Trade, int>{};
+      for (final worker in workers) {
+        final trade = _tradeFromRemote(worker.primaryTrade);
+        if (trade == null) continue;
+        next[trade] = (next[trade] ?? 0) + 1;
+      }
+      if (!mounted) return;
+      setState(() => _remoteWorkerCounts = Map.unmodifiable(next));
+    } catch (_) {
+      // 目录接口失败时保留默认 0，不阻塞用户浏览页面。
+    }
+  }
+
+  Trade? _tradeFromRemote(String primaryTrade) {
+    final value = primaryTrade.trim();
+    for (final trade in Trade.values) {
+      if (trade.name == value || trade.label == value) return trade;
+    }
+    if (value.contains('拆')) return Trade.demolition;
+    if (value.contains('水电')) return Trade.plumbing;
+    if (value.contains('防水')) return Trade.waterproof;
+    if (value.contains('泥') || value.contains('瓦')) return Trade.masonry;
+    if (value.contains('木')) return Trade.carpentry;
+    if (value.contains('漆') || value.contains('油')) return Trade.painting;
+    if (value.contains('安装')) return Trade.installation;
+    if (value.contains('洁') || value.contains('清')) return Trade.cleaning;
+    return null;
   }
 
   /// Trade → 后端 ServiceRequest API 工种枚举值
@@ -208,9 +273,9 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
     final apiTrade = _tradeApiValue[trade];
     if (apiTrade == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('暂不支持该工种')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('暂不支持该工种')));
       }
       return;
     }
@@ -219,22 +284,26 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
     final token = await state.getAccessToken();
     if (token == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('登录已过期，请重新登录')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
       }
       return;
     }
 
-    final api = ServiceRequestApiClient();
+    final city = state.profile.city.trim().isNotEmpty
+        ? state.profile.city.trim()
+        : '成都';
+    final address = state.profile.address?.trim();
     try {
       final draft = ServiceRequestDraft(
         trade: apiTrade,
-        serviceCity: '北京市',
+        serviceCity: city,
+        serviceAddress: address == null || address.isEmpty ? null : address,
       );
-      final request = await api.createRequest(token, draft);
+      final request = await _serviceRequestApi.createRequest(token, draft);
       if (!mounted) return;
-      await Navigator.push(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => CandidatePickerPage(
@@ -245,17 +314,29 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
           ),
         ),
       );
+      if (result is CandidatePickerResult && mounted) {
+        Navigator.pop(context, result);
+      }
     } on AuthApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('创建需求失败：${e.message}')),
-        );
+        if (e.statusCode == 401) {
+          await state.logout();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期，请重新登录')),
+          );
+          Navigator.pop(context);
+          return;
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('创建需求失败：${e.message}')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('创建需求失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('创建需求失败：$e')));
       }
     }
   }
@@ -288,7 +369,7 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
               child: const Align(
                 alignment: Alignment.centerLeft,
                 child: Text(
-                  '先选工种，平台马上为你匹配可接单师傅',
+                  '看资料、看案例、看工价，自己选师傅',
                   style: TextStyle(fontSize: 12, color: Color(0xFF999999)),
                 ),
               ),
@@ -541,11 +622,15 @@ class _TradeCard extends StatelessWidget {
           )
         else
           Text(
-            '${data.workerCount}位可接单',
+            data.workerCount > 0 ? '${data.workerCount}位可预约' : '暂无可约 · 先看工价',
             style: TextStyle(
               fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.75),
-              fontWeight: FontWeight.w500,
+              color: data.workerCount > 0
+                  ? Colors.white.withValues(alpha: 0.82)
+                  : const Color(0xFFFFE2C8),
+              fontWeight: data.workerCount > 0
+                  ? FontWeight.w600
+                  : FontWeight.w700,
             ),
           ),
       ],

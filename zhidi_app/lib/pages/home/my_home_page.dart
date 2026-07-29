@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/app/owner_appointment.dart';
 
 import '../../design/tokens.dart';
 import '../../models/renovation.dart' show Trade;
@@ -31,7 +32,14 @@ const _orangeSoft = Color(0xFFFFF1E7);
 const _gold = Color(0xFFC8871A);
 
 class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key});
+  const MyHomePage({
+    super.key,
+    this.serviceRequestApi,
+    this.refreshEpoch = 0,
+  });
+
+  final ServiceRequestApi? serviceRequestApi;
+  final int refreshEpoch;
 
   @override
   State<MyHomePage> createState() => _MyHomePageState();
@@ -43,6 +51,7 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _loading = true;
   String? _error;
   bool _loaded = false;
+  int _loadSequence = 0;
 
   @override
   void didChangeDependencies() {
@@ -53,24 +62,39 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant MyHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshEpoch != oldWidget.refreshEpoch) {
+      _loadRequests();
+    }
+  }
+
   Future<void> _loadRequests() async {
+    final sequence = ++_loadSequence;
     final state = OwnerAppScope.of(context);
     final token = await state.getAccessToken();
     if (token == null) {
       if (mounted) setState(() { _loading = false; _error = '请先登录'; });
       return;
     }
+    if (mounted) setState(() { _loading = true; _error = null; });
     try {
-      final api = ServiceRequestApiClient();
+      await state.fetchRemoteBookings();
+      final api = widget.serviceRequestApi ?? ServiceRequestApiClient();
       final list = await api.listOwnerRequests(token);
-      if (mounted) {
+      if (mounted && sequence == _loadSequence) {
         setState(() { _requests = list; _loading = false; });
         _checkAndFetchQuotes(token);
       }
     } on AuthApiException catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.message; });
+      if (mounted && sequence == _loadSequence) {
+        setState(() { _loading = false; _error = e.message; });
+      }
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = '加载失败：$e'; });
+      if (mounted && sequence == _loadSequence) {
+        setState(() { _loading = false; _error = '加载失败：$e'; });
+      }
     }
   }
 
@@ -106,10 +130,12 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     return _MyHomeManagementView(
       requests: _requests,
+      appointments: OwnerAppScope.of(context).appointments,
       loading: _loading,
       error: _error,
       onRetry: _loadRequests,
       quotesForCandidate: _quotesForCandidate,
+      serviceRequestApi: widget.serviceRequestApi,
     );
   }
 }
@@ -117,24 +143,52 @@ class _MyHomePageState extends State<MyHomePage> {
 class _MyHomeManagementView extends StatelessWidget {
   const _MyHomeManagementView({
     this.requests = const [],
+    this.appointments = const [],
     this.loading = false,
     this.error,
     this.onRetry,
     this.quotesForCandidate,
+    this.serviceRequestApi,
   });
 
   final List<RemoteServiceRequest> requests;
+  final List<OrderItem> appointments;
   final bool loading;
   final String? error;
   final VoidCallback? onRetry;
   final List<RemoteQuote> Function(RemoteCandidateBooking)? quotesForCandidate;
+  final ServiceRequestApi? serviceRequestApi;
 
-  void _push(BuildContext context, Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+  Future<T?> _push<T>(BuildContext context, Widget page) {
+    return Navigator.of(context).push<T>(MaterialPageRoute(builder: (_) => page));
   }
 
   void _showHint(BuildContext context, String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _confirmArrival(
+    BuildContext context,
+    RemoteCandidateBooking candidate,
+  ) async {
+    final state = OwnerAppScope.of(context);
+    final token = await state.getAccessToken();
+    if (token == null) {
+      if (context.mounted) _showHint(context, '登录已过期，请重新登录');
+      return;
+    }
+    try {
+      final api = serviceRequestApi ?? ServiceRequestApiClient();
+      await api.ownerConfirmArrival(token, candidate.id);
+      if (context.mounted) {
+        _showHint(context, '已确认师傅到场');
+        onRetry?.call();
+      }
+    } on AuthApiException catch (e) {
+      if (context.mounted) _showHint(context, e.message);
+    } catch (e) {
+      if (context.mounted) _showHint(context, '确认失败：$e');
+    }
   }
 
   @override
@@ -143,6 +197,10 @@ class _MyHomeManagementView extends StatelessWidget {
     final workers = _uniqueServiceWorkers(state.bookedWorkers)
       ..sort((a, b) => a.phaseIndex.compareTo(b.phaseIndex));
     final cost = _CostSummary.fromState(state, workers);
+    final featuredRequest = _featuredRequest(requests);
+    final featuredCandidate = featuredRequest == null
+        ? null
+        : _featuredCandidate(featuredRequest);
 
     return ColoredBox(
       color: _bg,
@@ -153,18 +211,62 @@ class _MyHomeManagementView extends StatelessWidget {
           children: [
             const _PageHeader(),
             const SizedBox(height: 16),
+            if (featuredRequest != null && featuredCandidate != null) ...[
+              _ProjectWorkbenchCard(
+                request: featuredRequest,
+                candidate: featuredCandidate,
+                quotes: quotesForCandidate?.call(featuredCandidate) ?? const [],
+                onOpenDetail: () async {
+                  final changed = await _push<bool>(
+                    context,
+                    _ServiceRequestDetailPage(
+                      request: featuredRequest,
+                      quotesForCandidate: quotesForCandidate,
+                    ),
+                  );
+                  if (changed == true) onRetry?.call();
+                },
+                onOpenQuote: () async {
+                  final changed = await _push<bool>(
+                    context,
+                    OwnerQuoteComparePage(
+                      serviceRequestId: featuredRequest.id,
+                      workerNamesById: {
+                        for (final c in featuredRequest.candidates)
+                          c.workerUserId: c.workerName,
+                      },
+                    ),
+                  );
+                  if (changed == true) onRetry?.call();
+                },
+                onOpenInspection: () =>
+                    _push(context, OwnerInspectionPage(bookingId: featuredCandidate.id)),
+                onOpenPayment: () =>
+                    _push(context, OwnerPaymentPage(bookingId: featuredCandidate.id)),
+                onConfirmArrival: () =>
+                    _confirmArrival(context, featuredCandidate),
+              ),
+              const SizedBox(height: 12),
+            ],
             // ── ServiceRequest 区域 ──
             _ServiceRequestsSection(
               requests: requests,
+              appointments: appointments,
               loading: loading,
               error: error,
               onRetry: onRetry,
-              onFindWorker: () => _push(context, const TradeSelectPage()),
-              onTapRequest: (req) {
-                _push(context, _ServiceRequestDetailPage(
+              onFindWorker: () async {
+                await _push(context, const TradeSelectPage());
+                onRetry?.call();
+              },
+              onTapRequest: (req) async {
+                final changed = await _push<bool>(context, _ServiceRequestDetailPage(
                   request: req,
                   quotesForCandidate: quotesForCandidate,
                 ));
+                if (changed == true) {
+                  onRetry?.call();
+                }
               },
             ),
             const SizedBox(height: 12),
@@ -188,6 +290,358 @@ class _MyHomeManagementView extends StatelessWidget {
     );
   }
 
+}
+
+RemoteServiceRequest? _featuredRequest(List<RemoteServiceRequest> requests) {
+  if (requests.isEmpty) return null;
+  final active = requests.where((request) {
+    if (request.status == 'CANCELLED' || request.status == 'COMPLETED') {
+      return false;
+    }
+    return request.candidates.any((c) => c.status != 'CANCELLED');
+  }).toList();
+  if (active.isEmpty) return null;
+  active.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return active.first;
+}
+
+RemoteCandidateBooking? _featuredCandidate(RemoteServiceRequest request) {
+  final candidates = request.candidates
+      .where((candidate) => candidate.status != 'CANCELLED')
+      .toList();
+  if (candidates.isEmpty) return null;
+  int rank(RemoteCandidateBooking c) {
+    return switch (c.status) {
+      'HIRED' => 8,
+      'QUOTE_PENDING' => 7,
+      'ON_SITE' => 6,
+      'ARRIVAL_PENDING' => 5,
+      'VISIT_SCHEDULED' => 4,
+      'VISIT_PROPOSED' => 3,
+      'ACCEPTED' => 2,
+      'PENDING' => 1,
+      _ => 0,
+    };
+  }
+  candidates.sort((a, b) => rank(b).compareTo(rank(a)));
+  return candidates.first;
+}
+
+class _ProjectWorkbenchCard extends StatelessWidget {
+  const _ProjectWorkbenchCard({
+    required this.request,
+    required this.candidate,
+    required this.quotes,
+    required this.onOpenDetail,
+    required this.onOpenQuote,
+    required this.onOpenInspection,
+    required this.onOpenPayment,
+    required this.onConfirmArrival,
+  });
+
+  final RemoteServiceRequest request;
+  final RemoteCandidateBooking candidate;
+  final List<RemoteQuote> quotes;
+  final VoidCallback onOpenDetail;
+  final VoidCallback onOpenQuote;
+  final VoidCallback onOpenInspection;
+  final VoidCallback onOpenPayment;
+  final VoidCallback onConfirmArrival;
+
+  String get _projectName => '${_tradeLabel(request.trade)}改造项目';
+
+  String get _stageLabel {
+    return switch (candidate.status) {
+      'PENDING' => '待接单',
+      'ACCEPTED' || 'VISIT_PROPOSED' || 'VISIT_SCHEDULED' => '待上门',
+      'ARRIVAL_PENDING' || 'ON_SITE' => '待报价',
+      'QUOTE_PENDING' => '报价待确认',
+      'HIRED' => '施工中',
+      _ => serviceRequestStatusLabel(candidate.status),
+    };
+  }
+
+  int get _progressIndex {
+    return switch (candidate.status) {
+      'PENDING' || 'ACCEPTED' || 'VISIT_PROPOSED' || 'VISIT_SCHEDULED' => 0,
+      'ARRIVAL_PENDING' || 'ON_SITE' || 'QUOTE_PENDING' => 1,
+      'HIRED' => 1,
+      _ => 0,
+    };
+  }
+
+  String get _primaryLabel {
+    return switch (candidate.status) {
+      'ARRIVAL_PENDING' => '确认师傅已到场',
+      'QUOTE_PENDING' => '确认报价',
+      'HIRED' => '申请验收',
+      _ => '查看进度',
+    };
+  }
+
+  VoidCallback get _primaryAction {
+    return switch (candidate.status) {
+      'ARRIVAL_PENDING' => onConfirmArrival,
+      'QUOTE_PENDING' => onOpenQuote,
+      'HIRED' => onOpenInspection,
+      _ => onOpenDetail,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final quoteTotal = quotes.isEmpty ? 0.0 : quotes.first.totalPrice;
+    return _GlassCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _projectName,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: _textDark,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _stageLabel,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    color: _primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 22,
+                backgroundColor: _primary.withValues(alpha: 0.12),
+                child: Text(
+                  candidate.workerName.isEmpty ? '师' : candidate.workerName[0],
+                  style: const TextStyle(
+                    color: _primary,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      candidate.workerName,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '开工时间：${_formatDateTime(candidate.onSiteAt ?? candidate.proposedTime).isEmpty ? '待确认' : _formatDateTime(candidate.onSiteAt ?? candidate.proposedTime)}',
+                      style: const TextStyle(fontSize: 12, color: _textMid),
+                    ),
+                  ],
+                ),
+              ),
+              if (quoteTotal > 0)
+                Text(
+                  _money(quoteTotal),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w900,
+                    color: _primary,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          _ProjectProgressStrip(currentIndex: _progressIndex),
+          const SizedBox(height: 18),
+          _WorkbenchSection(
+            title: '施工记录',
+            trailing: '查看详情 >',
+            onTap: onOpenDetail,
+            child: const Text(
+              '日报、现场照片和施工说明会在师傅提交后同步展示。',
+              style: TextStyle(fontSize: 13, color: _textMid, height: 1.45),
+            ),
+          ),
+          const SizedBox(height: 10),
+          _WorkbenchSection(
+            title: '验收',
+            trailing: '进入验收 >',
+            onTap: onOpenInspection,
+            child: const Row(
+              children: [
+                Icon(Icons.fact_check_outlined, size: 18, color: _primary),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '平台验收标准保障，验收通过后再进入付款。',
+                    style: TextStyle(fontSize: 13, color: _textMid),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: onOpenDetail,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: _primary,
+                    side: const BorderSide(color: _primary),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                  ),
+                  child: const Text('联系师傅'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _primaryAction,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                  ),
+                  child: Text(_primaryLabel),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectProgressStrip extends StatelessWidget {
+  const _ProjectProgressStrip({required this.currentIndex});
+  final int currentIndex;
+
+  @override
+  Widget build(BuildContext context) {
+    const steps = ['待开工', '施工中', '待验收', '已完成'];
+    return Row(
+      children: [
+        for (var i = 0; i < steps.length; i++) ...[
+          Expanded(
+            child: Column(
+              children: [
+                Container(
+                  width: 18,
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: i <= currentIndex ? _primary : const Color(0xFFE7DED6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: i < currentIndex
+                      ? const Icon(Icons.check, size: 12, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  steps[i],
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight:
+                        i == currentIndex ? FontWeight.w900 : FontWeight.w600,
+                    color: i <= currentIndex ? _primary : _textLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (i < steps.length - 1)
+            Expanded(
+              child: Container(
+                height: 2,
+                margin: const EdgeInsets.only(bottom: 22),
+                color: i < currentIndex ? _primary : const Color(0xFFE7DED6),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _WorkbenchSection extends StatelessWidget {
+  const _WorkbenchSection({
+    required this.title,
+    required this.trailing,
+    required this.child,
+    required this.onTap,
+  });
+
+  final String title;
+  final String trailing;
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _line),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                    color: _textDark,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  trailing,
+                  style: const TextStyle(fontSize: 12, color: _textLight),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PageHeader extends StatelessWidget {
@@ -606,12 +1060,23 @@ String _tradeLabel(String apiTrade) {
   };
 }
 
-String _statusLabel(String status) {
+String serviceRequestStatusLabel(String status) {
   return switch (status) {
     'OPEN' => '待匹配',
     'COMPARING' => '比价中',
     'WORKER_SELECTED' => '已选定',
     'ASSIGNED' => '已选定',
+    'PENDING' => '待接单',
+    'ACCEPTED' => '已接单',
+    'VISIT_PROPOSED' => '待确认上门时间',
+    'VISIT_SCHEDULED' => '上门时间已确认',
+    'ARRIVAL_PENDING' => '等待到场确认',
+    'ON_SITE' => '已到场',
+    'QUOTE_PENDING' => '待确认报价',
+    'HIRED' => '已选定',
+    'IN_PROGRESS' => '施工中',
+    'COMPLETED' => '已完成',
+    'CANCELLED' => '已取消',
     _ => status,
   };
 }
@@ -650,6 +1115,7 @@ String _bookingStatusLabel(String status) {
 class _ServiceRequestsSection extends StatelessWidget {
   const _ServiceRequestsSection({
     required this.requests,
+    required this.appointments,
     required this.loading,
     this.error,
     this.onRetry,
@@ -658,6 +1124,7 @@ class _ServiceRequestsSection extends StatelessWidget {
   });
 
   final List<RemoteServiceRequest> requests;
+  final List<OrderItem> appointments;
   final bool loading;
   final String? error;
   final VoidCallback? onRetry;
@@ -666,6 +1133,9 @@ class _ServiceRequestsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final activeAppointments = appointments
+        .where((item) => item.status != '已取消' && item.status != '已拒绝')
+        .toList();
     return _GlassCard(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -705,7 +1175,7 @@ class _ServiceRequestsSection extends StatelessWidget {
             ] else if (error != null) ...[
               const SizedBox(height: 16),
               _ErrorBanner(error: error!, onRetry: onRetry),
-            ] else if (requests.isEmpty) ...[
+            ] else if (requests.isEmpty && activeAppointments.isEmpty) ...[
               const SizedBox(height: 32),
               _EmptyGuide(onFindWorker: onFindWorker),
               const SizedBox(height: 16),
@@ -715,9 +1185,84 @@ class _ServiceRequestsSection extends StatelessWidget {
                     request: r,
                     onTap: () => onTapRequest(r),
                   )),
+              if (requests.isEmpty)
+                ...activeAppointments.map(_DirectAppointmentCard.new),
             ],
           ],
         ),
+    );
+  }
+}
+
+class _DirectAppointmentCard extends StatelessWidget {
+  const _DirectAppointmentCard(this.appointment);
+
+  final OrderItem appointment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: _primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.event_available_outlined,
+                color: _primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  appointment.workerName,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: _textDark,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  appointment.description.isEmpty
+                      ? appointment.address
+                      : appointment.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: _textMid),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: _orangeSoft,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              appointment.status,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: _primary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -858,7 +1403,7 @@ class _ServiceRequestCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          _statusLabel(request.status),
+                          serviceRequestStatusLabel(request.status),
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -1044,7 +1589,7 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已确认师傅到场')),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } on Exception catch (e) {
       _handleError(e);
@@ -1056,26 +1601,9 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
   Future<void> _acceptQuote(RemoteCandidateBooking candidate, RemoteQuote quote) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认选人'),
-        content: Text(
-          '确定选 ${candidate.workerName} 师傅？选定后其他候选人的预约将自动关闭。',
-          style: const TextStyle(fontSize: 15),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primary,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('确认选择'),
-          ),
-        ],
+      builder: (_) => QuoteSelectionConfirmationDialog(
+        workerName: candidate.workerName,
+        totalPrice: quote.totalPrice,
       ),
     );
 
@@ -1091,7 +1619,7 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已选定 ${candidate.workerName} 师傅')),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
     } on AuthApiException catch (e) {
       _handleError(e);
@@ -1169,15 +1697,22 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
     }
   }
 
-  void _openComparePage() {
-    Navigator.push(
+  Future<void> _openComparePage() async {
+    final changed = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => OwnerQuoteComparePage(
           serviceRequestId: widget.request.id,
+          workerNamesById: {
+            for (final c in widget.request.candidates)
+              c.workerUserId: c.workerName,
+          },
         ),
       ),
     );
+    if (changed == true && mounted) {
+      Navigator.pop(context, true);
+    }
   }
 
   void _openDailyReport(RemoteCandidateBooking candidate) {
@@ -1215,6 +1750,21 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
     ChatRoomModel room;
     try {
       room = await chatApi.getOrCreateRoom(token, candidate.id);
+    } on AuthApiException catch (e) {
+      if (mounted) {
+        if (e.statusCode == 401) {
+          await state.logout();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期，请重新登录')),
+          );
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法创建聊天：${e.message}')),
+        );
+      }
+      return;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1379,7 +1929,7 @@ class _ServiceRequestDetailPageState extends State<_ServiceRequestDetailPage> {
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
-                          _statusLabel(req.status),
+                          serviceRequestStatusLabel(req.status),
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
@@ -1919,7 +2469,7 @@ class _VisitFlowSection extends StatelessWidget {
                 ),
               ),
             if (onAfterSale != null) const SizedBox(height: 8),
-            _DailyReportSection(bookingId: bookingId, workerName: workerName),
+            DailyReportSection(bookingId: bookingId, workerName: workerName),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -2064,23 +2614,33 @@ class _QuoteActionBtn extends StatelessWidget {
 
 
 // ── 施工日报区域（业主端）──
-class _DailyReportSection extends StatefulWidget {
-  const _DailyReportSection({required this.bookingId, this.workerName});
+class DailyReportSection extends StatefulWidget {
+  const DailyReportSection({
+    super.key,
+    required this.bookingId,
+    this.workerName,
+    this.api,
+  });
+
   final String? bookingId;
   final String? workerName;
+  final DailyReportApi? api;
 
   @override
-  State<_DailyReportSection> createState() => _DailyReportSectionState();
+  State<DailyReportSection> createState() => _DailyReportSectionState();
 }
 
-class _DailyReportSectionState extends State<_DailyReportSection> {
+class _DailyReportSectionState extends State<DailyReportSection> {
   List<RemoteDailyReport> _reports = const [];
   bool _loading = true;
   bool _expanded = false;
+  bool _loadStarted = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadStarted) return;
+    _loadStarted = true;
     _loadReports();
   }
 
@@ -2096,7 +2656,7 @@ class _DailyReportSectionState extends State<_DailyReportSection> {
         if (mounted) setState(() => _loading = false);
         return;
       }
-      final api = DailyReportApiClient();
+      final api = widget.api ?? DailyReportApiClient();
       final list = await api.getReportsByBooking(token, widget.bookingId!);
       if (mounted) setState(() { _reports = list; _loading = false; });
     } catch (_) {

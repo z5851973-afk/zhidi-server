@@ -65,13 +65,9 @@ public class SettlementService {
 
 	@Transactional
 	public SettlementResponse markSettled(UUID settlementId) {
-		// TODO: 对接提现渠道 — 在标记已结算前，需通过银行/微信/支付宝提现接口完成实际打款
-		// 当前实现仅更新状态，正式上线前必须对接真实的提现 API
-		Settlement settlement = settlements.findById(settlementId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
-				"SETTLEMENT_NOT_FOUND", "结算记录不存在"));
-		settlement.markSettled();
-		return SettlementResponse.from(settlements.saveAndFlush(settlement));
+		throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+			"PAYOUT_PROVIDER_NOT_CONFIGURED",
+			"提现渠道尚未开通，不能人工伪造结算成功");
 	}
 
 	@Transactional

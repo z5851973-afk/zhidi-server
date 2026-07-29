@@ -23,6 +23,7 @@ class _LoginPageState extends State<LoginPage> {
   bool _sendingCode = false;
   int _countdown = 0;
   Timer? _countdownTimer;
+  String? _codePhone;
   late final OwnerAuthApi _api;
 
   @override
@@ -59,6 +60,7 @@ class _LoginPageState extends State<LoginPage> {
         ).showSnackBar(const SnackBar(content: Text('开发验证码已自动填入')));
       }
       setState(() {
+        _codePhone = phone;
         _codeSent = true;
         _countdown = response.retryAfterSeconds;
       });
@@ -85,6 +87,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _login() async {
+    if (_loading) return;
     if (!_agreeTerms) {
       ScaffoldMessenger.of(
         context,
@@ -96,6 +99,12 @@ class _LoginPageState extends State<LoginPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('请输入正确的手机号')));
+      return;
+    }
+    if (_codePhone != null && _codePhone != phone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('手机号已更改，请重新获取验证码')),
+      );
       return;
     }
     final code = _codeController.text.trim();
@@ -198,6 +207,16 @@ class _LoginPageState extends State<LoginPage> {
               TextField(
                 key: const Key('login-phone'),
                 controller: _phoneController,
+                onChanged: (value) {
+                  if (_codePhone == null || value.trim() == _codePhone) return;
+                  _countdownTimer?.cancel();
+                  setState(() {
+                    _codePhone = null;
+                    _codeSent = false;
+                    _countdown = 0;
+                    _codeController.clear();
+                  });
+                },
                 keyboardType: TextInputType.phone,
                 maxLength: 11,
                 decoration: InputDecoration(

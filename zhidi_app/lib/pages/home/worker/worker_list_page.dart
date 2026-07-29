@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../models/renovation.dart';
 import '../../../design/tokens.dart';
-import '../../../services/shared_worker_bridge.dart' as shared_workers;
 import '../../../services/worker_directory_api_client.dart';
 import '../../../services/worker_case_api_client.dart';
 import '../../renovation/worker_detail_page.dart';
@@ -60,10 +59,10 @@ class _WorkerListPageState extends State<WorkerListPage> {
   /// 选中的工人索引（单选），-1 表示未选
   int _selectedIndex = -1;
 
-  /// 排序方式：credit=信用 / distance=距离 / rating=评分
-  String _sortType = 'credit';
-  List<Worker> _sharedWorkers = const [];
+  final String _sortType = 'experience';
   List<RemoteWorkerDirectoryProfile> _remoteWorkers = const [];
+  bool _loading = true;
+  String? _loadError;
 
   WorkerDirectoryApi get _workerDirectoryApi =>
       widget.workerDirectoryApi ?? WorkerDirectoryApiClient();
@@ -71,7 +70,6 @@ class _WorkerListPageState extends State<WorkerListPage> {
   @override
   void initState() {
     super.initState();
-    _loadSharedWorkers();
     _loadRemoteWorkers();
   }
 
@@ -81,7 +79,6 @@ class _WorkerListPageState extends State<WorkerListPage> {
     if (oldWidget.trade != widget.trade ||
         oldWidget.workerDirectoryApi != widget.workerDirectoryApi) {
       _selectedIndex = -1;
-      _loadSharedWorkers();
       _loadRemoteWorkers();
     }
   }
@@ -96,9 +93,6 @@ class _WorkerListPageState extends State<WorkerListPage> {
   // ── 当前工种下的工人（按排序方式实时排序）──
   List<Worker> get _workers {
     final byId = <String, Worker>{};
-    for (final worker in _sharedWorkers) {
-      byId[worker.id] = worker;
-    }
     for (final remote in _remoteWorkers) {
       final worker = _remoteToWorker(remote);
       if (worker != null && worker.trade == widget.trade) {
@@ -106,42 +100,31 @@ class _WorkerListPageState extends State<WorkerListPage> {
       }
     }
     final list = byId.values.toList();
-    // 在线师傅始终靠前，同组内再按所选排序方式排
     list.sort((a, b) {
-      if (a.isOnline != b.isOnline) {
-        return (b.isOnline ? 1 : 0).compareTo(a.isOnline ? 1 : 0);
-      }
-      switch (_sortType) {
-        case 'distance':
-          return a.distance.compareTo(b.distance);
-        case 'rating':
-          return b.rating.compareTo(a.rating);
-        case 'credit':
-        default:
-          return b.creditScore.compareTo(a.creditScore);
-      }
+      return b.experienceYears.compareTo(a.experienceYears);
     });
     return list;
   }
 
-  Future<void> _loadSharedWorkers() async {
-    final result = await shared_workers.readWorkersByTrade(widget.trade);
-    if (!mounted) return;
-    setState(() {
-      _sharedWorkers = result.workers
-          .map(shared_workers.sharedToWorker)
-          .toList();
-    });
-  }
-
   Future<void> _loadRemoteWorkers() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final workers = await _workerDirectoryApi.listWorkers();
       if (!mounted) return;
-      setState(() => _remoteWorkers = workers);
+      setState(() {
+        _remoteWorkers = workers;
+        _loading = false;
+      });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _remoteWorkers = const []);
+      setState(() {
+        _remoteWorkers = const [];
+        _loadError = '师傅列表加载失败，请检查网络后重试';
+        _loading = false;
+      });
     }
   }
 
@@ -209,7 +192,31 @@ class _WorkerListPageState extends State<WorkerListPage> {
         child: Column(
           children: [
             Expanded(
-              child: workers.isEmpty
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _loadError != null
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.cloud_off_outlined,
+                            color: ZdColors.textHint,
+                            size: 44,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            _loadError!,
+                            style: const TextStyle(color: ZdColors.textHint),
+                          ),
+                          TextButton(
+                            onPressed: _loadRemoteWorkers,
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : workers.isEmpty
                   ? const Center(
                       child: Text(
                         '暂无该工种师傅',
@@ -222,7 +229,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                         SliverToBoxAdapter(
                           child: _SortBar(
                             current: _sortType,
-                            onChanged: (v) => setState(() => _sortType = v),
+                            onChanged: (_) {},
                           ),
                         ),
                         SliverPadding(
@@ -235,7 +242,7 @@ class _WorkerListPageState extends State<WorkerListPage> {
                               worker: workers[i],
                               selected: _selectedIndex == i,
                               onTap: () => _selectWorker(i),
-                              showDistance: _sortType == 'distance',
+                              showDistance: false,
                             ),
                           ),
                         ),
@@ -264,15 +271,15 @@ Worker? _remoteToWorker(RemoteWorkerDirectoryProfile remote) {
     trade: trade,
     experienceYears: remote.experienceYears,
     completedProjects: 0,
-    rating: 4.8,
+    rating: 0,
     avatar: trade.icon,
     intro: remote.bio?.isNotEmpty == true
         ? remote.bio!
-        : '${remote.serviceCity ?? '本地'}${remote.primaryTrade}师傅，平台认证可预约。',
-    certifications: const ['平台认证'],
-    creditScore: 97,
+        : '${remote.serviceCity ?? '本地'}${remote.primaryTrade}师傅，资料已完善。',
+    certifications: const [],
+    creditScore: 0,
     distance: 0,
-    isOnline: true,
+    isOnline: false,
   );
 }
 
@@ -321,7 +328,7 @@ class _PlatformTrustBar extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              '平台担保 · 实名认证 · 不满意全额退',
+              '资料来自平台服务器 · 报价按平台价格表生成',
               style: const TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
@@ -348,11 +355,7 @@ class _SortBar extends StatelessWidget {
 
   const _SortBar({required this.current, required this.onChanged});
 
-  static const _options = [
-    (key: 'credit', label: '按信用排序'),
-    (key: 'distance', label: '按距离排序'),
-    (key: 'rating', label: '按评分排序'),
-  ];
+  static const _options = [(key: 'experience', label: '按从业年限排序')];
 
   @override
   Widget build(BuildContext context) {
@@ -564,7 +567,7 @@ class _WorkerListItem extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 姓名 + 在线/离线 + 选中勾选徽标
+                  // 姓名 + 资料状态 + 选中勾选徽标
                   Row(
                     children: [
                       Text(
@@ -582,9 +585,7 @@ class _WorkerListItem extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: worker.isOnline
-                              ? const Color(0xFF34C759).withAlpha(14)
-                              : const Color(0xFF9E9E9E).withAlpha(14),
+                          color: const Color(0xFF34C759).withAlpha(14),
                           borderRadius: BorderRadius.circular(ZdRadius.pill),
                         ),
                         child: Row(
@@ -594,21 +595,17 @@ class _WorkerListItem extends StatelessWidget {
                               width: 5,
                               height: 5,
                               decoration: BoxDecoration(
-                                color: worker.isOnline
-                                    ? const Color(0xFF34C759)
-                                    : const Color(0xFF9E9E9E),
+                                color: const Color(0xFF34C759),
                                 shape: BoxShape.circle,
                               ),
                             ),
                             const SizedBox(width: 3),
                             Text(
-                              worker.isOnline ? '在线' : '离线',
-                              style: TextStyle(
+                              '资料已完善',
+                              style: const TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: worker.isOnline
-                                    ? const Color(0xFF34C759)
-                                    : const Color(0xFF9E9E9E),
+                                color: Color(0xFF34C759),
                               ),
                             ),
                           ],
@@ -633,17 +630,10 @@ class _WorkerListItem extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 6),
-                  // 主因子：评分（星标大号深色）
                   Row(
                     children: [
-                      const Icon(
-                        Icons.star_rounded,
-                        size: 16,
-                        color: Color(0xFFFFB800),
-                      ),
-                      const SizedBox(width: 3),
                       Text(
-                        '${worker.rating}',
+                        worker.rating > 0 ? '${worker.rating}分' : '暂无评价',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -651,9 +641,8 @@ class _WorkerListItem extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      // 次因子：接单量 + 经验（单行灰小字）
                       Text(
-                        '接单 ${worker.completedProjects} · ${worker.experienceYears}年经验',
+                        '${worker.experienceYears}年经验',
                         style: const TextStyle(
                           fontSize: 12,
                           color: ZdColors.textSecondary,
@@ -674,28 +663,13 @@ class _WorkerListItem extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  // 认证徽章行（权威背书显性化，强制一排不换行）
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _TrustChip(
-                          icon: Icons.verified_user_rounded,
-                          label: '实名认证',
-                          color: const Color(0xFF34C759),
-                        ),
-                        if (worker.certifications.isNotEmpty)
-                          _TrustChip(
-                            icon: Icons.workspace_premium_rounded,
-                            label: worker.certifications.first,
-                            color: ZdColors.primary,
-                          ),
-                        _TrustChip(
-                          icon: Icons.shield_rounded,
-                          label: '已购保险',
-                          color: const Color(0xFF4A90D9),
-                        ),
-                      ],
+                  Text(
+                    worker.certifications.isEmpty
+                        ? '暂无资质证明'
+                        : worker.certifications.join(' · '),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: ZdColors.textHint,
                     ),
                   ),
                   if (showDistance)
@@ -732,45 +706,6 @@ class _WorkerListItem extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// 信任徽章小组件
-class _TrustChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _TrustChip({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withAlpha(14),
-        borderRadius: BorderRadius.circular(ZdRadius.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }

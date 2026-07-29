@@ -52,8 +52,49 @@ public class OperationLog {
 	protected OperationLog() {
 	}
 
+	public static OperationLog success(UUID actorUserId, String action,
+			String targetType, String targetId, String traceId, String detailJson) {
+		OperationLog log = new OperationLog();
+		log.actorUserId = actorUserId;
+		log.action = action;
+		log.targetType = targetType;
+		log.targetId = targetId;
+		log.result = "SUCCESS";
+		log.traceId = traceId == null || traceId.isBlank() ? "unknown" : traceId;
+		log.detailJson = detailJson;
+		return log;
+	}
+
 	@PrePersist
 	void prePersist() {
 		this.createdAt = Instant.now();
+	}
+
+	public UUID getActorUserId() {
+		return actorUserId;
+	}
+
+	public String getAction() {
+		return action;
+	}
+
+	public String getTargetType() {
+		return targetType;
+	}
+
+	public String getTargetId() {
+		return targetId;
+	}
+
+	public String getResult() {
+		return result;
+	}
+
+	public String getTraceId() {
+		return traceId;
+	}
+
+	public String getDetailJson() {
+		return detailJson;
 	}
 }

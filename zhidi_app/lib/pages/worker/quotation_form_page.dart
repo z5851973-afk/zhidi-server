@@ -7,9 +7,14 @@ import '../../services/worker_quote_api_client.dart';
 import '../../services/auth_api_client.dart';
 
 class QuotationFormPage extends StatefulWidget {
-  const QuotationFormPage({super.key, required this.order});
+  const QuotationFormPage({
+    super.key,
+    required this.order,
+    this.catalogApi,
+  });
 
   final WorkerOrder order;
+  final ServiceCatalogApi? catalogApi;
 
   @override
   State<QuotationFormPage> createState() => _QuotationFormPageState();
@@ -19,6 +24,7 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
   List<CatalogItem>? _catalog;
   bool _loading = true;
   String? _error;
+  bool _catalogLoadStarted = false;
 
   /// 选中的项：key = catalog item name
   final Map<String, double> _quantities = {};
@@ -45,9 +51,14 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
 
   WorkerOrder get _order => widget.order;
 
+  ServiceCatalogApi get _catalogApi =>
+      widget.catalogApi ?? ServiceCatalogApiClient();
+
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_catalogLoadStarted) return;
+    _catalogLoadStarted = true;
     _loadCatalog();
   }
 
@@ -62,8 +73,7 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
       return;
     }
     try {
-      final api = ServiceCatalogApiClient();
-      final items = await api.getCatalog(token, _order.trade);
+      final items = await _catalogApi.getCatalog(token, _order.trade);
       setState(() {
         _catalog = items;
         _loading = false;

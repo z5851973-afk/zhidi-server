@@ -90,6 +90,7 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 			worker.getId(), acceptedBooking.id(), proposedTime);
 
 		assertThat(proposed.status()).isEqualTo(BookingStatus.VISIT_PROPOSED);
+		assertThat(proposed.proposedTime()).isEqualTo(proposedTime);
 		assertThat(visitProposals.count()).isEqualTo(1);
 
 		// 业主确认

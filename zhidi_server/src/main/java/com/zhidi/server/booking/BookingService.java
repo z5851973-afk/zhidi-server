@@ -153,11 +153,7 @@ public class BookingService {
 	}
 
 	private BookingResponse toResponse(Booking booking) {
-		Instant proposedTime = visitProposals
-			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
-				booking.getId(), VisitProposalStatus.ACCEPTED)
-			.map(VisitProposal::getProposedTime)
-			.orElse(null);
+		Instant proposedTime = findVisibleProposedTime(booking);
 
 		return new BookingResponse(booking.getId(), booking.getServiceRequestId(),
 			booking.getOwnerUserId(), booking.getOwnerName(), booking.getOwnerPhone(),
@@ -168,6 +164,24 @@ public class BookingService {
 			booking.isArrivalConfirmedByOwner(), booking.isArrivalConfirmedByWorker(),
 			booking.getOnSiteAt(), proposedTime,
 			booking.getCreatedAt(), booking.getUpdatedAt());
+	}
+
+	private Instant findVisibleProposedTime(Booking booking) {
+		VisitProposalStatus proposalStatus = switch (booking.getStatus()) {
+			case VISIT_PROPOSED -> VisitProposalStatus.PROPOSED;
+			case VISIT_SCHEDULED, ARRIVAL_PENDING, ON_SITE, QUOTE_PENDING,
+				 READY_TO_START, HIRED ->
+				VisitProposalStatus.ACCEPTED;
+			default -> null;
+		};
+		if (proposalStatus == null) {
+			return null;
+		}
+		return visitProposals
+			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
+				booking.getId(), proposalStatus)
+			.map(VisitProposal::getProposedTime)
+			.orElse(null);
 	}
 
 	@Transactional

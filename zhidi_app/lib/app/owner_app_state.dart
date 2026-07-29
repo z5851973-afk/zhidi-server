@@ -14,8 +14,6 @@ import '../services/auth_session_store.dart';
 import '../services/daily_report_api_client.dart';
 import '../services/owner_booking_api_client.dart';
 import '../services/owner_profile_api_client.dart';
-import '../services/order_bridge.dart' as bridge;
-import '../models/shared_order.dart';
 
 List<OwnerAddress> _normalizeAddresses(
   Iterable<OwnerAddress> addresses, {
@@ -230,7 +228,6 @@ class OwnerAppState extends ChangeNotifier {
       state._isLoggedIn = true;
       state._profile = state._profile.copyWith(phone: session.phone);
     }
-    await _mergeSharedOrders(state);
     if (state._isLoggedIn) {
       try {
         await state.refreshOwnerProfile();
@@ -262,50 +259,6 @@ class OwnerAppState extends ChangeNotifier {
       return _seeded(store, sessionStore, profileApi, bookingApi);
     } on TypeError {
       return _seeded(store, sessionStore, profileApi, bookingApi);
-    }
-  }
-
-  /// 从共享订单合并到业主端预约列表
-  static Future<void> _mergeSharedOrders(OwnerAppState state) async {
-    final shared = await bridge.readAll();
-    if (shared.isEmpty) return;
-    final existingNames = state._appointments.map((a) => a.workerName).toSet();
-    for (final so in shared) {
-      if (!existingNames.contains(so.workerName)) {
-        final now = so.createdAt;
-        state._appointments.add(
-          OrderItem(
-            id: 'order-${now.millisecondsSinceEpoch}-shared',
-            workerName: so.workerName,
-            customerName: so.ownerName,
-            phone: so.ownerPhone,
-            address: so.ownerAddress,
-            area: so.area,
-            description: so.description,
-            visitTime: so.visitTime ?? '待确认',
-            status: _sharedStatusLabel(so.status),
-            createdAt: now,
-          ),
-        );
-        existingNames.add(so.workerName);
-      }
-    }
-  }
-
-  static String _sharedStatusLabel(SharedOrderStatus s) {
-    switch (s) {
-      case SharedOrderStatus.pending:
-        return '待师傅确认';
-      case SharedOrderStatus.accepted:
-        return '已接单';
-      case SharedOrderStatus.inProgress:
-        return '施工中';
-      case SharedOrderStatus.inspection:
-        return '待验收';
-      case SharedOrderStatus.completed:
-        return '已完成';
-      case SharedOrderStatus.cancelled:
-        return '已取消';
     }
   }
 
@@ -599,9 +552,6 @@ class OwnerAppState extends ChangeNotifier {
     notifyListeners();
     try {
       final remote = await _bookingApi.listOwnerBookings(session.accessToken);
-      final localOnly = _appointments
-          .where((a) => !a.id.startsWith('rm-'))
-          .toList();
       final remoteOrders = remote
           .map(
             (r) => OrderItem(
@@ -616,8 +566,16 @@ class OwnerAppState extends ChangeNotifier {
               status: switch (r.status) {
                 'PENDING' => '待接单',
                 'ACCEPTED' => '已确认',
+                'VISIT_PROPOSED' => '待确认上门时间',
+                'VISIT_SCHEDULED' => '已约定上门',
+                'ARRIVAL_PENDING' => '待确认到场',
+                'ON_SITE' => '已到场',
+                'QUOTE_PENDING' => '待确认报价',
+                'READY_TO_START' => '待开工',
+                'HIRED' => '施工中',
                 'REJECTED' => '已拒绝',
                 'CANCELLED' => '已取消',
+                'NOT_SELECTED' => '未选中',
                 _ => '状态异常',
               },
               createdAt: r.createdAt,
@@ -630,18 +588,22 @@ class OwnerAppState extends ChangeNotifier {
           .map(_acceptedBookingMessage)
           .where((message) => !existingMessageIds.contains(message.id))
           .toList();
+      final pendingMessages = remote
+          .where((r) => r.status == 'PENDING')
+          .map(_pendingBookingMessage)
+          .where((message) => !existingMessageIds.contains(message.id))
+          .toList();
+      final nextMessages = [
+        ...acceptedMessages,
+        ...pendingMessages,
+        ..._messages,
+      ];
       await _mutate(() {
         return {
           ...toJson(),
-          'appointments': [
-            ...remoteOrders,
-            ...localOnly,
-          ].map((e) => e.toJson()).toList(),
-          if (acceptedMessages.isNotEmpty)
-            'messages': [
-              ...acceptedMessages,
-              ..._messages,
-            ].map((e) => e.toJson()).toList(),
+          'appointments': remoteOrders.map((e) => e.toJson()).toList(),
+          if (acceptedMessages.isNotEmpty || pendingMessages.isNotEmpty)
+            'messages': nextMessages.map((e) => e.toJson()).toList(),
         };
       });
     } catch (error) {
@@ -655,6 +617,22 @@ class OwnerAppState extends ChangeNotifier {
     }
   }
 
+  OwnerMessage _pendingBookingMessage(RemoteOwnerBooking booking) {
+    final address = booking.serviceAddress?.trim();
+    final addressText = address == null || address.isEmpty
+        ? ''
+        : '服务地址：$address。';
+    return OwnerMessage(
+      id: 'msg-remote-booking-pending-${booking.id}',
+      title: '预约已提交',
+      content:
+          '您已预约${booking.workerName}（${_tradeLabel(booking.trade)}），'
+          '正在等待师傅接单。$addressText',
+      category: '预约',
+      createdAt: booking.createdAt.toLocal(),
+    );
+  }
+
   OwnerMessage _acceptedBookingMessage(RemoteOwnerBooking booking) {
     final address = booking.serviceAddress?.trim();
     final addressText = address == null || address.isEmpty
@@ -664,11 +642,25 @@ class OwnerAppState extends ChangeNotifier {
       id: 'msg-remote-booking-accepted-${booking.id}',
       title: '工人已接单',
       content:
-          '您预约的${booking.workerName}（${booking.trade}）已接单，'
+          '您预约的${booking.workerName}（${_tradeLabel(booking.trade)}）已接单，'
           '师傅将与您联系确认上门时间。$addressText',
       category: '预约',
       createdAt: booking.updatedAt.toLocal(),
     );
+  }
+
+  String _tradeLabel(String apiTrade) {
+    return switch (apiTrade.trim()) {
+      'demolition' => '拆除',
+      'plumbing' => '水电',
+      'masonry' => '泥瓦',
+      'waterproof' => '防水',
+      'carpentry' => '木工',
+      'painting' => '油漆',
+      'installation' => '安装',
+      'cleaning' => '保洁',
+      final value => value,
+    };
   }
 
   void initReportApi(DailyReportApiClient api) {
@@ -684,34 +676,28 @@ class OwnerAppState extends ChangeNotifier {
         session.accessToken,
         bookingId,
       );
-      // 合并远端日报到本地 _dailyReports
-      final remoteIds = remote.map((r) => r.id).toSet();
-      final localOnly = _dailyReports
-          .where((r) => !remoteIds.contains(r.id))
+      final syncedReports = remote
+          .map(
+            (r) => DailyReport(
+              id: r.id,
+              workerId: r.workerUserId,
+              date: r.createdAt,
+              imagePaths: r.photos,
+              note: r.content,
+              phaseIndex: 0,
+            ),
+          )
           .toList();
-      final merged = [
-        ...remote.map(
-          (r) => DailyReport(
-            id: r.id,
-            workerId: r.workerUserId,
-            date: r.createdAt,
-            imagePaths: r.photos,
-            note: r.content,
-            phaseIndex: 0,
-          ),
-        ),
-        ...localOnly,
-      ];
       await _mutate(() {
         return {
           ...toJson(),
-          'dailyReports': merged.map((e) => e.toJson()).toList(),
+          'dailyReports': syncedReports.map((e) => e.toJson()).toList(),
         };
       });
       return remote;
     } catch (error) {
       await _handleProfileError(error);
-      return [];
+      rethrow;
     }
   }
 
@@ -866,50 +852,16 @@ class OwnerAppState extends ChangeNotifier {
     String? workerId,
   }) async {
     final next = [appointment, ..._appointments];
-    try {
-      await _mutate(
-        () {
-          final json = toJson();
-          json['appointments'] = next.map((item) => item.toJson()).toList();
-          return json;
-        },
-        directUpdate: () {
-          _appointments = next;
-        },
-      );
-    } catch (e) {
-      debugPrint('[OwnerAppState] addAppointment persist failed: $e');
-    }
-    // 兜底：无论 _mutate 成功或失败，确保内存状态已更新
-    if (!_appointments.any(
-      (a) =>
-          a.workerName == appointment.workerName &&
-          a.phone == appointment.phone &&
-          a.createdAt == appointment.createdAt,
-    )) {
-      _appointments = next;
-      notifyListeners();
-    }
-    // 同步到共享存储，让工人端可见（非阻塞：不等待 Firestore 写入）
-    final now = DateTime.now();
-    final so = SharedOrder(
-      id: 'shared-${now.millisecondsSinceEpoch}',
-      ownerName: appointment.customerName,
-      ownerPhone: appointment.phone,
-      ownerAddress: appointment.address,
-      area: appointment.area,
-      description: appointment.description,
-      trade: trade ?? _inferTradeFromAppointment(appointment),
-      phaseIndex: phaseIndex ?? _inferPhaseIndexFromAppointment(appointment),
-      phaseName: phaseName ?? _inferPhaseNameFromAppointment(appointment),
-      workerId: workerId,
-      workerName: appointment.workerName,
-      status: SharedOrderStatus.pending,
-      visitTime: appointment.visitTime,
-      createdAt: appointment.createdAt,
+    await _mutate(
+      () {
+        final json = toJson();
+        json['appointments'] = next.map((item) => item.toJson()).toList();
+        return json;
+      },
+      directUpdate: () {
+        _appointments = next;
+      },
     );
-    // Firestore 写入不阻塞 UI：用 unawaited 或 catch 静默处理
-    bridge.upsert(so).catchError((_) {});
   }
 
   Future<void> completeReminder(String id) => _mutate(() {
@@ -969,7 +921,14 @@ class OwnerAppState extends ChangeNotifier {
     String? remoteWorkerUserId,
     String? serviceCity,
   }) async {
-    if (remoteWorkerUserId != null) {
+    if (remoteWorkerUserId == null || remoteWorkerUserId.trim().isEmpty) {
+      throw const AuthApiException(
+        code: 'SERVER_WORKER_REQUIRED',
+        message: '该师傅没有服务器资料，暂时不能预约',
+        statusCode: 409,
+      );
+    }
+    if (remoteWorkerUserId.isNotEmpty) {
       final session = await _validSession();
       if (session == null) {
         throw const AuthApiException(
@@ -994,10 +953,6 @@ class OwnerAppState extends ChangeNotifier {
         rethrow;
       }
     }
-    final existingIndexForNew = _bookedWorkers.indexWhere(
-      (w) => w.id == worker.id || _sameServicePhase(w, worker),
-    );
-    final isNew = existingIndexForNew < 0;
     await _mutate(() {
       final existingIndex = _bookedWorkers.indexWhere(
         (w) => w.id == worker.id || _sameServicePhase(w, worker),
@@ -1016,110 +971,12 @@ class OwnerAppState extends ChangeNotifier {
       }
       final now = DateTime.now();
       final next = [worker.copyWith(bookedAt: now), ..._bookedWorkers];
-      final phaseNames = const [
-        '打拆',
-        '水电',
-        '防水',
-        '泥工',
-        '木工',
-        '瓦工',
-        '美缝',
-        '安装',
-        '清洁',
-      ];
-      final phaseLabel = worker.phaseIndex < phaseNames.length
-          ? phaseNames[worker.phaseIndex]
-          : '未知工序';
-      final message = OwnerMessage(
-        id: 'msg-booking-${now.millisecondsSinceEpoch}',
-        title: '预约已确认',
-        content:
-            '您已成功预约${worker.name}（$phaseLabel·${worker.trade}），'
-            '师傅将在确认后与您联系确定上门时间。',
-        category: '预约',
-        createdAt: now,
-      );
-      final nextMessages = [message, ..._messages];
       return {
         ...toJson(),
         'bookedWorkers': next.map((e) => e.toJson()).toList(),
-        'messages': nextMessages.map((e) => e.toJson()).toList(),
       };
     });
-    // 同步写入 _appointments，让"我的预约"页面可见
-    if (isNew || remoteWorkerUserId != null) {
-      final now = DateTime.now();
-      final phaseNames = const [
-        '打拆',
-        '水电',
-        '防水',
-        '泥工',
-        '木工',
-        '瓦工',
-        '美缝',
-        '安装',
-        '清洁',
-      ];
-      final phaseLabel = worker.phaseIndex < phaseNames.length
-          ? phaseNames[worker.phaseIndex]
-          : '未知工序';
-      final order = OrderItem(
-        id: 'order-${now.millisecondsSinceEpoch}-${worker.id}',
-        workerName: worker.name,
-        customerName: _profile.name,
-        phone: _profile.phone,
-        address: _profile.address ?? '',
-        area: _profile.area?.toString() ?? '',
-        description: '$phaseLabel·${worker.trade}',
-        visitTime: '待确认',
-        status: '待师傅确认',
-        createdAt: now,
-      );
-      await addAppointment(
-        order,
-        trade: worker.trade,
-        phaseIndex: worker.phaseIndex,
-        phaseName: phaseLabel,
-        workerId: worker.id,
-      );
-    }
-  }
-
-  String _inferTradeFromAppointment(OrderItem appointment) {
-    final text = appointment.description;
-    if (text.contains('拆')) return '拆除工';
-    if (text.contains('水电')) return '水电工';
-    if (text.contains('防水')) return '防水工';
-    if (text.contains('泥') || text.contains('瓦') || text.contains('贴砖')) {
-      return '泥瓦工';
-    }
-    if (text.contains('木')) return '木工';
-    if (text.contains('油漆') || text.contains('涂')) return '油漆工';
-    if (text.contains('安装')) return '安装工';
-    if (text.contains('清洁') || text.contains('保洁')) return '保洁工';
-    return '待匹配工种';
-  }
-
-  int _inferPhaseIndexFromAppointment(OrderItem appointment) {
-    final text = appointment.description;
-    if (text.contains('拆')) return 0;
-    if (text.contains('水电')) return 1;
-    if (text.contains('防水')) return 2;
-    if (text.contains('泥') || text.contains('瓦') || text.contains('贴砖')) {
-      return 3;
-    }
-    if (text.contains('木')) return 4;
-    if (text.contains('油漆') || text.contains('涂')) return 5;
-    if (text.contains('安装')) return 6;
-    if (text.contains('清洁') || text.contains('保洁')) return 7;
-    return -1;
-  }
-
-  String _inferPhaseNameFromAppointment(OrderItem appointment) {
-    final index = _inferPhaseIndexFromAppointment(appointment);
-    const phaseNames = ['拆除', '水电', '防水', '泥瓦', '木工', '油漆', '安装', '清洁'];
-    if (index >= 0 && index < phaseNames.length) return phaseNames[index];
-    return '待确认工序';
+    await fetchRemoteBookings();
   }
 
   bool _sameServicePhase(BookedWorker a, BookedWorker b) {
@@ -1545,34 +1402,34 @@ class OwnerAppState extends ChangeNotifier {
     );
     if (!nextProfile.isProfileComplete) return;
     final session = await _validSession();
-    if (session != null) {
-      try {
-        final remote = await _profileApi.updateCurrent(
-          session.accessToken,
-          OwnerProfileUpdate(
-            name: nextProfile.name,
-            city: nextProfile.city,
-            decorationType: nextProfile.decorationType,
-            address: nextProfile.address,
-            area: nextProfile.area,
-          ),
-        );
-        await _mutate(
-          () => {
-            ...toJson(),
-            'profile': _localProfile(remote).toJson(),
-            'isLoggedIn': true,
-          },
-        );
-        return;
-      } catch (error) {
-        await _handleProfileError(error);
-        rethrow;
-      }
+    if (session == null) {
+      throw const AuthApiException(
+        code: 'NOT_AUTHENTICATED',
+        message: '登录已过期，请重新登录',
+      );
     }
-    await _mutate(
-      () => {...toJson(), 'profile': nextProfile.toJson(), 'isLoggedIn': true},
-    );
+    try {
+      final remote = await _profileApi.updateCurrent(
+        session.accessToken,
+        OwnerProfileUpdate(
+          name: nextProfile.name,
+          city: nextProfile.city,
+          decorationType: nextProfile.decorationType,
+          address: nextProfile.address,
+          area: nextProfile.area,
+        ),
+      );
+      await _mutate(
+        () => {
+          ...toJson(),
+          'profile': _localProfile(remote).toJson(),
+          'isLoggedIn': true,
+        },
+      );
+    } catch (error) {
+      await _handleProfileError(error);
+      rethrow;
+    }
   }
 
   /// 退出登录：先删除安全令牌，再清理本地登录状态。

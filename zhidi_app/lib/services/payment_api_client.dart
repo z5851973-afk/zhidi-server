@@ -6,11 +6,9 @@ import 'auth_api_client.dart';
 import '../models/payment_models.dart';
 
 class PaymentApiClient {
-  PaymentApiClient({
-    Uri? baseUrl,
-    http.Client? httpClient,
-  }) : baseUrl = baseUrl ?? Uri.parse(AuthApiClient.configuredBaseUrl),
-       _httpClient = httpClient ?? http.Client();
+  PaymentApiClient({Uri? baseUrl, http.Client? httpClient})
+    : baseUrl = baseUrl ?? Uri.parse(AuthApiClient.configuredBaseUrl),
+      _httpClient = httpClient ?? http.Client();
 
   final Uri baseUrl;
   final http.Client _httpClient;
@@ -33,10 +31,7 @@ class PaymentApiClient {
     return _decode(resp);
   }
 
-  Future<Map<String, dynamic>> _get(
-    String path,
-    String accessToken,
-  ) async {
+  Future<Map<String, dynamic>> _get(String path, String accessToken) async {
     final resp = await _httpClient.get(
       Uri.parse('$baseUrl$path'),
       headers: _headers(accessToken),
@@ -46,9 +41,15 @@ class PaymentApiClient {
 
   // ── 支付订单 ──
 
-  Future<PaymentOrderModel> createOrder(String accessToken, String bookingId) async {
-    final body = await _post('/api/v1/payment/orders', accessToken,
-        body: {'bookingId': bookingId});
+  Future<PaymentOrderModel> createOrder(
+    String accessToken,
+    String bookingId,
+  ) async {
+    final body = await _post(
+      '/api/v1/payment/orders',
+      accessToken,
+      body: {'bookingId': bookingId},
+    );
     return PaymentOrderModel.fromJson(body['data']);
   }
 
@@ -88,6 +89,32 @@ class PaymentApiClient {
     return PaymentOrderModel.fromJson(body['data']);
   }
 
+  Future<PaymentOrderModel> reportOfflinePayment(
+    String accessToken,
+    String orderId, {
+    required String channel,
+    String? reference,
+    String? note,
+  }) async {
+    final body = await _post(
+      '/api/v1/payment/orders/$orderId/offline-payment-report',
+      accessToken,
+      body: {'channel': channel, 'reference': reference, 'note': note},
+    );
+    return PaymentOrderModel.fromJson(body['data']);
+  }
+
+  Future<PaymentOrderModel> confirmOfflineReceipt(
+    String accessToken,
+    String orderId,
+  ) async {
+    final body = await _post(
+      '/api/v1/payment/orders/$orderId/receipt-confirmation',
+      accessToken,
+    );
+    return PaymentOrderModel.fromJson(body['data']);
+  }
+
   // ── 结算 ──
 
   Future<List<SettlementModel>> listSettlements(String accessToken) async {
@@ -106,12 +133,16 @@ class PaymentApiClient {
     required String reason,
     String? evidence,
   }) async {
-    final body = await _post('/api/v1/after-sales', accessToken, body: {
-      'bookingId': bookingId,
-      'type': type,
-      'reason': reason,
-      'evidence': ?evidence,
-    });
+    final body = await _post(
+      '/api/v1/after-sales',
+      accessToken,
+      body: {
+        'bookingId': bookingId,
+        'type': type,
+        'reason': reason,
+        'evidence': ?evidence,
+      },
+    );
     return AfterSaleModel.fromJson(body['data']);
   }
 

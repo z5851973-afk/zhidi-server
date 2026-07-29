@@ -7,6 +7,9 @@ import com.zhidi.server.booking.BookingCancellationActor;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingResponse;
 import com.zhidi.server.booking.BookingStatus;
+import com.zhidi.server.booking.VisitProposal;
+import com.zhidi.server.booking.VisitProposalRepository;
+import com.zhidi.server.booking.VisitProposalStatus;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.worker.WorkerProfile;
@@ -29,15 +32,18 @@ public class ServiceRequestService {
 
 	private final ServiceRequestRepository requests;
 	private final BookingRepository bookings;
+	private final VisitProposalRepository visitProposals;
 	private final WorkerProfileRepository workerProfiles;
 	private final OwnerProfileRepository ownerProfiles;
 	private final UserRepository users;
 
 	public ServiceRequestService(ServiceRequestRepository requests,
-			BookingRepository bookings, WorkerProfileRepository workerProfiles,
-			OwnerProfileRepository ownerProfiles, UserRepository users) {
+			BookingRepository bookings, VisitProposalRepository visitProposals,
+			WorkerProfileRepository workerProfiles, OwnerProfileRepository ownerProfiles,
+			UserRepository users) {
 		this.requests = requests;
 		this.bookings = bookings;
+		this.visitProposals = visitProposals;
 		this.workerProfiles = workerProfiles;
 		this.ownerProfiles = ownerProfiles;
 		this.users = users;
@@ -151,6 +157,7 @@ public class ServiceRequestService {
 	}
 
 	private BookingResponse bookingToResponse(Booking booking) {
+		Instant proposedTime = findVisibleProposedTime(booking);
 		return new BookingResponse(booking.getId(), booking.getServiceRequestId(),
 			booking.getOwnerUserId(), booking.getOwnerName(), booking.getOwnerPhone(),
 			booking.getWorkerUserId(), booking.getWorkerName(), booking.getTrade(),
@@ -158,7 +165,25 @@ public class ServiceRequestService {
 			booking.getStatus(),
 			booking.getCancelledBy(), booking.getCancelReason(), booking.getCancelledAt(),
 			booking.isArrivalConfirmedByOwner(), booking.isArrivalConfirmedByWorker(),
-			booking.getOnSiteAt(), null,
+			booking.getOnSiteAt(), proposedTime,
 			booking.getCreatedAt(), booking.getUpdatedAt());
+	}
+
+	private Instant findVisibleProposedTime(Booking booking) {
+		VisitProposalStatus proposalStatus = switch (booking.getStatus()) {
+			case VISIT_PROPOSED -> VisitProposalStatus.PROPOSED;
+			case VISIT_SCHEDULED, ARRIVAL_PENDING, ON_SITE, QUOTE_PENDING,
+				 READY_TO_START, HIRED ->
+				VisitProposalStatus.ACCEPTED;
+			default -> null;
+		};
+		if (proposalStatus == null) {
+			return null;
+		}
+		return visitProposals
+			.findFirstByBookingIdAndStatusOrderByCreatedAtDesc(
+				booking.getId(), proposalStatus)
+			.map(VisitProposal::getProposedTime)
+			.orElse(null);
 	}
 }

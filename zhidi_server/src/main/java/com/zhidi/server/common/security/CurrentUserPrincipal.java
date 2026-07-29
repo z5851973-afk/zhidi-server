@@ -5,11 +5,13 @@ import java.util.Collection;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.security.Principal;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.util.StringUtils;
 
-public record CurrentUserPrincipal(UUID userId, String phone, Set<UserRole> roles) {
+public record CurrentUserPrincipal(UUID userId, String phone, Set<UserRole> roles)
+		implements Principal {
 
 	public CurrentUserPrincipal {
 		Objects.requireNonNull(userId, "userId must not be null");
@@ -25,5 +27,10 @@ public record CurrentUserPrincipal(UUID userId, String phone, Set<UserRole> role
 			.sorted()
 			.map(role -> new SimpleGrantedAuthority("ROLE_" + role))
 			.toList();
+	}
+
+	@Override
+	public String getName() {
+		return userId.toString();
 	}
 }

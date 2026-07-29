@@ -32,8 +32,7 @@ final class UploadApiClient {
     request.files.add(await http.MultipartFile.fromPath('file', file.path));
 
     try {
-      final streamedResponse =
-          await request.send().timeout(requestTimeout);
+      final streamedResponse = await request.send().timeout(requestTimeout);
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -54,7 +53,7 @@ final class UploadApiClient {
         );
       }
 
-      return UploadResult.fromJson(data);
+      return UploadResult.fromJson(data, baseUrl: baseUrl);
     } on UploadApiException {
       rethrow;
     } on TimeoutException {
@@ -108,14 +107,17 @@ final class UploadApiClient {
 }
 
 final class UploadResult {
-  const UploadResult({
-    required this.url,
-    required this.objectKey,
-  });
+  const UploadResult({required this.url, required this.objectKey});
 
-  factory UploadResult.fromJson(Map<String, dynamic> json) {
+  factory UploadResult.fromJson(Map<String, dynamic> json, {Uri? baseUrl}) {
+    final rawUrl = json['url'] as String? ?? '';
+    final parsedUrl = Uri.tryParse(rawUrl);
+    final resolvedUrl =
+        parsedUrl != null && !parsedUrl.hasScheme && baseUrl != null
+        ? baseUrl.resolveUri(parsedUrl).toString()
+        : rawUrl;
     return UploadResult(
-      url: json['url'] as String? ?? '',
+      url: resolvedUrl,
       objectKey: json['objectKey'] as String? ?? '',
     );
   }

@@ -51,6 +51,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('bottom navigation stays above Android system navigation inset',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final state = await OwnerAppState.memory();
+
+    await tester.pumpWidget(
+      OwnerAppScope(
+        state: state,
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              padding: const EdgeInsets.only(bottom: 48),
+              viewPadding: const EdgeInsets.only(bottom: 48),
+            ),
+            child: child!,
+          ),
+          home: const HomePage(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final navigation = find.byKey(
+      const Key('owner-bottom-navigation-content'),
+    );
+    expect(navigation, findsOneWidget);
+    expect(tester.getBottomRight(navigation).dy, 752);
+  });
+
   for (final width in <double>[320, 390]) {
     for (final textScale in <double>[1, 2]) {
       testWidgets(

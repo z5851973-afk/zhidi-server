@@ -7,8 +7,10 @@ import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.booking.Booking;
+import com.zhidi.server.booking.BookingService;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingStatus;
+import com.zhidi.server.booking.VisitProposalRepository;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.owner.OwnerProfile;
 import com.zhidi.server.owner.OwnerProfileRepository;
@@ -16,6 +18,8 @@ import com.zhidi.server.support.MySqlContainerSupport;
 import com.zhidi.server.worker.WorkerProfile;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,10 +35,16 @@ class ServiceRequestIntegrationTest extends MySqlContainerSupport {
 	ServiceRequestService service;
 
 	@Autowired
+	BookingService bookingService;
+
+	@Autowired
 	ServiceRequestRepository requests;
 
 	@Autowired
 	BookingRepository bookings;
+
+	@Autowired
+	VisitProposalRepository visitProposals;
 
 	@Autowired
 	UserRepository users;
@@ -51,6 +61,7 @@ class ServiceRequestIntegrationTest extends MySqlContainerSupport {
 
 	@BeforeEach
 	void cleanDatabase() {
+		visitProposals.deleteAll();
 		bookings.deleteAll();
 		requests.deleteAll();
 		workerProfiles.deleteAll();
@@ -65,6 +76,27 @@ class ServiceRequestIntegrationTest extends MySqlContainerSupport {
 			"成都", "水电", 6, new BigDecimal("520.00"), "新房水电"));
 		ownerProfiles.saveAndFlush(OwnerProfile.create(owner.getId(), "林业主",
 			"成都", "旧房改造", "高新区 1 号", new BigDecimal("88.00")));
+	}
+
+	@Test
+	void ownerServiceRequestListIncludesPendingVisitProposalTime() {
+		ServiceRequestResponse created = service.createRequest(owner.getId(),
+			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", "旧房水电改造"));
+		service.addCandidate(owner.getId(), created.id(),
+			new CandidateCreateRequest(workerA.getId()));
+		Booking booking = bookings.findByServiceRequestIdOrderByCreatedAtAsc(created.id())
+			.get(0);
+		booking.accept();
+		bookings.saveAndFlush(booking);
+		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
+			.truncatedTo(ChronoUnit.MINUTES);
+
+		bookingService.proposeVisit(workerA.getId(), booking.getId(), proposedTime);
+
+		ServiceRequestResponse reloaded = service.listOwnerRequests(owner.getId()).get(0);
+		assertThat(reloaded.candidates()).singleElement()
+			.extracting(bookingResponse -> bookingResponse.proposedTime())
+			.isEqualTo(proposedTime);
 	}
 
 	@Test

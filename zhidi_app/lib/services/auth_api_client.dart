@@ -71,10 +71,10 @@ final class AuthApiClient implements OwnerAuthApi {
       body: body,
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw AuthApiException(
-        code: 'UPDATE_FAILED',
-        message: '更新资料失败',
-        statusCode: response.statusCode,
+      throw _exceptionFromEnvelope(
+        response,
+        fallbackCode: 'UPDATE_FAILED',
+        fallbackMessage: '更新资料失败',
       );
     }
   }
@@ -240,6 +240,28 @@ final class AuthApiClient implements OwnerAuthApi {
     }
     return (data: data, statusCode: response.statusCode);
   }
+}
+
+AuthApiException _exceptionFromEnvelope(
+  http.Response response, {
+  required String fallbackCode,
+  required String fallbackMessage,
+}) {
+  Map<String, dynamic>? envelope;
+  try {
+    final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    if (decoded is Map<String, dynamic>) envelope = decoded;
+  } on FormatException {
+    envelope = null;
+  }
+
+  final apiCode = envelope?['code'];
+  final apiMessage = envelope?['message'];
+  return AuthApiException(
+    code: apiCode is String ? apiCode : fallbackCode,
+    message: apiMessage is String ? apiMessage : fallbackMessage,
+    statusCode: response.statusCode,
+  );
 }
 
 T _parseData<T>(

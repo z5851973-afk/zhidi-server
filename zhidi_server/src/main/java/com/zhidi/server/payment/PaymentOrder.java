@@ -58,6 +58,21 @@ public class PaymentOrder extends BaseEntity {
 	@Column(name = "paid_at")
 	private Instant paidAt;
 
+	@Column(name = "owner_reported_paid_at")
+	private Instant ownerReportedPaidAt;
+
+	@Column(name = "offline_payment_channel", length = 32)
+	private String offlinePaymentChannel;
+
+	@Column(name = "payment_reference", length = 128)
+	private String paymentReference;
+
+	@Column(name = "owner_payment_note", length = 300)
+	private String ownerPaymentNote;
+
+	@Column(name = "worker_confirmed_received_at")
+	private Instant workerConfirmedReceivedAt;
+
 	@Column(name = "refunded_at")
 	private Instant refundedAt;
 
@@ -83,6 +98,17 @@ public class PaymentOrder extends BaseEntity {
 		return new PaymentOrder(bookingId, ownerUserId, workerUserId, quoteId, amount);
 	}
 
+	public static PaymentOrder createOffline(UUID bookingId, UUID ownerUserId,
+			UUID workerUserId, UUID quoteId, BigDecimal amount) {
+		PaymentOrder order = new PaymentOrder(
+			bookingId, ownerUserId, workerUserId, quoteId, amount);
+		order.paymentMethod = "OFFLINE";
+		order.platformFee = BigDecimal.ZERO.setScale(2);
+		order.workerSettlement = amount.setScale(2,
+			java.math.RoundingMode.HALF_UP);
+		return order;
+	}
+
 	public UUID getBookingId() { return bookingId; }
 	public UUID getOwnerUserId() { return ownerUserId; }
 	public UUID getWorkerUserId() { return workerUserId; }
@@ -94,7 +120,43 @@ public class PaymentOrder extends BaseEntity {
 	public String getPaymentMethod() { return paymentMethod; }
 	public String getTransactionId() { return transactionId; }
 	public Instant getPaidAt() { return paidAt; }
+	public Instant getOwnerReportedPaidAt() { return ownerReportedPaidAt; }
+	public String getOfflinePaymentChannel() { return offlinePaymentChannel; }
+	public String getPaymentReference() { return paymentReference; }
+	public String getOwnerPaymentNote() { return ownerPaymentNote; }
+	public Instant getWorkerConfirmedReceivedAt() { return workerConfirmedReceivedAt; }
 	public Instant getRefundedAt() { return refundedAt; }
+
+	public void reportOfflinePayment(String channel, String reference, String note) {
+		if (this.status != PaymentOrderStatus.PENDING) {
+			throw new IllegalStateException("只有待付款订单才能报告线下付款");
+		}
+		if (!"OFFLINE".equals(this.paymentMethod)) {
+			throw new IllegalStateException("该订单不是线下付款订单");
+		}
+		if (channel == null || channel.isBlank()) {
+			throw new IllegalArgumentException("付款方式不能为空");
+		}
+		this.offlinePaymentChannel = channel.trim();
+		this.paymentReference = normalize(reference);
+		this.ownerPaymentNote = normalize(note);
+		this.ownerReportedPaidAt = Instant.now();
+		this.status = PaymentOrderStatus.OWNER_REPORTED_PAID;
+	}
+
+	public void confirmOfflineReceipt() {
+		if (this.status != PaymentOrderStatus.OWNER_REPORTED_PAID) {
+			throw new IllegalStateException("业主报告付款后才能确认收款");
+		}
+		Instant now = Instant.now();
+		this.workerConfirmedReceivedAt = now;
+		this.paidAt = now;
+		this.status = PaymentOrderStatus.PAID;
+	}
+
+	private static String normalize(String value) {
+		return value == null || value.isBlank() ? null : value.trim();
+	}
 
 	public void markPaid(String transactionId, String paymentMethod) {
 		this.status = PaymentOrderStatus.PAID;

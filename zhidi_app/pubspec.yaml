@@ -44,13 +44,6 @@ dependencies:
   http_parser: ^4.1.2
   flutter_secure_storage: ^10.3.1
   url_launcher: ^6.3.1
-  # firebase_core / cloud_firestore 已暂时移除（缺少平台配置文件导致原生层崩溃）
-  # 恢复步骤：
-  # 1. 下载 GoogleService-Info.plist 放入 ios/Runner/ 和 macos/Runner/
-  # 2. 运行 flutterfire configure 生成 lib/firebase_options.dart
-  # 3. 取消注释下面两行并运行 flutter pub get
-  firebase_core: ^4.11.0
-  cloud_firestore: ^6.6.0
 
 dev_dependencies:
   flutter_test:

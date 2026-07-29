@@ -58,10 +58,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   Future<void> _loadMessages() async {
     try {
-      final msgs = await _api.getMessages(
-        widget.accessToken,
-        widget.roomId,
-      );
+      final msgs = await _api.getMessages(widget.accessToken, widget.roomId);
       final mapped = msgs
           .map((m) => m.copyWithIsMe(widget.currentUserId))
           .toList();
@@ -73,9 +70,19 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         _scrollToBottom();
       }
     } on AuthApiException catch (e) {
-      if (mounted) setState(() { _loading = false; _error = e.message; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = e.message;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = '加载失败：$e'; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _error = '加载失败：$e';
+        });
+      }
     }
   }
 
@@ -115,40 +122,29 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     });
   }
 
-  void _sendText() {
+  Future<void> _sendText() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
     _controller.clear();
 
-    // 先通过 WebSocket 发送
-    if (_wsConnected) {
-      _wsService.sendMessage(widget.roomId, {
-        'content': text,
-        'type': 'TEXT',
-      });
-    }
-
-    // REST 兜底 + 获取服务器返回的正式消息
-    _api.sendMessage(
-      widget.accessToken,
-      widget.roomId,
-      content: text,
-    ).then((msg) {
+    try {
+      final msg = await _api.sendMessage(
+        widget.accessToken,
+        widget.roomId,
+        content: text,
+      );
+      if (!mounted) return;
+      setState(() => _messages.add(msg.copyWithIsMe(widget.currentUserId)));
+      _scrollToBottom();
+    } catch (_) {
       if (mounted) {
-        setState(() {
-          // 替换掉可能重复的临时消息
-          _messages.removeWhere((m) =>
-              m.senderUserId == widget.currentUserId &&
-              m.content == text &&
-              m.id.isEmpty);
-          _messages.add(msg.copyWithIsMe(widget.currentUserId));
-        });
-        _scrollToBottom();
+        _controller.text = text;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('发送失败，请检查网络后重试')));
       }
-    }).catchError((_) {
-      // WebSocket 已发送，REST 失败不影响体验
-    });
+    }
   }
 
   Future<void> _pickImage() async {
@@ -180,19 +176,32 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       final bytes = await file.readAsBytes();
       final response = await _createUploadRequest(image.path, bytes);
       if (response != null) {
-        _api.sendMessage(
+        final sent = await _api.sendMessage(
           widget.accessToken,
           widget.roomId,
-          content: response,
+          content: '[图片]',
           type: 'IMAGE',
+          imageUrl: response,
         );
-        // 移除本地临时消息
-        setState(() {
-          _messages.removeWhere((m) => m.id == tempId);
-        });
+        if (mounted) {
+          setState(() {
+            _messages.removeWhere((m) => m.id == tempId);
+            _messages.add(sent.copyWithIsMe(widget.currentUserId));
+          });
+        }
+      } else if (mounted) {
+        setState(() => _messages.removeWhere((m) => m.id == tempId));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('图片上传失败，请重试')));
       }
     } catch (_) {
-      // 保留本地临时消息
+      if (mounted) {
+        setState(() => _messages.removeWhere((m) => m.id == tempId));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('图片发送失败，请重试')));
+      }
     }
   }
 
@@ -201,23 +210,26 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       final uri = Uri.parse('${ChatApiClient().baseUrl}/api/v1/storage/upload');
       final request = http.MultipartRequest('POST', uri)
         ..headers['Authorization'] = 'Bearer ${widget.accessToken}'
-        ..files.add(http.MultipartFile.fromBytes(
-          'file',
-          bytes,
-          filename: path.split('/').last,
-        ));
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            bytes,
+            filename: path.split('/').last,
+          ),
+        );
       final streamed = await request.send();
       final resp = await http.Response.fromStream(streamed);
       if (resp.statusCode == 200) {
         final body = json.decode(resp.body) as Map<String, dynamic>;
-        return body['data']['url'] as String?;
+        final rawUrl = body['data']['url'] as String?;
+        if (rawUrl == null || rawUrl.isEmpty) return null;
+        return ChatApiClient().baseUrl.resolve(rawUrl).toString();
       }
       return null;
     } catch (_) {
       return null;
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -229,10 +241,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           children: [
             Text(
               widget.otherUserName,
-              style: const TextStyle(
-                fontWeight: FontWeight.w900,
-                fontSize: 17,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
             ),
             const SizedBox(height: 2),
             Text(
@@ -280,11 +289,13 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             itemCount: _messages.length,
             itemBuilder: (context, index) {
               final msg = _messages[index];
-              final showTime = index == 0 ||
+              final showTime =
+                  index == 0 ||
                   _messages[index - 1].createdAt
-                      .difference(msg.createdAt)
-                      .inMinutes
-                      .abs() > 5;
+                          .difference(msg.createdAt)
+                          .inMinutes
+                          .abs() >
+                      5;
               return _MessageBubble(
                 message: msg,
                 showTime: showTime,
@@ -330,10 +341,7 @@ class _MessageBubble extends StatelessWidget {
               color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Text(
-              message.content,
-              style: ZdText.tiny,
-            ),
+            child: Text(message.content, style: ZdText.tiny),
           ),
         ),
       );
@@ -347,7 +355,10 @@ class _MessageBubble extends StatelessWidget {
             Center(
               child: Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 3,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(8),
@@ -360,8 +371,9 @@ class _MessageBubble extends StatelessWidget {
             ),
           ],
           Row(
-            mainAxisAlignment:
-                isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+            mainAxisAlignment: isMe
+                ? MainAxisAlignment.end
+                : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isMe) _Avatar(name: otherUserName),
@@ -375,16 +387,12 @@ class _MessageBubble extends StatelessWidget {
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: isMe
-                              ? const Color(0xFF07C160)
-                              : Colors.white,
+                          color: isMe ? const Color(0xFF07C160) : Colors.white,
                           borderRadius: BorderRadius.only(
                             topLeft: const Radius.circular(18),
                             topRight: const Radius.circular(18),
-                            bottomLeft:
-                                Radius.circular(isMe ? 18 : 4),
-                            bottomRight:
-                                Radius.circular(isMe ? 4 : 18),
+                            bottomLeft: Radius.circular(isMe ? 18 : 4),
+                            bottomRight: Radius.circular(isMe ? 4 : 18),
                           ),
                         ),
                         child: Text(
@@ -442,9 +450,7 @@ class _ImageContent extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.55,
         ),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(14)),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(14),
           child: isLocal

@@ -175,11 +175,18 @@ class _WorkerProfilePageState extends State<WorkerProfilePage> {
         if (!widget.onboarding) Navigator.maybePop(context);
       }
     } on AuthApiException catch (error) {
-      if (mounted) {
+      if (!mounted) return;
+      if (error.statusCode == 401) {
+        await WorkerAppScope.of(context).logout();
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(error.message)));
+        ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
+        return;
       }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(

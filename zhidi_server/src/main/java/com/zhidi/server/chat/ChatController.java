@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.UUID;
 import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,9 +23,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ChatController {
 
 	private final ChatRoomService chatRoomService;
+	private final SimpMessagingTemplate messagingTemplate;
 
-	public ChatController(ChatRoomService chatRoomService) {
+	public ChatController(ChatRoomService chatRoomService,
+			SimpMessagingTemplate messagingTemplate) {
 		this.chatRoomService = chatRoomService;
+		this.messagingTemplate = messagingTemplate;
 	}
 
 	@GetMapping("/rooms")
@@ -61,6 +65,11 @@ public class ChatController {
 			@Valid @RequestBody SendMessageRequest request) {
 		ChatMessageResponse message = chatRoomService
 			.sendMessage(roomId, principal.userId(), request);
+		ChatRoom room = chatRoomService.getRoom(roomId, principal.userId());
+		UUID recipientId = room.getOwnerUserId().equals(principal.userId())
+			? room.getWorkerUserId() : room.getOwnerUserId();
+		messagingTemplate.convertAndSendToUser(
+			recipientId.toString(), "/queue/chat", message);
 		return ResponseEntity.ok(ApiResponse.ok(message, traceId()));
 	}
 

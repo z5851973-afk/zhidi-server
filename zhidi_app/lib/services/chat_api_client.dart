@@ -22,6 +22,7 @@ abstract interface class ChatApi {
     String roomId, {
     required String content,
     String type = 'TEXT',
+    String? imageUrl,
   });
 }
 
@@ -54,11 +55,7 @@ final class ChatApiClient implements ChatApi {
       return ChatRoomModel.fromJson(body['data'] as Map<String, dynamic>);
     }
 
-    throw AuthApiException(
-      code: 'CHAT_ROOM_FAILED',
-      message: '创建聊天室失败',
-      statusCode: response.statusCode,
-    );
+    throw _chatApiException(response, fallbackCode: 'CHAT_ROOM_FAILED', fallbackMessage: '创建聊天室失败');
   }
 
   @override
@@ -79,11 +76,7 @@ final class ChatApiClient implements ChatApi {
           .toList();
     }
 
-    throw AuthApiException(
-      code: 'CHAT_ROOMS_FAILED',
-      message: '获取聊天室列表失败',
-      statusCode: response.statusCode,
-    );
+    throw _chatApiException(response, fallbackCode: 'CHAT_ROOMS_FAILED', fallbackMessage: '获取聊天室列表失败');
   }
 
   @override
@@ -102,19 +95,16 @@ final class ChatApiClient implements ChatApi {
 
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final data = body['data'] as Map<String, dynamic>?;
-      final content = data?['content'] as List<dynamic>?;
-      if (content == null) return [];
-      return content
+      final data = body['data'] as List<dynamic>?;
+      if (data == null) return [];
+      return data
           .map((e) => ChatMessageModel.fromJson(e as Map<String, dynamic>))
+          .toList()
+          .reversed
           .toList();
     }
 
-    throw AuthApiException(
-      code: 'CHAT_MESSAGES_FAILED',
-      message: '获取聊天记录失败',
-      statusCode: response.statusCode,
-    );
+    throw _chatApiException(response, fallbackCode: 'CHAT_MESSAGES_FAILED', fallbackMessage: '获取聊天记录失败');
   }
 
   @override
@@ -123,6 +113,7 @@ final class ChatApiClient implements ChatApi {
     String roomId, {
     required String content,
     String type = 'TEXT',
+    String? imageUrl,
   }) async {
     final response = await _httpClient
         .post(
@@ -131,6 +122,7 @@ final class ChatApiClient implements ChatApi {
           body: jsonEncode({
             'content': content,
             'type': type,
+            'imageUrl': ?imageUrl,
           }),
         )
         .timeout(requestTimeout);
@@ -140,15 +132,39 @@ final class ChatApiClient implements ChatApi {
       return ChatMessageModel.fromJson(body['data'] as Map<String, dynamic>);
     }
 
-    throw AuthApiException(
-      code: 'CHAT_SEND_FAILED',
-      message: '发送消息失败',
-      statusCode: response.statusCode,
-    );
+    throw _chatApiException(response, fallbackCode: 'CHAT_SEND_FAILED', fallbackMessage: '发送消息失败');
   }
 
   Map<String, String> _headers(String accessToken) => {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $accessToken',
-      };
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $accessToken',
+  };
+}
+
+AuthApiException _chatApiException(
+  http.Response response, {
+  required String fallbackCode,
+  required String fallbackMessage,
+}) {
+  try {
+    final body = jsonDecode(response.body);
+    if (body is Map<String, dynamic>) {
+      final code = body['code'];
+      final message = body['message'];
+      return AuthApiException(
+        code: code is String && code.isNotEmpty ? code : fallbackCode,
+        message: message is String && message.isNotEmpty
+            ? message
+            : fallbackMessage,
+        statusCode: response.statusCode,
+      );
+    }
+  } catch (_) {
+    // Fall through to fallback.
+  }
+  return AuthApiException(
+    code: response.statusCode == 401 ? 'UNAUTHORIZED' : fallbackCode,
+    message: response.statusCode == 401 ? '登录已过期，请重新登录' : fallbackMessage,
+    statusCode: response.statusCode,
+  );
 }

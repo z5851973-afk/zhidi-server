@@ -18,8 +18,14 @@ const _success = ZdColors.success;
 const _error = ZdColors.error;
 
 class InspectionPage extends StatefulWidget {
-  const InspectionPage({super.key, required this.orderId});
+  const InspectionPage({
+    super.key,
+    required this.orderId,
+    this.api,
+  });
+
   final String orderId;
+  final InspectionApi? api;
 
   @override
   State<InspectionPage> createState() => _InspectionPageState();
@@ -29,10 +35,13 @@ class _InspectionPageState extends State<InspectionPage> {
   List<RemoteInspectionNode> _nodes = const [];
   bool _loading = true;
   String? _errorMsg;
+  bool _loadStarted = false;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_loadStarted) return;
+    _loadStarted = true;
     _loadNodes();
   }
 
@@ -44,7 +53,7 @@ class _InspectionPageState extends State<InspectionPage> {
       return;
     }
     try {
-      final api = InspectionApiClient();
+      final api = widget.api ?? InspectionApiClient();
       final nodes = await api.getNodes(token, widget.orderId);
       if (nodes.isEmpty) {
         final created = await _createDefaultNodes(token);
@@ -60,7 +69,7 @@ class _InspectionPageState extends State<InspectionPage> {
   }
 
   Future<List<RemoteInspectionNode>> _createDefaultNodes(String token) async {
-    final api = InspectionApiClient();
+    final api = widget.api ?? InspectionApiClient();
     const defaults = [
       {'name': '水电验收', 'description': '水管、电路布线验收', 'sortOrder': 1},
       {'name': '木工验收', 'description': '吊顶、柜体结构验收', 'sortOrder': 2},
@@ -81,7 +90,7 @@ class _InspectionPageState extends State<InspectionPage> {
       return;
     }
     try {
-      final api = InspectionApiClient();
+      final api = widget.api ?? InspectionApiClient();
       await api.requestInspection(token, nodeId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已申请验收')));

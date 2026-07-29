@@ -1,10 +1,8 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 import 'app/owner_app_scope.dart';
 import 'app/owner_app_state.dart';
@@ -20,7 +18,6 @@ import 'pages/auth/login_page.dart';
 import 'pages/auth/onboarding_page.dart';
 import 'services/auth_api_client.dart';
 import 'services/auth_session_store.dart';
-import 'services/daily_report_api_client.dart';
 import 'services/worker_booking_api_client.dart';
 
 /// 通用入口：根据 --flavor 分流到业主端 / 工人端
@@ -47,28 +44,12 @@ Future<void> main() async {
     );
   };
   ZdTheme.setSystemUIOverlay();
-  await initializeFirebaseForStartup(Firebase.initializeApp);
-
   final flavor = await _detectFlavor();
 
   if (flavor == 'owner') {
     await _runOwner();
   } else {
     await _runWorker();
-  }
-}
-
-Future<void> initializeFirebaseForStartup(
-  Future<void> Function() initialize, {
-  Duration timeout = const Duration(seconds: 3),
-}) async {
-  try {
-    await initialize().timeout(timeout);
-  } on TimeoutException {
-    // Firebase/GMS 在模拟器或弱网环境可能长时间无响应；当前主闭环走 ECS REST API，
-    // 所以启动阶段超时后继续进入 App，避免卡在 Android 系统 splash。
-  } catch (_) {
-    // Firebase 配置不可用时继续使用本地 mock 数据，避免阻塞 App 启动。
   }
 }
 
@@ -116,14 +97,9 @@ Future<void> _runWorker() async {
       api: WorkerBookingApiClient(),
       accessToken: token,
     );
-    workerState.initReportApi(api: DailyReportApiClient(), accessToken: token);
   } else if (await workerState.restoreOnlineSession()) {
     workerState.initBookingApi(
       api: WorkerBookingApiClient(),
-      accessToken: workerState.accessToken!,
-    );
-    workerState.initReportApi(
-      api: DailyReportApiClient(),
       accessToken: workerState.accessToken!,
     );
   }

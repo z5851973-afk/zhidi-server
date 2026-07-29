@@ -114,6 +114,10 @@ final class RemoteWorkerBooking {
     String? cancelledBy,
     String? cancelReason,
     DateTime? cancelledAt,
+    bool? arrivalConfirmedByOwner,
+    bool? arrivalConfirmedByWorker,
+    DateTime? onSiteAt,
+    DateTime? proposedTime,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -133,6 +137,12 @@ final class RemoteWorkerBooking {
       cancelledBy: cancelledBy ?? this.cancelledBy,
       cancelReason: cancelReason ?? this.cancelReason,
       cancelledAt: cancelledAt ?? this.cancelledAt,
+      arrivalConfirmedByOwner:
+          arrivalConfirmedByOwner ?? this.arrivalConfirmedByOwner,
+      arrivalConfirmedByWorker:
+          arrivalConfirmedByWorker ?? this.arrivalConfirmedByWorker,
+      onSiteAt: onSiteAt ?? this.onSiteAt,
+      proposedTime: proposedTime ?? this.proposedTime,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

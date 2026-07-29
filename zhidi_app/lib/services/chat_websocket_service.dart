@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:stomp_dart_client/stomp_dart_client.dart';
 import '../models/chat_models.dart';
+import 'auth_api_client.dart';
 
 /// STOMP over WebSocket 聊天服务
 /// 管理连接生命周期，暴露实时消息流
@@ -30,7 +31,7 @@ class ChatWebSocketService {
   }) async {
     _currentUserId = currentUserId;
 
-    final base = _wsUrl ?? Uri.parse('ws://47.109.0.191:8080');
+    final base = _wsUrl ?? Uri.parse(AuthApiClient.configuredBaseUrl);
     final wsUri = base.replace(scheme: base.scheme == 'https' ? 'wss' : 'ws');
 
     _client = StompClient(

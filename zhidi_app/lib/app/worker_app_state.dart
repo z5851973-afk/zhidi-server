@@ -14,11 +14,9 @@ export 'worker_models.dart';
 import 'owner_key_value_store.dart';
 import 'worker_models.dart';
 import '../models/renovation.dart';
-import '../services/order_bridge.dart' as bridge;
-import '../services/shared_worker_bridge.dart' as shared_workers;
-import '../services/daily_report_api_client.dart';
 import '../services/worker_booking_api_client.dart';
-import '../services/worker_quote_api_client.dart' show CatalogSubmitItem, RemoteQuote, WorkerQuoteApiClient;
+import '../services/worker_quote_api_client.dart'
+    show CatalogSubmitItem, RemoteQuote, WorkerQuoteApiClient;
 import '../services/auth_api_client.dart';
 import '../services/auth_session_store.dart';
 
@@ -34,17 +32,30 @@ class WorkerAppState extends ChangeNotifier {
     required this._store,
     required this._sessionStore,
     required this.ready,
-    required this._profile,
-    required this._orders,
-    required this._dailyReports,
-    required this._inspectionRequests,
-    required this._earnings,
-    required this._messages,
-    required this._settings,
-    required this._quotations,
-    required this._isLoggedIn,
+    required WorkerProfile profile,
+    required List<WorkerOrder> orders,
+    required List<WorkerDailyReport> dailyReports,
+    required List<WorkerInspectionRequest> inspectionRequests,
+    required List<EarningRecord> earnings,
+    required List<WorkerMessage> messages,
+    required WorkerSettings settings,
+    required List<Quotation> quotations,
+    required bool isLoggedIn,
     List<RemoteWorkerBooking>? remoteBookings,
-  }) : _remoteBookings = remoteBookings ?? [];
+    // Named public-looking parameters keep seeded-data construction readable.
+    // ignore: prefer_initializing_formals
+  }) : _profile = profile,
+       _orders = List.of(orders),
+       _dailyReports = List.of(dailyReports),
+       _inspectionRequests = List.of(inspectionRequests),
+       _earnings = List.of(earnings),
+       _messages = List.of(messages),
+       // ignore: prefer_initializing_formals
+       _settings = settings,
+       _quotations = List.of(quotations),
+       // ignore: prefer_initializing_formals
+       _isLoggedIn = isLoggedIn,
+       _remoteBookings = List.of(remoteBookings ?? const []);
 
   static const documentKey = 'worker.appState';
   final WorkerKeyValueStore _store;
@@ -63,10 +74,11 @@ class WorkerAppState extends ChangeNotifier {
   bool _isLoggedIn;
 
   // ── 远程预约 ──
-  WorkerBookingApiClient? _bookingApi;
-  DailyReportApiClient? _reportApi;
+  WorkerBookingApi? _bookingApi;
   String? _accessToken;
   List<RemoteWorkerBooking> _remoteBookings = [];
+  Future<void>? _remoteBookingFetchInFlight;
+  String? _remoteBookingError;
 
   // ── 写操作队列：保证写操作原子性 ──
   Future<void> _writeQueue = Future<void>.value();
@@ -84,6 +96,7 @@ class WorkerAppState extends ChangeNotifier {
   List<Quotation> get quotations => List.unmodifiable(_quotations);
   bool get isLoggedIn => _isLoggedIn;
   String? get accessToken => _accessToken;
+  String? get remoteBookingError => _remoteBookingError;
 
   /// 获取当前用户 ID（从会话中读取）。
   Future<String?> getUserId() async {
@@ -112,6 +125,12 @@ class WorkerAppState extends ChangeNotifier {
       .where(
         (o) =>
             o.status == WorkerOrderStatus.accepted ||
+            o.status == WorkerOrderStatus.visitProposed ||
+            o.status == WorkerOrderStatus.visitScheduled ||
+            o.status == WorkerOrderStatus.arrivalPending ||
+            o.status == WorkerOrderStatus.onSite ||
+            o.status == WorkerOrderStatus.quotePending ||
+            o.status == WorkerOrderStatus.hired ||
             o.status == WorkerOrderStatus.inProgress,
       )
       .toList();
@@ -162,8 +181,6 @@ class WorkerAppState extends ChangeNotifier {
     final state = encoded != null
         ? _tryDecode(encoded, store, sessionStore)
         : _seeded(store, sessionStore);
-    await _mergeSharedOrders(state);
-    await state._publishCurrentWorker();
     return state;
   }
 
@@ -183,28 +200,6 @@ class WorkerAppState extends ChangeNotifier {
     } on TypeError {
       return _seeded(store, sessionStore);
     }
-  }
-
-  /// 合并共享订单到本地列表（不重复追加）
-  static Future<void> _mergeSharedOrders(WorkerAppState state) async {
-    final shared = await bridge.readAll();
-    if (shared.isEmpty) return;
-    final existingIds = state._orders.map((o) => o.id).toSet();
-    var changed = false;
-    for (final so in shared) {
-      if (!existingIds.contains(so.id)) {
-        state._orders.insert(0, bridge.sharedToWorkerOrder(so));
-        changed = true;
-      }
-    }
-    if (changed) state.notifyListeners();
-  }
-
-  /// 将单条订单同步到共享存储
-  void _syncOrderToShared(String orderId) {
-    final wo = _orders.firstWhere((o) => o.id == orderId);
-    final so = bridge.workerOrderToShared(wo);
-    bridge.upsert(so);
   }
 
   // ── 内部：从 Map 反序列化 ──
@@ -298,7 +293,6 @@ class WorkerAppState extends ChangeNotifier {
       _quotations = restored._quotations;
       _isLoggedIn = restored._isLoggedIn;
       _remoteBookings = restored._remoteBookings;
-      _accessToken = restored._accessToken;
       notifyListeners();
     });
     _writeQueue = operation.then<void>((_) {}, onError: (_, _) {});
@@ -329,7 +323,6 @@ class WorkerAppState extends ChangeNotifier {
       }
       return {...toJson(), 'profile': savedValue.toJson()};
     });
-    await _publishCurrentWorker();
   }
 
   /// 更新姓名
@@ -379,7 +372,6 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(orderId);
   }
 
   /// 开始施工
@@ -407,7 +399,6 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(orderId);
   }
 
   /// 完成订单
@@ -435,7 +426,6 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(orderId);
   }
 
   /// 拒绝订单
@@ -449,7 +439,6 @@ class WorkerAppState extends ChangeNotifier {
         ..[idx] = _orders[idx].copyWith(status: WorkerOrderStatus.cancelled);
       return {...toJson(), 'orders': updated.map((e) => e.toJson()).toList()};
     });
-    _syncOrderToShared(orderId);
   }
 
   /// 修改订单上门时间
@@ -471,60 +460,6 @@ class WorkerAppState extends ChangeNotifier {
     return {...toJson(), 'orders': updated.map((e) => e.toJson()).toList()};
   });
 
-  /// 提交施工日报
-  Future<void> submitDailyReport(WorkerDailyReport report) async {
-    // 尝试远端提交
-    if (_reportApi != null && _accessToken != null) {
-      try {
-        await _reportApi!.submitReport(
-          _accessToken!,
-          report.orderId,
-          report.title,
-          report.content,
-          report.images,
-        );
-      } catch (_) {
-        // 远端提交失败时继续走本地持久化
-      }
-    }
-
-    await _mutate(() {
-      if (_dailyReports.any((r) => r.id == report.id)) return null;
-      final next = [report, ..._dailyReports];
-      final now = DateTime.now();
-      final order = _orders.firstWhere(
-        (o) => o.id == report.orderId,
-        orElse: () => _orders.first,
-      );
-      List<WorkerOrder> updatedOrders;
-      if (order.status == WorkerOrderStatus.accepted) {
-        updatedOrders = _orders.map((o) {
-          if (o.id == report.orderId) {
-            return o.copyWith(status: WorkerOrderStatus.inProgress);
-          }
-          return o;
-        }).toList();
-      } else {
-        updatedOrders = _orders;
-      }
-      final message = WorkerMessage(
-        id: 'wmsg-report-${now.millisecondsSinceEpoch}',
-        title: '日报已提交',
-        content: '「${report.title}」已提交至平台，业主将收到通知。',
-        category: '系统',
-        createdAt: now,
-        orderId: report.orderId,
-      );
-      return {
-        ...toJson(),
-        'dailyReports': next.map((e) => e.toJson()).toList(),
-        'orders': updatedOrders.map((e) => e.toJson()).toList(),
-        'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
-      };
-    });
-    _syncOrderToShared(report.orderId);
-  }
-
   /// 发起验收请求
   Future<void> requestInspection(WorkerInspectionRequest request) async {
     await _mutate(() {
@@ -545,7 +480,6 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(request.orderId);
   }
 
   /// 标记消息已读
@@ -571,7 +505,6 @@ class WorkerAppState extends ChangeNotifier {
       }
       return {...toJson(), 'settings': value.toJson()};
     });
-    await _publishCurrentWorker();
   }
 
   /// 使用预颁发 Token 登录（跳过手机号验证流程，用于联调/CI 等场景）
@@ -630,15 +563,26 @@ class WorkerAppState extends ChangeNotifier {
     return null;
   }
 
-  Future<bool> restoreOnlineSession() async {
+  Future<bool> restoreOnlineSession({OwnerAuthApi? api}) async {
     final session = await _sessionStore.read();
     if (session == null || session.isExpiredAt(DateTime.now())) {
       await _sessionStore.clear();
       return false;
     }
+    var nextProfile = _profile.copyWith(phone: session.phone);
+    try {
+      final remote = await (api ?? AuthApiClient()).getWorkerProfile(
+        session.accessToken,
+      );
+      nextProfile = _profileFromRemote(remote, fallbackPhone: session.phone);
+    } catch (_) {
+      // 保留登录态，远程资料下次启动或进入首页时继续同步。
+    }
     _accessToken = session.accessToken;
-    _isLoggedIn = true;
-    _profile = _profile.copyWith(phone: session.phone);
+    await _mutate(
+      () => {...toJson(), 'profile': nextProfile.toJson(), 'isLoggedIn': true},
+    );
+    _accessToken = session.accessToken;
     notifyListeners();
     return true;
   }
@@ -659,7 +603,6 @@ class WorkerAppState extends ChangeNotifier {
       _profile = _profile.copyWith(phone: phone);
       notifyListeners();
     }
-    await _publishCurrentWorker();
   }
 
   /// 退出登录
@@ -669,17 +612,11 @@ class WorkerAppState extends ChangeNotifier {
     await _mutate(() => {...toJson(), 'isLoggedIn': false});
   }
 
-  Future<void> _publishCurrentWorker() async {
-    if (!_isLoggedIn) return;
-    await shared_workers.publishWorkerProfile(
-      profile: _profile,
-      settings: _settings,
-    );
-  }
-
   /// 提交报价单（阶段 3：服务端固定价格，仅传 name + quantity）
-  Future<RemoteQuote> submitQuote(String bookingId,
-      List<CatalogSubmitItem> items) async {
+  Future<RemoteQuote> submitQuote(
+    String bookingId,
+    List<CatalogSubmitItem> items,
+  ) async {
     if (_accessToken == null) {
       throw const AuthApiException(
         code: 'NOT_AUTHENTICATED',
@@ -694,10 +631,12 @@ class WorkerAppState extends ChangeNotifier {
 
     // 添加本地消息
     final now = DateTime.now();
-    final ownerName = _orders
-        .where((o) => o.id == bookingId)
-        .map((o) => o.ownerName)
-        .firstOrNull ?? '';
+    final ownerName =
+        _orders
+            .where((o) => o.id == bookingId)
+            .map((o) => o.ownerName)
+            .firstOrNull ??
+        '';
     await _mutate(() {
       final message = WorkerMessage(
         id: 'wmsg-quotation-${now.millisecondsSinceEpoch}',
@@ -712,7 +651,6 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(bookingId);
 
     return remote;
   }
@@ -739,13 +677,12 @@ class WorkerAppState extends ChangeNotifier {
         'messages': [message.toJson(), ..._messages.map((e) => e.toJson())],
       };
     });
-    _syncOrderToShared(quotation.orderId);
   }
 
   // ── 远程预约操作 ──
 
   void initBookingApi({
-    required WorkerBookingApiClient api,
+    required WorkerBookingApi api,
     required String accessToken,
   }) {
     _bookingApi = api;
@@ -753,52 +690,76 @@ class WorkerAppState extends ChangeNotifier {
     fetchRemoteBookings();
   }
 
-  /// 自动连接后端：获取验证码 → 登录 → 初始化 API → 拉取预约
-  Future<void> connectBackend(AuthApiClient authApi) async {
-    if (_accessToken != null && _bookingApi != null) {
-      await fetchRemoteBookings();
-      return;
-    }
-    final phone = _profile.phone;
-    if (phone.isEmpty) return;
-    try {
-      final smsResp = await authApi.requestSmsCode(phone);
-      if (smsResp.simulatedCode == null) return;
-      final loginResp = await authApi.loginWorker(
-        phone,
-        smsResp.simulatedCode!,
-      );
-      _accessToken = loginResp.accessToken;
-      _bookingApi = WorkerBookingApiClient();
-      await fetchRemoteBookings();
-    } catch (_) {
-      // 静默失败，下次首页加载时重试
-    }
-  }
-
-  void initReportApi({
-    required DailyReportApiClient api,
-    required String accessToken,
-  }) {
-    _reportApi = api;
-    _accessToken = accessToken;
+  /// 使用已登录会话刷新后端数据。绝不在后台自动获取验证码或代替用户登录。
+  Future<void> connectBackend() async {
+    if (_accessToken == null || _bookingApi == null) return;
+    await fetchRemoteBookings();
   }
 
   Future<void> fetchRemoteBookings() async {
     if (_bookingApi == null || _accessToken == null) return;
+    final inFlight = _remoteBookingFetchInFlight;
+    if (inFlight != null) return inFlight;
+    final operation = _doFetchRemoteBookings();
+    _remoteBookingFetchInFlight = operation;
     try {
+      await operation;
+    } finally {
+      if (identical(_remoteBookingFetchInFlight, operation)) {
+        _remoteBookingFetchInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _doFetchRemoteBookings() async {
+    _remoteBookingError = null;
+    try {
+      final knownRemoteIds = _remoteBookings.map((b) => b.id).toSet();
+      final knownMessageOrderIds = _messages
+          .where((m) => m.orderId != null)
+          .map((m) => m.orderId!)
+          .toSet();
       final remote = await _bookingApi!.listWorkerBookings(_accessToken!);
       _remoteBookings = remote;
-      final existingIds = _orders.map((o) => o.id).toSet();
-      for (final rb in remote) {
-        if (!existingIds.contains(rb.id)) {
-          _orders.insert(0, _remoteBookingToOrder(rb));
-        }
+      _orders = remote.map(_remoteBookingToOrder).toList();
+      final newPendingMessages = remote
+          .where(
+            (rb) =>
+                rb.status == 'PENDING' &&
+                !knownRemoteIds.contains(rb.id) &&
+                !knownMessageOrderIds.contains(rb.id),
+          )
+          .map((rb) {
+            final tradeLabel = _tradeLabel(rb.trade);
+            return WorkerMessage(
+              id: 'wmsg-remote-pending-${rb.id}',
+              title: '新的预约待接单',
+              content: '业主「${rb.ownerName}」预约了您的$tradeLabel服务，请及时处理。',
+              category: '订单',
+              createdAt: rb.createdAt.toLocal(),
+              orderId: rb.id,
+            );
+          })
+          .toList();
+      if (newPendingMessages.isNotEmpty) {
+        _messages = [...newPendingMessages, ..._messages];
       }
-    } catch (_) {
-      // 远端获取失败时不阻塞本地
+      _messages = _deduplicateMessagesById(_messages);
+      await _store.setString(documentKey, jsonEncode(toJson()));
+    } catch (error) {
+      _remoteBookingError = error is AuthApiException
+          ? error.message
+          : '订单同步失败，请检查网络后重试';
     }
     notifyListeners();
+  }
+
+  List<WorkerMessage> _deduplicateMessagesById(List<WorkerMessage> messages) {
+    final seen = <String>{};
+    return [
+      for (final message in messages)
+        if (seen.add(message.id)) message,
+    ];
   }
 
   WorkerOrder _remoteBookingToOrder(RemoteWorkerBooking rb) {
@@ -826,24 +787,27 @@ class WorkerAppState extends ChangeNotifier {
         status = WorkerOrderStatus.quotePending;
         break;
       case 'HIRED':
+      case 'READY_TO_START':
         status = WorkerOrderStatus.hired;
         break;
       case 'REJECTED':
       case 'CANCELLED':
+      case 'NOT_SELECTED':
         status = WorkerOrderStatus.cancelled;
         break;
       default:
         status = WorkerOrderStatus.pending;
     }
+    final tradeLabel = _tradeLabel(rb.trade);
     return WorkerOrder(
       id: rb.id,
       ownerName: rb.ownerName,
       ownerPhone: rb.ownerPhone,
       ownerAddress: rb.serviceAddress ?? '',
       area: '',
-      requirement: rb.trade,
+      requirement: '$tradeLabel师傅',
       description: rb.remark ?? '',
-      trade: rb.trade,
+      trade: tradeLabel,
       status: status,
       proposedTime: rb.proposedTime,
       arrivalConfirmedByOwner: rb.arrivalConfirmedByOwner,
@@ -853,26 +817,32 @@ class WorkerAppState extends ChangeNotifier {
     );
   }
 
+  String _tradeLabel(String apiTrade) {
+    return switch (apiTrade.trim()) {
+      'demolition' => '拆除',
+      'plumbing' => '水电',
+      'masonry' => '泥瓦',
+      'waterproof' => '防水',
+      'carpentry' => '木工',
+      'painting' => '油漆',
+      'installation' => '安装',
+      'cleaning' => '保洁',
+      final value => value,
+    };
+  }
+
   Future<bool> acceptRemoteBooking(String bookingId) async {
     if (_bookingApi == null || _accessToken == null) return false;
     try {
       await _bookingApi!.acceptBooking(_accessToken!, bookingId);
-    } catch (_) {
+    } catch (error) {
+      _remoteBookingError = error is AuthApiException
+          ? error.message
+          : '接单失败，请检查网络后重试';
+      notifyListeners();
       return false;
     }
-    final orderIdx = _orders.indexWhere((o) => o.id == bookingId);
-    if (orderIdx >= 0) {
-      _orders[orderIdx] = _orders[orderIdx].copyWith(
-        status: WorkerOrderStatus.accepted,
-      );
-    }
-    final rbIdx = _remoteBookings.indexWhere((b) => b.id == bookingId);
-    if (rbIdx >= 0) {
-      _remoteBookings[rbIdx] = _remoteBookings[rbIdx].copyWith(
-        status: 'ACCEPTED',
-      );
-    }
-    notifyListeners();
+    await fetchRemoteBookings();
     return true;
   }
 
@@ -880,22 +850,14 @@ class WorkerAppState extends ChangeNotifier {
     if (_bookingApi == null || _accessToken == null) return false;
     try {
       await _bookingApi!.rejectBooking(_accessToken!, bookingId);
-    } catch (_) {
+    } catch (error) {
+      _remoteBookingError = error is AuthApiException
+          ? error.message
+          : '拒单失败，请检查网络后重试';
+      notifyListeners();
       return false;
     }
-    final orderIdx = _orders.indexWhere((o) => o.id == bookingId);
-    if (orderIdx >= 0) {
-      _orders[orderIdx] = _orders[orderIdx].copyWith(
-        status: WorkerOrderStatus.cancelled,
-      );
-    }
-    final rbIdx = _remoteBookings.indexWhere((b) => b.id == bookingId);
-    if (rbIdx >= 0) {
-      _remoteBookings[rbIdx] = _remoteBookings[rbIdx].copyWith(
-        status: 'REJECTED',
-      );
-    }
-    notifyListeners();
+    await fetchRemoteBookings();
     return true;
   }
 

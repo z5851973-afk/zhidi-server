@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/services/auth_api_client.dart';
 import 'package:zhidi_app/services/auth_session_store.dart';
 import 'package:zhidi_app/services/owner_booking_api_client.dart';
 import 'package:zhidi_app/services/owner_profile_api_client.dart';
@@ -25,7 +26,7 @@ void main() {
         serviceCity: '杭州',
       );
 
-      expect(bookingApi.tokens, ['jwt-token']);
+      expect(bookingApi.tokens, ['jwt-token', 'jwt-token']);
       expect(bookingApi.requests, hasLength(1));
       expect(bookingApi.requests.single.workerUserId, 'remote-worker-user-id');
       expect(bookingApi.requests.single.trade, '泥工师傅');
@@ -41,28 +42,34 @@ void main() {
         ),
         isTrue,
       );
+      expect(state.messages.first.title, '预约已提交');
+      expect(state.messages.first.content, contains('等待师傅接单'));
     },
   );
 
-  test(
-    'bookWorker keeps local-only booking path when server worker id is absent',
-    () async {
-      final bookingApi = _FakeOwnerBookingApi();
-      final state = await OwnerAppState.memory(
-        store: MemoryOwnerStore(),
-        profileApi: _FakeOwnerProfileApi(),
-        bookingApi: bookingApi,
-      );
+  test('bookWorker rejects a worker without a server identity', () async {
+    final bookingApi = _FakeOwnerBookingApi();
+    final state = await OwnerAppState.memory(
+      store: MemoryOwnerStore(),
+      profileApi: _FakeOwnerProfileApi(),
+      bookingApi: bookingApi,
+    );
 
-      await state.bookWorker(_worker(id: 'mock-worker-1'));
+    await expectLater(
+      state.bookWorker(_worker(id: 'mock-worker-1')),
+      throwsA(
+        isA<AuthApiException>().having(
+          (error) => error.code,
+          'code',
+          'SERVER_WORKER_REQUIRED',
+        ),
+      ),
+    );
 
-      expect(bookingApi.requests, isEmpty);
-      expect(
-        state.bookedWorkers.any((worker) => worker.id == 'mock-worker-1'),
-        isTrue,
-      );
-    },
-  );
+    expect(bookingApi.requests, isEmpty);
+    expect(state.bookedWorkers, isEmpty);
+    expect(state.appointments, isEmpty);
+  });
 
   test(
     'fetchRemoteBookings adds owner message when remote booking is accepted',
@@ -75,7 +82,7 @@ void main() {
             serviceRequestId: 'sr-test-1',
             workerUserId: 'worker-user-id',
             workerName: '模拟器闭环工人',
-            trade: '水电',
+            trade: 'carpentry',
             serviceCity: '成都',
             serviceAddress: 'Android Studio 模拟器小区 2 栋 202',
             remark: '第二次模拟器 UI 点击接单验证。',
@@ -111,11 +118,64 @@ void main() {
       expect(feedbackMessages.single.category, '预约');
       expect(feedbackMessages.single.isRead, isFalse);
       expect(feedbackMessages.single.content, contains('模拟器闭环工人'));
-      expect(feedbackMessages.single.content, contains('水电'));
+      expect(feedbackMessages.single.content, contains('木工'));
+      expect(feedbackMessages.single.content, isNot(contains('carpentry')));
       expect(
         feedbackMessages.single.content,
         contains('Android Studio 模拟器小区 2 栋 202'),
       );
+    },
+  );
+
+  test(
+    'fetchRemoteBookings adds owner message when remote booking is pending',
+    () async {
+      final bookingApi = _FakeOwnerBookingApi()
+        ..remoteBookings = [
+          RemoteOwnerBooking(
+            id: 'remote-booking-pending',
+            ownerUserId: 'owner-user-id',
+            serviceRequestId: 'sr-test-1',
+            workerUserId: 'worker-user-id',
+            workerName: 'GT',
+            trade: 'plumbing',
+            serviceCity: '成都',
+            serviceAddress: 'fghfdg',
+            remark: null,
+            status: 'PENDING',
+            createdAt: DateTime.utc(2026, 7, 18, 12, 51),
+            updatedAt: DateTime.utc(2026, 7, 18, 12, 51),
+          ),
+        ];
+      final state = await OwnerAppState.memory(
+        store: MemoryOwnerStore(),
+        sessionStore: MemoryAuthSessionStore(_session()),
+        profileApi: _FakeOwnerProfileApi(),
+        bookingApi: bookingApi,
+      );
+
+      await state.fetchRemoteBookings();
+      await state.fetchRemoteBookings();
+
+      expect(
+        state.appointments
+            .singleWhere(
+              (appointment) => appointment.id == 'rm-remote-booking-pending',
+            )
+            .status,
+        '待接单',
+      );
+      final feedbackMessages = state.messages.where(
+        (message) =>
+            message.id == 'msg-remote-booking-pending-remote-booking-pending',
+      );
+      expect(feedbackMessages, hasLength(1));
+      expect(feedbackMessages.single.title, '预约已提交');
+      expect(feedbackMessages.single.category, '预约');
+      expect(feedbackMessages.single.isRead, isFalse);
+      expect(feedbackMessages.single.content, contains('GT'));
+      expect(feedbackMessages.single.content, contains('水电'));
+      expect(feedbackMessages.single.content, contains('等待师傅接单'));
     },
   );
 }
@@ -154,7 +214,7 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
   ) async {
     tokens.add(accessToken);
     requests.add(request);
-    return RemoteOwnerBooking(
+    final booking = RemoteOwnerBooking(
       id: 'booking-1',
       ownerUserId: 'owner-user-id',
       workerUserId: request.workerUserId,
@@ -168,6 +228,8 @@ final class _FakeOwnerBookingApi implements OwnerBookingApi {
       createdAt: DateTime.utc(2026, 7, 15, 10),
       updatedAt: DateTime.utc(2026, 7, 15, 10),
     );
+    remoteBookings = [booking, ...remoteBookings];
+    return booking;
   }
 
   @override

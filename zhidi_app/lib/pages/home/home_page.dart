@@ -12,6 +12,7 @@ import '../message/message_page.dart';
 import '../renovation/renovation_budget_report_page.dart';
 import '../renovation/trade_select_page.dart';
 import 'worker/worker_list_page.dart';
+import 'worker/candidate_picker_page.dart';
 import 'master_selection_page.dart';
 import '../price/price_transparency_page.dart';
 import '../renovation/construction_guarantee_page.dart';
@@ -29,6 +30,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _currentTab = 0;
+  int _myHomeRefreshEpoch = 0;
   OwnerAppState? _appState;
 
   @override
@@ -66,7 +68,10 @@ class _HomePageState extends State<HomePage> {
         if (loggedIn != true) return;
       }
     }
-    setState(() => _currentTab = index);
+    setState(() {
+      _currentTab = index;
+      if (index == 1) _myHomeRefreshEpoch++;
+    });
     if (index == 2) {
       unawaited(appState.fetchRemoteBookings());
     }
@@ -82,7 +87,7 @@ class _HomePageState extends State<HomePage> {
           // 0: 首页
           _buildHomeTab(),
           // 1: 我的家
-          const MyHomePage(),
+          MyHomePage(refreshEpoch: _myHomeRefreshEpoch),
           // 2: 消息
           const MessagePage(),
           // 3: 我的
@@ -115,7 +120,14 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 20),
 
             // ==================== 需求选择入口 ====================
-            const HomeRequirementHub(),
+            HomeRequirementHub(
+              onCandidatesCompleted: () {
+                setState(() {
+                  _currentTab = 1;
+                  _myHomeRefreshEpoch++;
+                });
+              },
+            ),
 
             const SizedBox(height: 20),
 
@@ -153,71 +165,75 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildBottomBar() {
-    return Container(
-      height: 64,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 12,
-            offset: Offset(0, -2),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final tabWidth = constraints.maxWidth / 4;
-          final appState = OwnerAppScope.of(context);
-          final unreadCount = appState.isLoggedIn
-              ? appState.unreadMessageCount
-              : 0;
-          return Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // 四个 Tab 均分
-              Row(
-                children: [
-                  Expanded(child: _buildTab(Icons.home_rounded, '首页', 0)),
-                  Expanded(
-                    child: _buildTab(Icons.favorite_border_rounded, '我的家', 1),
-                  ),
-                  Expanded(
-                    child: _buildTab(
-                      Icons.chat_bubble_outline_rounded,
-                      '消息',
-                      2,
-                      badgeCount: unreadCount,
+    return SafeArea(
+      top: false,
+      child: Container(
+        key: const Key('owner-bottom-navigation-content'),
+        height: 64,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 12,
+              offset: Offset(0, -2),
+            ),
+          ],
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final tabWidth = constraints.maxWidth / 4;
+            final appState = OwnerAppScope.of(context);
+            final unreadCount = appState.isLoggedIn
+                ? appState.unreadMessageCount
+                : 0;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // 四个 Tab 均分
+                Row(
+                  children: [
+                    Expanded(child: _buildTab(Icons.home_rounded, '首页', 0)),
+                    Expanded(
+                      child: _buildTab(Icons.favorite_border_rounded, '我的家', 1),
                     ),
-                  ),
-                  Expanded(
-                    child: _buildTab(
-                      Icons.person_outline_rounded,
-                      '我的',
-                      3,
-                      badgeCount: unreadCount,
+                    Expanded(
+                      child: _buildTab(
+                        Icons.chat_bubble_outline_rounded,
+                        '消息',
+                        2,
+                        badgeCount: unreadCount,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              // 选中指示条
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                left: _currentTab * tabWidth + (tabWidth - 32) / 2,
-                top: 0,
-                child: Container(
-                  width: 32,
-                  height: 3,
-                  decoration: BoxDecoration(
-                    color: ZdColors.primary,
-                    borderRadius: BorderRadius.circular(2),
+                    Expanded(
+                      child: _buildTab(
+                        Icons.person_outline_rounded,
+                        '我的',
+                        3,
+                        badgeCount: unreadCount,
+                      ),
+                    ),
+                  ],
+                ),
+                // 选中指示条
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  left: _currentTab * tabWidth + (tabWidth - 32) / 2,
+                  top: 0,
+                  child: Container(
+                    width: 32,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: ZdColors.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ),
-            ],
-          );
-        },
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -1075,7 +1091,9 @@ class _Divider extends StatelessWidget {
 
 // ==================== 需求选择入口 ====================
 class HomeRequirementHub extends StatelessWidget {
-  const HomeRequirementHub({super.key});
+  const HomeRequirementHub({super.key, this.onCandidatesCompleted});
+
+  final VoidCallback? onCandidatesCompleted;
 
   Future<void> _onMatch(BuildContext context) async {
     final appState = OwnerAppScope.of(context);
@@ -1090,6 +1108,10 @@ class HomeRequirementHub extends StatelessWidget {
       context,
       MaterialPageRoute(builder: (_) => const TradeSelectPage()),
     );
+    if (result is CandidatePickerResult && context.mounted) {
+      onCandidatesCompleted?.call();
+      return;
+    }
     if (result is Worker && context.mounted) {
       final phaseIndex = WorkerListPage.tradeToPhaseIndex(result.trade);
       if (phaseIndex != null) {

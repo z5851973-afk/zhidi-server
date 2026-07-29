@@ -5,10 +5,12 @@ import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.infrastructure.sms.SmsService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
@@ -24,16 +26,21 @@ public class AuthService {
 	private final VerificationCodeGenerator generator;
 	private final VerificationCodeHasher hasher;
 	private final JwtTokenService jwtTokenService;
+	private final SmsService smsService;
+	private final boolean realSmsEnabled;
 	private final Clock clock;
 
 	public AuthService(SmsVerificationCodeRepository codeRepository, UserRepository userRepository,
 			VerificationCodeGenerator generator, VerificationCodeHasher hasher,
-			JwtTokenService jwtTokenService, Clock clock) {
+			JwtTokenService jwtTokenService, SmsService smsService,
+			@Value("${tencent.sms.enabled:false}") boolean realSmsEnabled, Clock clock) {
 		this.codeRepository = codeRepository;
 		this.userRepository = userRepository;
 		this.generator = generator;
 		this.hasher = hasher;
 		this.jwtTokenService = jwtTokenService;
+		this.smsService = smsService;
+		this.realSmsEnabled = realSmsEnabled;
 		this.clock = clock;
 	}
 
@@ -61,7 +68,9 @@ public class AuthService {
 		String plaintextCode = generator.generate();
 		codeRepository.save(SmsVerificationCode.issue(
 			phone, hasher.hash(phone, plaintextCode), requestIp, now, now.plus(CODE_TTL)));
-		return new SmsCodeIssueResult(plaintextCode, CODE_TTL.toSeconds(), COOLDOWN.toSeconds());
+		smsService.sendVerificationCode(phone, plaintextCode);
+		return new SmsCodeIssueResult(realSmsEnabled ? null : plaintextCode,
+			CODE_TTL.toSeconds(), COOLDOWN.toSeconds());
 	}
 
 	@Transactional(noRollbackFor = BusinessException.class)

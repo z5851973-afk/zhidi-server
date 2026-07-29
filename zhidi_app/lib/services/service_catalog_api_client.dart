@@ -37,7 +37,14 @@ final class CatalogItem {
   final int sortOrder;
 }
 
-final class ServiceCatalogApiClient {
+abstract interface class ServiceCatalogApi {
+  Future<List<CatalogItem>> getCatalog(
+    String accessToken,
+    String category,
+  );
+}
+
+final class ServiceCatalogApiClient implements ServiceCatalogApi {
   ServiceCatalogApiClient({
     Uri? baseUrl,
     http.Client? httpClient,
@@ -51,6 +58,7 @@ final class ServiceCatalogApiClient {
 
   /// 获取工种价格目录
   /// [category] 中文工种名（如"水电动"、"木工"）或英文分类（如"PLUMBING"）
+  @override
   Future<List<CatalogItem>> getCatalog(
     String accessToken,
     String category,

@@ -60,7 +60,8 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('暂无该工种师傅'), findsOneWidget);
+    expect(find.text('师傅列表加载失败，请检查网络后重试'), findsOneWidget);
+    expect(find.text('重试'), findsOneWidget);
     expect(find.text('张国强'), findsNothing);
   });
 }

@@ -24,7 +24,9 @@ class WorkerSettlementPage extends StatefulWidget {
 
 class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
   List<SettlementModel> _items = const [];
+  List<PaymentOrderModel> _pendingReceipts = const [];
   bool _loading = true;
+  String? _confirmingOrderId;
   String? _error;
 
   @override
@@ -41,11 +43,60 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
     try {
       final api = PaymentApiClient();
       final token = WorkerAppScope.of(context).getAccessToken()!;
-      _items = await api.listSettlements(token);
+      final results = await Future.wait([
+        api.listSettlements(token),
+        api.listOrders(token),
+      ]);
+      _items = results[0] as List<SettlementModel>;
+      _pendingReceipts = (results[1] as List<PaymentOrderModel>)
+          .where((order) => order.isAwaitingWorkerReceipt)
+          .toList();
     } catch (e) {
       _error = e.toString();
     }
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _confirmReceipt(PaymentOrderModel order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('确认实际收到款项'),
+        content: Text(
+          '请先核对您的银行卡、微信、支付宝或现金，确认实际收到 ¥${order.amount.toStringAsFixed(2)} 后再操作。确认后将生成已收款记录。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('尚未收到'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认已收到'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _confirmingOrderId = order.id;
+      _error = null;
+    });
+    try {
+      final token = WorkerAppScope.of(context).getAccessToken();
+      if (token == null || token.isEmpty) throw Exception('登录已失效，请重新登录');
+      await PaymentApiClient().confirmOfflineReceipt(token, order.id);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('收款已确认，已生成收款记录')));
+      }
+      await _loadList();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _confirmingOrderId = null);
+    }
   }
 
   @override
@@ -61,41 +112,136 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('加载失败', style: TextStyle(color: _errorColor)),
-                      const SizedBox(height: 8),
-                      TextButton(
-                          onPressed: _loadList, child: const Text('重试')),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('加载失败', style: TextStyle(color: _errorColor)),
+                  const SizedBox(height: 8),
+                  TextButton(onPressed: _loadList, child: const Text('重试')),
+                ],
+              ),
+            )
+          : _items.isEmpty && _pendingReceipts.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet,
+                    size: 64,
+                    color: _textLight,
                   ),
-                )
-              : _items.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.account_balance_wallet,
-                              size: 64, color: _textLight),
-                          const SizedBox(height: 16),
-                          Text('暂无结算记录',
-                              style:
-                                  TextStyle(fontSize: 16, color: _textMid)),
-                        ],
-                      ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadList,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, _) =>
-                            const SizedBox(height: 12),
-                        itemBuilder: (ctx, i) => _buildItem(_items[i]),
+                  const SizedBox(height: 16),
+                  Text(
+                    '暂无结算记录',
+                    style: TextStyle(fontSize: 16, color: _textMid),
+                  ),
+                ],
+              ),
+            )
+          : RefreshIndicator(
+              onRefresh: _loadList,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  if (_pendingReceipts.isNotEmpty) ...[
+                    Text(
+                      '待确认收款',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    ..._pendingReceipts.map(
+                      (order) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildPendingReceipt(order),
+                      ),
+                    ),
+                  ],
+                  if (_items.isNotEmpty) ...[
+                    Text(
+                      '收款记录',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ..._items.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildItem(item),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildPendingReceipt(PaymentOrderModel order) {
+    final confirming = _confirmingOrderId == order.id;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _primary.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '¥${order.amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: _textDark,
+                ),
+              ),
+              Text(
+                order.statusLabel,
+                style: TextStyle(color: _primary, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '业主报告通过${order.offlinePaymentChannel ?? '线下方式'}付款。请核对实际到账，未到账不要确认。',
+            style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
+          ),
+          if (order.paymentReference != null) ...[
+            const SizedBox(height: 6),
+            _detailRow('付款凭证', order.paymentReference!),
+          ],
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: confirming ? null : () => _confirmReceipt(order),
+              child: confirming
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('我已实际收到款项'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -112,11 +258,14 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('¥${item.amount.toStringAsFixed(2)}',
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      color: _textDark)),
+              Text(
+                '¥${item.amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: _textDark,
+                ),
+              ),
               _statusChip(item),
             ],
           ),
@@ -139,8 +288,10 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
                   Icon(Icons.info_outline, size: 16, color: _errorColor),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(item.frozenReason!,
-                        style: TextStyle(color: _errorColor, fontSize: 13)),
+                    child: Text(
+                      item.frozenReason!,
+                      style: TextStyle(color: _errorColor, fontSize: 13),
+                    ),
                   ),
                 ],
               ),
@@ -176,8 +327,7 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
         children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 4),
-          Text(item.statusLabel,
-              style: TextStyle(color: color, fontSize: 12)),
+          Text(item.statusLabel, style: TextStyle(color: color, fontSize: 12)),
         ],
       ),
     );
@@ -188,13 +338,14 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          Text(label,
-              style: TextStyle(color: _textLight, fontSize: 13),
-              textWidthBasis: TextWidthBasis.longestLine),
+          Text(
+            label,
+            style: TextStyle(color: _textLight, fontSize: 13),
+            textWidthBasis: TextWidthBasis.longestLine,
+          ),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(value,
-                style: TextStyle(color: _textMid, fontSize: 13)),
+            child: Text(value, style: TextStyle(color: _textMid, fontSize: 13)),
           ),
         ],
       ),

@@ -3,6 +3,7 @@ package com.zhidi.server;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -33,14 +34,18 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -51,6 +56,7 @@ import org.springframework.web.bind.annotation.RestController;
 		+ "org.springframework.boot.autoconfigure.flyway.FlywayAutoConfiguration"
 })
 @AutoConfigureMockMvc
+@ExtendWith(OutputCaptureExtension.class)
 @Import({SmokeApiTest.ValidationProbeController.class,
 	com.zhidi.server.support.RoadmapPersistenceTestConfig.class})
 class SmokeApiTest {
@@ -131,8 +137,35 @@ class SmokeApiTest {
 			.andExpect(jsonPath("$.traceId").isNotEmpty());
 	}
 
+	@Test
+	void unknownRoutesUseTheNotFoundEnvelope() throws Exception {
+		mvc.perform(get("/definitely-not-a-real-path"))
+			.andExpect(status().isNotFound())
+			.andExpect(jsonPath("$.code").value("NOT_FOUND"))
+			.andExpect(jsonPath("$.message").value("resource not found"))
+			.andExpect(jsonPath("$.traceId").isNotEmpty());
+	}
+
+	@Test
+	void unhandledExceptionsAreLoggedWithTheirTraceId(CapturedOutput output) throws Exception {
+		mvc.perform(get("/test/unhandled").header("X-Trace-Id", "unhandled-test-trace"))
+			.andExpect(status().isInternalServerError())
+			.andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+			.andExpect(jsonPath("$.traceId").value("unhandled-test-trace"));
+
+		assertThat(output.getAll())
+			.contains("Unhandled request exception")
+			.contains("unhandled-test-trace")
+			.contains("java.lang.IllegalStateException: test unhandled exception");
+	}
+
 	@RestController
 	static class ValidationProbeController {
+
+		@GetMapping("/test/unhandled")
+		void throwUnhandledException() {
+			throw new IllegalStateException("test unhandled exception");
+		}
 
 		@PostMapping("/api/v1/test/validation")
 		ResponseEntity<Void> validate(@Valid @RequestBody ValidationProbeRequest request) {

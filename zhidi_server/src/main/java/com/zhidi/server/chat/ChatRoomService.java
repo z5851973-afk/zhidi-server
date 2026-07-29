@@ -96,7 +96,7 @@ public class ChatRoomService {
 		ChatMessageType type = parseType(request.type());
 		ChatMessage message = switch (type) {
 			case IMAGE -> ChatMessage.image(roomId, userId, role,
-				request.content(), request.imageUrl());
+				request.content(), imageUrl(request));
 			case SYSTEM, TEXT -> ChatMessage.text(roomId, userId, role,
 				request.content());
 		};
@@ -106,6 +106,11 @@ public class ChatRoomService {
 		chatRooms.save(room);
 
 		return toMessageResponse(saved);
+	}
+
+	private static String imageUrl(SendMessageRequest request) {
+		return request.imageUrl() == null || request.imageUrl().isBlank()
+			? request.content() : request.imageUrl();
 	}
 
 	@Transactional

@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../app/owner_app_scope.dart';
 import '../../../app/owner_models.dart';
-import '../../../data/price_standards.dart';
 import '../../renovation/worker_chat_page.dart';
+import '../../renovation/construction_standards_page.dart';
 import '../../order/create_order_page.dart';
-import '../../price/worker_quote_page.dart';
 import '../../../design/tokens.dart';
 
 class WorkerDetailPage extends StatefulWidget {
@@ -159,6 +158,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
           else
             const _RankBanner(),
           _SkillsSection(workerJob: widget.workerJob),
+          _TrustFlowSection(workerJob: widget.workerJob),
           _InfoTabsSection(workerJob: widget.workerJob),
           _ProjectGallery(workerJob: widget.workerJob),
           _ReviewsSection(),
@@ -653,6 +653,198 @@ class _SkillsSection extends StatelessWidget {
       ),
     );
   }
+}
+
+class _TrustFlowSection extends StatelessWidget {
+  const _TrustFlowSection({this.workerJob});
+
+  final String? workerJob;
+
+  List<String> get _scope {
+    switch (workerJob) {
+      case '水电师傅':
+        return ['水电改造', '强弱电布线', '给排水改造', '灯具安装'];
+      case '木工师傅':
+        return ['吊顶施工', '柜体安装', '门套基层', '木作修补'];
+      case '泥工师傅':
+        return ['瓷砖铺贴', '地面找平', '墙地砖修补', '砌墙抹灰'];
+      case '防水师傅':
+        return ['厨卫防水', '阳台防水', '闭水试验', '漏点修补'];
+      case '油漆师傅':
+        return ['墙面找平', '腻子打磨', '乳胶漆', '旧墙翻新'];
+      default:
+        return ['上门勘测', '标准施工', '现场保护', '验收交付'];
+    }
+  }
+
+  List<_SimplePrice> get _prices {
+    switch (workerJob) {
+      case '水电师傅':
+        return const [
+          _SimplePrice('水电施工', '35元/m²起'),
+          _SimplePrice('强弱电改造', '30元/m²起'),
+          _SimplePrice('给排水改造', '40元/m起'),
+        ];
+      case '泥工师傅':
+        return const [
+          _SimplePrice('墙地砖铺贴', '55元/m²起'),
+          _SimplePrice('地面找平', '25元/m²起'),
+          _SimplePrice('砌墙抹灰', '80元/m²起'),
+        ];
+      case '防水师傅':
+        return const [
+          _SimplePrice('厨卫防水', '45元/m²起'),
+          _SimplePrice('闭水试验', '120元/次起'),
+          _SimplePrice('局部堵漏', '200元/处起'),
+        ];
+      case '木工师傅':
+        return const [
+          _SimplePrice('吊顶施工', '90元/m²起'),
+          _SimplePrice('门套基层', '80元/套起'),
+          _SimplePrice('柜体安装', '180元/项起'),
+        ];
+      default:
+        return const [
+          _SimplePrice('基础施工', '按平台工价表'),
+          _SimplePrice('上门勘测', '预约后确认'),
+          _SimplePrice('辅材费用', '按实际清单'),
+        ];
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D000000),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '服务范围',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: ZdColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _scope
+                .map(
+                  (item) => Chip(
+                    label: Text(item),
+                    backgroundColor: ZdColors.surfaceMuted,
+                    side: BorderSide.none,
+                    labelStyle: const TextStyle(
+                      color: ZdColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+          const SizedBox(height: 14),
+          InkWell(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ConstructionStandardsPage(),
+              ),
+            ),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: ZdColors.surfaceWarm,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: ZdColors.divider),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_user_outlined,
+                      size: 18, color: ZdColors.primary),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '施工标准',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: ZdColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '查看平台施工标准',
+                    style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+                  ),
+                  Icon(Icons.chevron_right_rounded,
+                      size: 18, color: ZdColors.textHint),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            '工价标准（平台统一）',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+              color: ZdColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ..._prices.map(
+            (price) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      price.name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: ZdColors.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    price.value,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: ZdColors.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SimplePrice {
+  const _SimplePrice(this.name, this.value);
+  final String name;
+  final String value;
 }
 
 // ========== 信息三级Tabs（服务内容｜工价详情｜验收标准） ==========
@@ -2158,9 +2350,6 @@ class _BottomActionBar extends StatelessWidget {
               onPressed: onToggleFavorite,
               buttonKey: const Key('bottom-worker-favorite-button'),
             ),
-            const SizedBox(width: 16),
-            // 客服
-            const _ActionIcon(icon: Icons.headset_mic_outlined, label: '客服'),
             const SizedBox(width: 12),
             // 问师傅
             Expanded(
@@ -2178,7 +2367,7 @@ class _BottomActionBar extends StatelessWidget {
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(22),
                     ),
                   ),
                   icon: const Icon(Icons.chat_rounded, size: 20),
@@ -2190,37 +2379,9 @@ class _BottomActionBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            // 查看报价
-            Expanded(
-              child: SizedBox(
-                height: 44,
-                child: OutlinedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => WorkerQuotePage(
-                        workerName: workerName,
-                        trade: demolitionTrade,
-                      ),
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: ZdColors.primary,
-                    side: const BorderSide(color: ZdColors.primary),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                  ),
-                  child: const Text(
-                    '看报价',
-                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
             // 预约师傅
             Expanded(
+              flex: 2,
               child: SizedBox(
                 height: 44,
                 child: ElevatedButton(
@@ -2235,12 +2396,12 @@ class _BottomActionBar extends StatelessWidget {
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(22),
                     ),
                   ),
-                  child: Text(
-                    '预约${workerJob ?? '师傅'}',
-                    style: const TextStyle(
+                  child: const Text(
+                    '立即预约',
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                     ),
@@ -2251,27 +2412,6 @@ class _BottomActionBar extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _ActionIcon extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _ActionIcon({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 22, color: ZdColors.textSecondary),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11, color: ZdColors.textSecondary),
-        ),
-      ],
     );
   }
 }

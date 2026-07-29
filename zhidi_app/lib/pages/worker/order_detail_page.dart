@@ -3,6 +3,8 @@
 // 展示订单完整信息 + 根据订单状态动态操作区
 // ============================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/worker_app_scope.dart';
@@ -28,15 +30,57 @@ const _divider = ZdColors.divider;
 const _success = ZdColors.success;
 const _error = ZdColors.error;
 
-class OrderDetailPage extends StatelessWidget {
-  const OrderDetailPage({super.key, required this.orderId});
+class OrderDetailPage extends StatefulWidget {
+  const OrderDetailPage({
+    super.key,
+    required this.orderId,
+    this.refreshInterval = const Duration(seconds: 8),
+  });
+
   final String orderId;
+  final Duration? refreshInterval;
+
+  @override
+  State<OrderDetailPage> createState() => _OrderDetailPageState();
+}
+
+class _OrderDetailPageState extends State<OrderDetailPage> {
+  Timer? _refreshTimer;
+  bool _refreshing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Timer.run(_refreshRemoteOrder);
+    final interval = widget.refreshInterval;
+    if (interval != null) {
+      _refreshTimer = Timer.periodic(interval, (_) => _refreshRemoteOrder());
+    }
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshRemoteOrder() async {
+    if (_refreshing || !mounted) return;
+    final state = WorkerAppScope.of(context);
+    if (!state.isRemoteOrder(widget.orderId)) return;
+    _refreshing = true;
+    try {
+      await state.fetchRemoteBookings();
+    } finally {
+      _refreshing = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = WorkerAppScope.of(context);
     final order = state.orders.firstWhere(
-      (o) => o.id == orderId,
+      (o) => o.id == widget.orderId,
       orElse: () => state.orders.first,
     );
 
@@ -57,7 +101,7 @@ class OrderDetailPage extends StatelessWidget {
             if (order.status == WorkerOrderStatus.inProgress ||
                 order.status == WorkerOrderStatus.accepted)
               _PhaseCard(order: order),
-            _QuotationCard(orderId: orderId),
+            _QuotationCard(orderId: widget.orderId),
             const SizedBox(height: ZdSpacing.lg),
           ],
         ),
@@ -488,7 +532,7 @@ class _BottomBar extends StatelessWidget {
           children: [
             ZdPrimaryButton(
               label: '提出上门时间',
-              onTap: () => _showProposeVisitTimePicker(context, order),
+              onTap: () => _prepareVisitProposal(context, order),
             ),
             const SizedBox(height: ZdSpacing.sm),
             SizedBox(
@@ -597,6 +641,32 @@ class _BottomBar extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+            const SizedBox(height: ZdSpacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: _outlineBtn('提交日报', () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DailyReportPage(orderId: order.id),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(width: ZdSpacing.md),
+                Expanded(
+                  child: _outlineBtn('发起验收', () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => InspectionPage(orderId: order.id),
+                      ),
+                    );
+                  }),
+                ),
+              ],
             ),
             const SizedBox(height: ZdSpacing.sm),
             SizedBox(
@@ -727,6 +797,28 @@ class _BottomBar extends StatelessWidget {
           ),
         );
     }
+  }
+
+  Future<void> _prepareVisitProposal(
+    BuildContext context,
+    WorkerOrder order,
+  ) async {
+    await state.fetchRemoteBookings();
+    if (!context.mounted) return;
+    if (!state.isRemoteOrder(order.id)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该预约已失效或不属于当前账号，请返回订单列表刷新')),
+      );
+      return;
+    }
+    final latest = state.orders.where((item) => item.id == order.id).firstOrNull;
+    if (latest == null || latest.status != WorkerOrderStatus.accepted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('预约状态已更新，请按当前状态继续操作')),
+      );
+      return;
+    }
+    _showProposeVisitTimePicker(context, latest);
   }
 
   Widget _outlineBtn(String label, VoidCallback onTap) {
@@ -961,7 +1053,13 @@ class _BottomBar extends StatelessWidget {
                 } on AuthApiException catch (e) {
                   if (ctx.mounted) {
                     ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text(e.message)),
+                      SnackBar(
+                        content: Text(
+                          e.code == 'BOOKING_NOT_FOUND'
+                              ? '该预约已失效或不属于当前账号，请返回订单列表刷新'
+                              : e.message,
+                        ),
+                      ),
                     );
                   }
                 } catch (e) {
@@ -1089,6 +1187,21 @@ class _BottomBar extends StatelessWidget {
     ChatRoomModel room;
     try {
       room = await chatApi.getOrCreateRoom(accessToken, order.id);
+    } on AuthApiException catch (e) {
+      if (context.mounted) {
+        if (e.statusCode == 401) {
+          await state.logout();
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('登录已过期，请重新登录')),
+          );
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('无法创建聊天：${e.message}')),
+        );
+      }
+      return;
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

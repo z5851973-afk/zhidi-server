@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.util.UUID;
 import org.slf4j.MDC;
 import org.springframework.data.domain.Page;
@@ -87,6 +88,28 @@ public class PaymentController {
 			traceId());
 	}
 
+	@PostMapping("/api/v1/payment/orders/{orderId}/offline-payment-report")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主报告已完成线下付款（仍需工人确认收款）")
+	public ApiResponse<PaymentOrderResponse> reportOfflinePayment(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID orderId,
+			@Valid @RequestBody OfflinePaymentReportRequest request) {
+		return ApiResponse.ok(paymentOrderService.reportOfflinePayment(
+			principal.userId(), orderId, request.channel(), request.reference(),
+			request.note()), traceId());
+	}
+
+	@PostMapping("/api/v1/payment/orders/{orderId}/receipt-confirmation")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人确认实际收到线下款项")
+	public ApiResponse<PaymentOrderResponse> confirmOfflineReceipt(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID orderId) {
+		return ApiResponse.ok(paymentOrderService.confirmOfflineReceipt(
+			principal.userId(), orderId), traceId());
+	}
+
 	private static String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
@@ -101,4 +124,9 @@ public class PaymentController {
 		@NotBlank String paymentMethod) {}
 
 	public record RefundRequest(@NotBlank String reason) {}
+
+	public record OfflinePaymentReportRequest(
+		@NotBlank @Size(max = 32) String channel,
+		@Size(max = 128) String reference,
+		@Size(max = 300) String note) {}
 }

@@ -1,68 +1,40 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/services/auth_api_client.dart';
 
-BookedWorker _worker({
-  String id = 'worker-1',
-  String name = '李师傅',
-  String trade = '拆除工',
-  String phaseName = '拆除',
-  int phaseIndex = 0,
-}) {
-  return BookedWorker(
-    id: id,
-    name: name,
-    trade: trade,
-    phaseName: phaseName,
-    phaseIndex: phaseIndex,
-    rating: 4.9,
-    completedOrders: 128,
-    years: 8,
-    avatarEmoji: '👷',
-    skills: const ['拆墙', '垃圾清运'],
+void main() {
+  test(
+    'local-only worker cannot create a fake booking or inspection',
+    () async {
+      final state = await OwnerAppState.memory(store: MemoryOwnerStore());
+
+      await expectLater(
+        state.bookWorker(_localOnlyWorker()),
+        throwsA(
+          isA<AuthApiException>().having(
+            (error) => error.code,
+            'code',
+            'SERVER_WORKER_REQUIRED',
+          ),
+        ),
+      );
+
+      expect(state.bookedWorkers, isEmpty);
+      expect(state.inspections, isEmpty);
+      expect(state.completedPhases, isEmpty);
+    },
   );
 }
 
-void main() {
-  test('requests inspection and approves phase completion', () async {
-    final store = MemoryOwnerStore();
-    final state = await OwnerAppState.memory(store: store);
-
-    await state.bookWorker(_worker());
-    await state.requestInspection('worker-1');
-
-    expect(state.inspections, hasLength(1));
-    expect(state.inspections.single.workerName, '李师傅');
-    expect(state.inspections.single.status, InspectionStatus.pending);
-    expect(state.completedPhases, isNot(contains(0)));
-
-    final restored = await OwnerAppState.memory(store: store);
-    expect(restored.inspections.single.status, InspectionStatus.pending);
-
-    await restored.approveInspection(restored.inspections.single.id);
-
-    expect(restored.inspections.single.status, InspectionStatus.accepted);
-    expect(restored.completedPhases, contains(0));
-    expect(
-      restored.bookedWorkers.firstWhere((item) => item.id == 'worker-1').status,
-      '已完成',
-    );
-    expect(restored.messages.first.title, '验收合格');
-  });
-
-  test('rejects inspection without completing phase', () async {
-    final state = await OwnerAppState.memory(store: MemoryOwnerStore());
-
-    await state.bookWorker(_worker());
-    await state.requestInspection('worker-1');
-    await state.rejectInspection(state.inspections.single.id, note: '墙面未清理');
-
-    expect(state.inspections.single.status, InspectionStatus.rejected);
-    expect(state.inspections.single.inspectorNote, '墙面未清理');
-    expect(state.completedPhases, isNot(contains(0)));
-    expect(
-      state.bookedWorkers.firstWhere((item) => item.id == 'worker-1').status,
-      isNot('已完成'),
-    );
-    expect(state.messages.first.title, '验收不合格');
-  });
-}
+BookedWorker _localOnlyWorker() => const BookedWorker(
+  id: 'worker-1',
+  name: '李师傅',
+  trade: '拆除工',
+  phaseName: '拆除',
+  phaseIndex: 0,
+  rating: 0,
+  completedOrders: 0,
+  years: 8,
+  avatarEmoji: '李',
+  skills: ['拆墙', '垃圾清运'],
+);

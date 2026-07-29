@@ -2,12 +2,16 @@ package com.zhidi.server.admin;
 
 import com.zhidi.server.account.User;
 import com.zhidi.server.account.UserRepository;
+import com.zhidi.server.account.UserRole;
+import com.zhidi.server.audit.OperationLog;
+import com.zhidi.server.audit.OperationLogRepository;
 import com.zhidi.server.booking.Booking;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingStatus;
 import com.zhidi.server.common.api.ApiResponse;
 import com.zhidi.server.common.api.TraceIdFilter;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.common.security.CurrentUserPrincipal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -23,6 +27,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -30,6 +35,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.persistence.criteria.Predicate;
 
@@ -40,11 +46,14 @@ public class AdminController {
 
 	private final UserRepository userRepository;
 	private final BookingRepository bookingRepository;
+	private final OperationLogRepository operationLogRepository;
 
 	public AdminController(UserRepository userRepository,
-			BookingRepository bookingRepository) {
+			BookingRepository bookingRepository,
+			OperationLogRepository operationLogRepository) {
 		this.userRepository = userRepository;
 		this.bookingRepository = bookingRepository;
+		this.operationLogRepository = operationLogRepository;
 	}
 
 	@GetMapping("/dashboard")
@@ -81,15 +90,12 @@ public class AdminController {
 				@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
 			@RequestParam(required = false)
 				@DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+		BookingStatus statusFilter = parseBookingStatusFilter(status);
 
 		Specification<Booking> spec = (root, query, cb) -> {
 			var predicates = new java.util.ArrayList<Predicate>();
-			if (StringUtils.hasText(status)) {
-				try {
-					BookingStatus bs = BookingStatus.valueOf(status.toUpperCase());
-					predicates.add(cb.equal(root.get("status"), bs));
-				} catch (IllegalArgumentException ignored) {
-				}
+			if (statusFilter != null) {
+				predicates.add(cb.equal(root.get("status"), statusFilter));
 			}
 			if (StringUtils.hasText(trade)) {
 				predicates.add(cb.equal(root.get("trade"), trade));
@@ -106,7 +112,7 @@ public class AdminController {
 		};
 
 		Page<Booking> result = bookingRepository.findAll(spec,
-			PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+			pageRequest(page, size));
 		return ResponseEntity.ok(ApiResponse.ok(result, traceId()));
 	}
 
@@ -116,28 +122,30 @@ public class AdminController {
 			@RequestParam(defaultValue = "20") int size,
 			@RequestParam(required = false) String phone,
 			@RequestParam(required = false) String role) {
+		UserRole roleFilter = parseUserRoleFilter(role);
 
 		Specification<User> spec = (root, query, cb) -> {
 			var predicates = new java.util.ArrayList<Predicate>();
 			if (StringUtils.hasText(phone)) {
 				predicates.add(cb.like(root.get("phone"), "%" + phone.trim() + "%"));
 			}
-			if (StringUtils.hasText(role)) {
+			if (roleFilter != null) {
 				query.distinct(true);
 				var join = root.join("roles");
-				predicates.add(cb.equal(join.get("role"),
-					com.zhidi.server.account.UserRole.valueOf(role.toUpperCase())));
+				predicates.add(cb.equal(join.get("role"), roleFilter));
 			}
 			return cb.and(predicates.toArray(new Predicate[0]));
 		};
 
 		Page<User> result = userRepository.findAll(spec,
-			PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt")));
+			pageRequest(page, size));
 		return ResponseEntity.ok(ApiResponse.ok(result, traceId()));
 	}
 
 	@PutMapping("/bookings/{bookingId}/status")
+	@Transactional
 	ResponseEntity<ApiResponse<Booking>> updateBookingStatus(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID bookingId,
 			@RequestParam String status) {
 		Booking booking = bookingRepository.findById(bookingId)
@@ -164,7 +172,46 @@ public class AdminController {
 		}
 
 		bookingRepository.save(booking);
+		operationLogRepository.save(OperationLog.success(
+			principal.userId(),
+			"ADMIN_BOOKING_STATUS_CHANGE",
+			"BOOKING",
+			bookingId.toString(),
+			traceId(),
+			"{\"status\":\"" + newStatus.name() + "\"}"));
 		return ResponseEntity.ok(ApiResponse.ok(booking, traceId()));
+	}
+
+	private PageRequest pageRequest(int page, int size) {
+		if (page < 0 || size < 1 || size > 100) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_PAGE", "page must be >= 0 and size must be between 1 and 100");
+		}
+		return PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+	}
+
+	private BookingStatus parseBookingStatusFilter(String status) {
+		if (!StringUtils.hasText(status)) {
+			return null;
+		}
+		try {
+			return BookingStatus.valueOf(status.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_STATUS_FILTER", "invalid booking status: " + status);
+		}
+	}
+
+	private UserRole parseUserRoleFilter(String role) {
+		if (!StringUtils.hasText(role)) {
+			return null;
+		}
+		try {
+			return UserRole.valueOf(role.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_ROLE_FILTER", "invalid user role: " + role);
+		}
 	}
 
 	private static boolean isTerminal(BookingStatus status) {

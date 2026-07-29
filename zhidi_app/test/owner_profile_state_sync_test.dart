@@ -126,6 +126,33 @@ void main() {
     );
 
     test(
+      'onboarding cannot report success without a valid server session',
+      () async {
+        final state = await OwnerAppState.memory(
+          profileApi: FakeOwnerProfileApi(getResult: remoteProfile()),
+        );
+
+        await expectLater(
+          state.completeOnboarding(
+            name: '刘先生',
+            decorationType: '新房装修',
+            address: '麓湖 1 栋 101',
+            area: 96,
+          ),
+          throwsA(
+            isA<AuthApiException>().having(
+              (error) => error.code,
+              'code',
+              'NOT_AUTHENTICATED',
+            ),
+          ),
+        );
+        expect(state.isLoggedIn, isFalse);
+        expect(state.profile.address, isNot('麓湖 1 栋 101'));
+      },
+    );
+
+    test(
       'onboarding uses the supplied name when remote profile has no name',
       () async {
         final api = FakeOwnerProfileApi(
@@ -315,8 +342,9 @@ final class FakeOwnerProfileApi implements OwnerProfileApi {
 
 final class _NoopBookingApi implements OwnerBookingApi {
   @override
-  Future<List<RemoteOwnerBooking>> listOwnerBookings(String accessToken) async =>
-      const [];
+  Future<List<RemoteOwnerBooking>> listOwnerBookings(
+    String accessToken,
+  ) async => const [];
 
   @override
   Future<RemoteOwnerBooking> createBooking(

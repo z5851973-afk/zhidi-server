@@ -12,6 +12,7 @@ import com.zhidi.server.account.UserRepository;
 import com.zhidi.server.account.UserRole;
 import com.zhidi.server.account.UserStatus;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.infrastructure.sms.SmsService;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -29,6 +30,7 @@ class AuthServiceTest {
 	private VerificationCodeGenerator generator;
 	private VerificationCodeHasher hasher;
 	private JwtTokenService jwtTokenService;
+	private SmsService smsService;
 	private AuthService service;
 
 	@BeforeEach
@@ -38,8 +40,9 @@ class AuthServiceTest {
 		generator = mock(VerificationCodeGenerator.class);
 		hasher = mock(VerificationCodeHasher.class);
 		jwtTokenService = mock(JwtTokenService.class);
+		smsService = mock(SmsService.class);
 		service = new AuthService(codeRepository, userRepository, generator, hasher,
-			jwtTokenService, Clock.fixed(NOW, ZoneOffset.UTC));
+			jwtTokenService, smsService, false, Clock.fixed(NOW, ZoneOffset.UTC));
 	}
 
 	@Test
@@ -53,6 +56,20 @@ class AuthServiceTest {
 		assertThat(result.expiresInSeconds()).isEqualTo(300);
 		verify(codeRepository).invalidateActiveForPhone("13800138000", NOW);
 		verify(codeRepository).save(any(SmsVerificationCode.class));
+		verify(smsService).sendVerificationCode("13800138000", "123456");
+	}
+
+	@Test
+	void hidesCodeWhenRealSmsProviderIsEnabled() {
+		when(generator.generate()).thenReturn("123456");
+		when(hasher.hash("13800138000", "123456")).thenReturn("digest");
+		service = new AuthService(codeRepository, userRepository, generator, hasher,
+			jwtTokenService, smsService, true, Clock.fixed(NOW, ZoneOffset.UTC));
+
+		SmsCodeIssueResult result = service.issueCode("13800138000", "127.0.0.1");
+
+		assertThat(result.simulatedCode()).isNull();
+		verify(smsService).sendVerificationCode("13800138000", "123456");
 	}
 
 	@Test

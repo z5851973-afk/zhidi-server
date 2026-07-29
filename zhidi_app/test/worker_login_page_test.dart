@@ -67,6 +67,36 @@ void main() {
     expect(find.text('verification code is invalid'), findsNothing);
   });
 
+  testWidgets('worker login ignores repeated taps while request is pending', (
+    tester,
+  ) async {
+    final state = await WorkerAppState.memory(
+      sessionStore: MemoryAuthSessionStore(),
+    );
+    final api = _PendingWorkerLoginApi();
+
+    await tester.pumpWidget(
+      WorkerAppScope(
+        state: state,
+        child: MaterialApp(home: WorkerLoginPage(api: api)),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).at(0), '19884199653');
+    await tester.enterText(find.byType(TextField).at(1), '989427');
+    await tester.tap(find.text('登录'));
+    await tester.tap(find.text('登录'));
+    await tester.pump();
+
+    expect(api.loginCalls, 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    api.completeLogin();
+    await tester.pumpAndSettle();
+
+    expect(state.isLoggedIn, isTrue);
+  });
+
   testWidgets('worker login uses remote profile instead of stale local name', (
     tester,
   ) async {
@@ -93,6 +123,79 @@ void main() {
     expect(state.profile.name, '模拟器闭环工人');
     expect(api.profileSyncStarted, isFalse);
   });
+
+  testWidgets('changing worker phone clears the previously issued code', (
+    tester,
+  ) async {
+    final state = await WorkerAppState.memory();
+    final api = _HangingProfileSyncApi();
+    await tester.pumpWidget(
+      WorkerAppScope(
+        state: state,
+        child: MaterialApp(home: WorkerLoginPage(api: api)),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField).at(0), '19884199653');
+    await tester.tap(find.text('获取验证码'));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), '19884199654');
+    await tester.pump();
+
+    expect(
+      tester.widget<TextField>(find.byType(TextField).at(1)).controller?.text,
+      isEmpty,
+    );
+    expect(find.text('获取验证码'), findsOneWidget);
+  });
+}
+
+final class _PendingWorkerLoginApi implements OwnerAuthApi {
+  final Completer<OwnerLoginResponse> _loginCompleter =
+      Completer<OwnerLoginResponse>();
+  int loginCalls = 0;
+
+  void completeLogin() {
+    _loginCompleter.complete(
+      const OwnerLoginResponse(
+        accessToken: 'jwt-worker',
+        tokenType: 'Bearer',
+        expiresInSeconds: 2_592_000,
+        user: AuthUser(
+          id: '01904f24-3f5b-7000-8000-000000000002',
+          phone: '19884199653',
+          status: 'ACTIVE',
+          roles: ['WORKER'],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<SmsCodeResponse> requestSmsCode(String phone) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<OwnerLoginResponse> loginOwner(String phone, String code) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<OwnerLoginResponse> loginWorker(String phone, String code) {
+    loginCalls++;
+    return _loginCompleter.future;
+  }
+
+  @override
+  Future<RemoteWorkerProfile> getWorkerProfile(String token) async {
+    return const RemoteWorkerProfile(phone: '19884199653');
+  }
+
+  @override
+  Future<void> updateWorkerProfile(String token, Map<String, dynamic> body) {
+    throw UnimplementedError();
+  }
 }
 
 final class _HangingProfileSyncApi implements OwnerAuthApi {

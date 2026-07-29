@@ -2,11 +2,11 @@ package com.zhidi.server.infrastructure.storage;
 
 import com.zhidi.server.common.api.ApiResponse;
 import com.zhidi.server.common.api.TraceIdFilter;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +23,12 @@ import org.springframework.web.server.ResponseStatusException;
 public class StorageController {
 
 	private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+	private static final Pattern CATEGORY_PATTERN = Pattern.compile("[a-z0-9-]{1,40}");
+	private static final Map<String, String> IMAGE_EXTENSIONS = Map.of(
+		"image/jpeg", ".jpg",
+		"image/png", ".png",
+		"image/webp", ".webp"
+	);
 
 	private final FileStorageService storage;
 
@@ -41,18 +47,17 @@ public class StorageController {
 		if (file.getSize() > MAX_FILE_SIZE) {
 			throw new ResponseStatusException(HttpStatus.PAYLOAD_TOO_LARGE, "文件超过 10MB 限制");
 		}
+		if (!CATEGORY_PATTERN.matcher(category).matches()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "文件分类不合法");
+		}
 
 		String contentType = file.getContentType();
-		if (contentType == null) {
-			contentType = "application/octet-stream";
+		String extension = IMAGE_EXTENSIONS.get(contentType);
+		if (extension == null) {
+			throw new ResponseStatusException(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "仅支持 JPG、PNG、WEBP 图片");
 		}
 
 		String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
-		String originalName = file.getOriginalFilename();
-		String extension = "";
-		if (originalName != null && originalName.contains(".")) {
-			extension = originalName.substring(originalName.lastIndexOf('.'));
-		}
 		String objectKey = category + "/" + today + "/" + UUID.randomUUID() + extension;
 
 		byte[] data;
@@ -63,9 +68,6 @@ public class StorageController {
 		}
 
 		String url = storage.upload(objectKey, data, contentType);
-		String downloadUrl = "https://" + System.getenv().getOrDefault("CDN_DOMAIN",
-			System.getenv().getOrDefault("TENCENT_COS_BUCKET", "zhidi-uploads") +
-			".cos.ap-guangzhou.myqcloud.com") + "/" + objectKey;
 
 		return ResponseEntity.ok(ApiResponse.ok(
 			new UploadResponse(url, objectKey), traceId()));

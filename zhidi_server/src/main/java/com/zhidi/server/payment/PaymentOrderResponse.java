@@ -17,6 +17,11 @@ public record PaymentOrderResponse(
 	String paymentMethod,
 	String transactionId,
 	Instant paidAt,
+	Instant ownerReportedPaidAt,
+	String offlinePaymentChannel,
+	String paymentReference,
+	String ownerPaymentNote,
+	Instant workerConfirmedReceivedAt,
 	Instant refundedAt,
 	Instant createdAt,
 	Instant updatedAt
@@ -30,6 +35,10 @@ public record PaymentOrderResponse(
 			order.getPlatformFee(), order.getWorkerSettlement(),
 			order.getStatus(), order.getPaymentMethod(),
 			order.getTransactionId(), order.getPaidAt(),
+			order.getOwnerReportedPaidAt(),
+			order.getOfflinePaymentChannel(),
+			order.getPaymentReference(), order.getOwnerPaymentNote(),
+			order.getWorkerConfirmedReceivedAt(),
 			order.getRefundedAt(),
 			order.getCreatedAt(), order.getUpdatedAt());
 	}

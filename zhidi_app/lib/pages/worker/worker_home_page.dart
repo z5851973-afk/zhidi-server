@@ -3,11 +3,12 @@
 // 底部导航三Tab：接单中心 / 消息 / 我的
 // ============================================================
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/worker_app_scope.dart';
 import '../../app/worker_app_state.dart';
-import '../../services/auth_api_client.dart';
 import '../../design/tokens.dart';
 import '../../design/components.dart';
 import 'order_detail_page.dart';
@@ -34,16 +35,51 @@ class WorkerHomePage extends StatefulWidget {
   State<WorkerHomePage> createState() => _WorkerHomePageState();
 }
 
-class _WorkerHomePageState extends State<WorkerHomePage> {
+class _WorkerHomePageState extends State<WorkerHomePage>
+    with WidgetsBindingObserver {
+  static const _remoteRefreshInterval = Duration(seconds: 8);
+
   int _tabIndex = 0;
   bool _fetched = false;
+  Timer? _remoteRefreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_fetched) return;
     _fetched = true;
-    WorkerAppScope.of(context).connectBackend(AuthApiClient());
+    unawaited(WorkerAppScope.of(context).connectBackend());
+    _startRemoteRefreshTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      unawaited(WorkerAppScope.of(context).fetchRemoteBookings());
+    }
+  }
+
+  @override
+  void dispose() {
+    _remoteRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _startRemoteRefreshTimer() {
+    _remoteRefreshTimer ??= Timer.periodic(_remoteRefreshInterval, (_) {
+      if (!mounted) return;
+      final state = WorkerAppScope.of(context);
+      if (state.isLoggedIn) {
+        unawaited(state.fetchRemoteBookings());
+      }
+    });
   }
 
   @override
@@ -74,45 +110,92 @@ class _WorkerHomePageState extends State<WorkerHomePage> {
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: _cardBg,
-          boxShadow: [
-            BoxShadow(
-              color: Color.fromRGBO(0, 0, 0, 0.04),
-              blurRadius: 8,
-              offset: Offset(0, -1),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _tabIndex,
-          onTap: (i) => setState(() => _tabIndex = i),
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: _cardBg,
-          selectedItemColor: _primary,
-          unselectedItemColor: _textMid,
-          selectedFontSize: 11,
-          unselectedFontSize: 11,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.assignment_outlined),
-              activeIcon: Icon(Icons.assignment),
-              label: '接单中心',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.message_outlined),
-              activeIcon: Icon(Icons.message),
-              label: '消息',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
-              label: '我的',
-            ),
-          ],
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          key: const Key('worker-bottom-navigation-content'),
+          decoration: const BoxDecoration(
+            color: _cardBg,
+            boxShadow: [
+              BoxShadow(
+                color: Color.fromRGBO(0, 0, 0, 0.04),
+                blurRadius: 8,
+                offset: Offset(0, -1),
+              ),
+            ],
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _tabIndex,
+            onTap: (i) => setState(() => _tabIndex = i),
+            type: BottomNavigationBarType.fixed,
+            backgroundColor: _cardBg,
+            selectedItemColor: _primary,
+            unselectedItemColor: _textMid,
+            selectedFontSize: 11,
+            unselectedFontSize: 11,
+            items: [
+              BottomNavigationBarItem(
+                icon: _navIconWithBadge(
+                  Icons.assignment_outlined,
+                  state.pendingOrders.length,
+                ),
+                activeIcon: _navIconWithBadge(
+                  Icons.assignment,
+                  state.pendingOrders.length,
+                ),
+                label: '接单中心',
+              ),
+              BottomNavigationBarItem(
+                icon: _navIconWithBadge(
+                  Icons.message_outlined,
+                  state.unreadMessageCount,
+                ),
+                activeIcon: _navIconWithBadge(
+                  Icons.message,
+                  state.unreadMessageCount,
+                ),
+                label: '消息',
+              ),
+              BottomNavigationBarItem(
+                icon: const Icon(Icons.person_outline),
+                activeIcon: const Icon(Icons.person),
+                label: '我的',
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _navIconWithBadge(IconData icon, int count) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Icon(icon),
+        if (count > 0)
+          Positioned(
+            right: -8,
+            top: -6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: _primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              constraints: const BoxConstraints(minWidth: 16),
+              child: Text(
+                count > 99 ? '99+' : '$count',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -311,7 +394,9 @@ class _PendingCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: Colors.blue.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(ZdRadius.pill),
-                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                      border: Border.all(
+                        color: Colors.blue.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Text(
                       '云端',
@@ -352,7 +437,16 @@ class _PendingCard extends StatelessWidget {
                   child: GestureDetector(
                     onTap: () async {
                       if (state.isRemoteOrder(order.id)) {
-                        await state.rejectRemoteBooking(order.id);
+                        final ok = await state.rejectRemoteBooking(order.id);
+                        if (!ok && context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                state.remoteBookingError ?? '拒单失败，请重试',
+                              ),
+                            ),
+                          );
+                        }
                       } else {
                         await WorkerAppScope.of(context).rejectOrder(order.id);
                       }
@@ -376,9 +470,19 @@ class _PendingCard extends StatelessWidget {
                 // 立即接单
                 Expanded(
                   child: GestureDetector(
-                    onTap: () {
+                    onTap: () async {
                       if (state.isRemoteOrder(order.id)) {
-                        state.acceptRemoteBooking(order.id);
+                        final ok = await state.acceptRemoteBooking(order.id);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              ok
+                                  ? '接单成功，请提出上门时间'
+                                  : state.remoteBookingError ?? '接单失败，请重试',
+                            ),
+                          ),
+                        );
                       } else {
                         _showAcceptDialog(context, order);
                       }
@@ -972,13 +1076,16 @@ class _ProfileTab extends StatelessWidget {
   Widget _menuItem(IconData icon, String label, VoidCallback onTap) {
     return ZdCard(
       padding: EdgeInsets.zero,
-      child: ListTile(
-        leading: Icon(icon, color: _textDark),
-        title: Text(label, style: ZdText.body),
-        trailing: Icon(Icons.chevron_right, color: _textLight),
-        onTap: onTap,
-        contentPadding: const EdgeInsets.symmetric(horizontal: ZdSpacing.lg),
-        splashColor: ZdColors.primary.withValues(alpha: 0.08),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          leading: Icon(icon, color: _textDark),
+          title: Text(label, style: ZdText.body),
+          trailing: Icon(Icons.chevron_right, color: _textLight),
+          onTap: onTap,
+          contentPadding: const EdgeInsets.symmetric(horizontal: ZdSpacing.lg),
+          splashColor: ZdColors.primary.withValues(alpha: 0.08),
+        ),
       ),
     );
   }

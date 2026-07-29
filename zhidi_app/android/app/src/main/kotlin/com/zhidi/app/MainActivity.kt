@@ -1,4 +1,4 @@
-package com.example.zhidi_app
+package com.zhidi.app
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

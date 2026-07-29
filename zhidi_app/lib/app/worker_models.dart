@@ -195,7 +195,7 @@ class WorkerOrder {
     WorkerOrderStatus.accepted => '已接单',
     WorkerOrderStatus.visitProposed => '等待业主确认上门时间',
     WorkerOrderStatus.visitScheduled => '上门时间已确认',
-    WorkerOrderStatus.arrivalPending => '双方已标记到达',
+    WorkerOrderStatus.arrivalPending => '等待到场确认',
     WorkerOrderStatus.onSite => '已到场',
     WorkerOrderStatus.quotePending => '报价已提交',
     WorkerOrderStatus.hired => '已被选中',

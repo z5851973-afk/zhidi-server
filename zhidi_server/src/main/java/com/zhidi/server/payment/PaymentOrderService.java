@@ -4,6 +4,9 @@ import com.zhidi.server.booking.Booking;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.booking.BookingStatus;
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.inspection.InspectionNode;
+import com.zhidi.server.inspection.InspectionNodeRepository;
+import com.zhidi.server.inspection.InspectionNodeStatus;
 import com.zhidi.server.quote.Quote;
 import com.zhidi.server.quote.QuoteItem;
 import com.zhidi.server.quote.QuoteRepository;
@@ -23,12 +26,18 @@ public class PaymentOrderService {
 	private final PaymentOrderRepository paymentOrders;
 	private final BookingRepository bookings;
 	private final QuoteRepository quotes;
+	private final InspectionNodeRepository inspectionNodes;
+	private final SettlementRepository settlements;
 
 	public PaymentOrderService(PaymentOrderRepository paymentOrders,
-			BookingRepository bookings, QuoteRepository quotes) {
+			BookingRepository bookings, QuoteRepository quotes,
+			InspectionNodeRepository inspectionNodes,
+			SettlementRepository settlements) {
 		this.paymentOrders = paymentOrders;
 		this.bookings = bookings;
 		this.quotes = quotes;
+		this.inspectionNodes = inspectionNodes;
+		this.settlements = settlements;
 	}
 
 	@Transactional
@@ -45,6 +54,18 @@ public class PaymentOrderService {
 		if (booking.getStatus() != BookingStatus.HIRED) {
 			throw new BusinessException(HttpStatus.CONFLICT,
 				"INVALID_STATUS", "只有在 HIRED 状态下才能创建支付订单");
+		}
+
+		List<InspectionNode> nodes =
+			inspectionNodes.findByBookingIdOrderBySortOrderAsc(bookingId);
+		if (nodes.isEmpty()) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INSPECTION_REQUIRED", "请先创建并完成验收节点");
+		}
+		if (nodes.stream().anyMatch(node ->
+				node.getStatus() != InspectionNodeStatus.PASSED)) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INSPECTION_NOT_PASSED", "全部验收节点通过后才能付款");
 		}
 
 		// 查找已存在的支付订单，防止重复创建
@@ -70,24 +91,69 @@ public class PaymentOrderService {
 				"INVALID_AMOUNT", "报价总价必须大于 0");
 		}
 
-		PaymentOrder order = PaymentOrder.create(
+		PaymentOrder order = PaymentOrder.createOffline(
 			booking.getId(), ownerUserId, booking.getWorkerUserId(),
 			acceptedQuote.getId(), total);
 
 		return PaymentOrderResponse.from(paymentOrders.saveAndFlush(order));
 	}
 
+	@Transactional
+	public PaymentOrderResponse reportOfflinePayment(UUID ownerUserId, UUID orderId,
+			String channel, String reference, String note) {
+		PaymentOrder order = findVisibleOrder(ownerUserId, orderId);
+		if (!order.getOwnerUserId().equals(ownerUserId)) {
+			throw new BusinessException(HttpStatus.FORBIDDEN,
+				"NOT_OWNER", "只有业主才能报告付款");
+		}
+		if (order.getStatus() == PaymentOrderStatus.OWNER_REPORTED_PAID) {
+			return PaymentOrderResponse.from(order);
+		}
+		try {
+			order.reportOfflinePayment(channel, reference, note);
+		} catch (IllegalArgumentException ex) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_PAYMENT_REPORT", ex.getMessage());
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		return PaymentOrderResponse.from(paymentOrders.saveAndFlush(order));
+	}
+
+	@Transactional
+	public PaymentOrderResponse confirmOfflineReceipt(UUID workerUserId,
+			UUID orderId) {
+		PaymentOrder order = findVisibleOrder(workerUserId, orderId);
+		if (!order.getWorkerUserId().equals(workerUserId)) {
+			throw new BusinessException(HttpStatus.FORBIDDEN,
+				"NOT_WORKER", "只有接单工人才能确认收款");
+		}
+		if (order.getStatus() == PaymentOrderStatus.PAID
+				&& order.getWorkerConfirmedReceivedAt() != null) {
+			return PaymentOrderResponse.from(order);
+		}
+		try {
+			order.confirmOfflineReceipt();
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		PaymentOrder saved = paymentOrders.saveAndFlush(order);
+		if (settlements.findByPaymentOrderId(orderId).isEmpty()) {
+			Settlement settlement = Settlement.create(
+				saved.getWorkerUserId(), saved.getBookingId(), saved.getId(),
+				saved.getWorkerSettlement());
+			settlement.markSettleable();
+			settlement.markSettled();
+			settlements.saveAndFlush(settlement);
+		}
+		return PaymentOrderResponse.from(saved);
+	}
+
 	@Transactional(readOnly = true)
 	public PaymentOrderResponse getOrder(UUID userId, UUID orderId) {
-		PaymentOrder order = paymentOrders.findById(orderId)
-			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
-				"ORDER_NOT_FOUND", "支付订单不存在"));
-		if (!order.getOwnerUserId().equals(userId)
-				&& !order.getWorkerUserId().equals(userId)) {
-			throw new BusinessException(HttpStatus.NOT_FOUND,
-				"ORDER_NOT_FOUND", "支付订单不存在");
-		}
-		return PaymentOrderResponse.from(order);
+		return PaymentOrderResponse.from(findVisibleOrder(userId, orderId));
 	}
 
 	@Transactional(readOnly = true)
@@ -130,5 +196,17 @@ public class PaymentOrderService {
 		}
 		throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
 			"REFUND_PROVIDER_NOT_CONFIGURED", "退款渠道尚未开通");
+	}
+
+	private PaymentOrder findVisibleOrder(UUID userId, UUID orderId) {
+		PaymentOrder order = paymentOrders.findById(orderId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在"));
+		if (!order.getOwnerUserId().equals(userId)
+				&& !order.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在");
+		}
+		return order;
 	}
 }

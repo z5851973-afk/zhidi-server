@@ -3,13 +3,12 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
-    namespace = "com.example.zhidi_app"
+    namespace = "com.zhidi.app"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -39,11 +38,11 @@ android {
     productFlavors {
         create("worker") {
             dimension = "app"
-            applicationId = "com.example.zhidi_app.worker"
+            applicationId = "com.zhidi.worker"
         }
         create("owner") {
             dimension = "app"
-            applicationId = "com.example.zhidi_app.owner"
+            applicationId = "com.zhidi.owner"
             manifestPlaceholders["appName"] = "知底"
         }
     }

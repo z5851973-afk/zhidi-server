@@ -7,10 +7,16 @@ class PaymentOrderModel {
   final double amount;
   final double platformFee;
   final double workerSettlement;
-  final String status; // PENDING/PAID/CANCELLED/REFUNDED/FAILED
+  final String
+  status; // PENDING/OWNER_REPORTED_PAID/PAID/CANCELLED/REFUNDED/FAILED
   final String? paymentMethod;
   final String? transactionId;
   final String? paidAt;
+  final String? ownerReportedPaidAt;
+  final String? offlinePaymentChannel;
+  final String? paymentReference;
+  final String? ownerPaymentNote;
+  final String? workerConfirmedReceivedAt;
   final String? refundedAt;
   final String createdAt;
   final String updatedAt;
@@ -28,6 +34,11 @@ class PaymentOrderModel {
     this.paymentMethod,
     this.transactionId,
     this.paidAt,
+    this.ownerReportedPaidAt,
+    this.offlinePaymentChannel,
+    this.paymentReference,
+    this.ownerPaymentNote,
+    this.workerConfirmedReceivedAt,
     this.refundedAt,
     required this.createdAt,
     required this.updatedAt,
@@ -47,6 +58,11 @@ class PaymentOrderModel {
       paymentMethod: json['paymentMethod'] as String?,
       transactionId: json['transactionId'] as String?,
       paidAt: json['paidAt'] as String?,
+      ownerReportedPaidAt: json['ownerReportedPaidAt'] as String?,
+      offlinePaymentChannel: json['offlinePaymentChannel'] as String?,
+      paymentReference: json['paymentReference'] as String?,
+      ownerPaymentNote: json['ownerPaymentNote'] as String?,
+      workerConfirmedReceivedAt: json['workerConfirmedReceivedAt'] as String?,
       refundedAt: json['refundedAt'] as String?,
       createdAt: json['createdAt'] as String,
       updatedAt: json['updatedAt'] as String,
@@ -54,12 +70,14 @@ class PaymentOrderModel {
   }
 
   bool get isPending => status == 'PENDING';
+  bool get isAwaitingWorkerReceipt => status == 'OWNER_REPORTED_PAID';
   bool get isPaid => status == 'PAID';
   bool get isRefunded => status == 'REFUNDED';
 
   String get statusLabel {
     return switch (status) {
       'PENDING' => '待支付',
+      'OWNER_REPORTED_PAID' => '待工人确认收款',
       'PAID' => '已支付',
       'CANCELLED' => '已取消',
       'REFUNDED' => '已退款',

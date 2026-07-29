@@ -46,6 +46,32 @@ void main() {
     );
   });
 
+  test('worker profile update keeps backend auth error envelope', () async {
+    final client = AuthApiClient(
+      httpClient: _QueueClient([
+        http.Response(
+          '{"code":"UNAUTHORIZED","message":"access token invalid","data":null}',
+          401,
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ]),
+    );
+
+    await expectLater(
+      client.updateWorkerProfile('stale-token', {'name': '张师傅'}),
+      throwsA(
+        isA<AuthApiException>()
+            .having((error) => error.code, 'code', 'UNAUTHORIZED')
+            .having(
+              (error) => error.message,
+              'message',
+              'access token invalid',
+            )
+            .having((error) => error.statusCode, 'statusCode', 401),
+      ),
+    );
+  });
+
   test('reports a typed error for a non-JSON response', () async {
     final client = AuthApiClient(
       httpClient: _QueueClient([

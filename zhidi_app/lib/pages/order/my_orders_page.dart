@@ -74,13 +74,14 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                     ),
                   ),
                   confirmDismiss: (_) async {
+                    final ownerState = OwnerAppScope.of(context);
                     final isRemote = order.id.startsWith('rm-');
                     final dialogTitle = isRemote ? '确认取消预约' : '确认删除';
                     final dialogContent = isRemote
                         ? '确定要取消「${order.workerName}」的预约吗？取消后不可恢复。'
                         : '确定要删除「${order.workerName}」的预约吗？';
                     final actionLabel = isRemote ? '取消预约' : '删除';
-                    return await showDialog<bool>(
+                    final confirmed = await showDialog<bool>(
                       context: context,
                       builder: (ctx) => AlertDialog(
                         title: Text(dialogTitle),
@@ -100,14 +101,43 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                         ],
                       ),
                     ) ?? false;
+                    if (!confirmed) return false;
+
+                    try {
+                      if (isRemote) {
+                        await ownerState.cancelRemoteBooking(order.id);
+                      } else {
+                        await ownerState.removeAppointment(order.id);
+                      }
+                    } catch (error) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('取消失败，请稍后重试：$error')),
+                        );
+                      }
+                      return false;
+                    }
+
+                    // Dismissible 要求 confirmDismiss 返回 true 前，数据源中已经
+                    // 移除对应项目；否则下一帧会触发 “still part of the tree”。
+                    final removed = !ownerState.appointments.any(
+                      (item) => item.id == order.id,
+                    );
+                    if (!removed && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('登录状态已失效，请重新登录后重试')),
+                      );
+                    }
+                    return removed;
                   },
                   onDismissed: (_) {
-                    if (order.id.startsWith('rm-')) {
-                      OwnerAppScope.of(context)
-                          .cancelRemoteBooking(order.id);
-                    } else {
-                      OwnerAppScope.of(context).removeAppointment(order.id);
-                    }
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          order.id.startsWith('rm-') ? '预约已取消' : '预约已删除',
+                        ),
+                      ),
+                    );
                   },
                   child: _OrderCard(order: order),
                 );

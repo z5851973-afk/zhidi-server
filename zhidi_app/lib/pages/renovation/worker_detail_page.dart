@@ -5,6 +5,7 @@ import '../../app/owner_app_scope.dart';
 import '../../app/owner_models.dart';
 import 'worker_chat_page.dart';
 import 'booking_success_page.dart';
+import 'construction_standards_page.dart';
 import '../../design/tokens.dart';
 import '../../services/auth_api_client.dart';
 import '../../services/worker_directory_api_client.dart';
@@ -111,6 +112,8 @@ class WorkerDetailPage extends StatefulWidget {
   final double? distance;
   final RemoteWorkerDirectoryProfile? remoteProfile;
   final WorkerCaseApi? caseApi;
+  final bool candidateSelected;
+  final Future<bool> Function()? onAddCandidate;
 
   const WorkerDetailPage({
     super.key,
@@ -119,6 +122,8 @@ class WorkerDetailPage extends StatefulWidget {
     this.distance,
     this.remoteProfile,
     this.caseApi,
+    this.candidateSelected = false,
+    this.onAddCandidate,
   });
 
   @override
@@ -128,6 +133,8 @@ class WorkerDetailPage extends StatefulWidget {
 class _WorkerDetailPageState extends State<WorkerDetailPage> {
   bool _savingFavorite = false;
   bool _booking = false;
+  bool _addingCandidate = false;
+  late bool _candidateSelected;
   bool _casesLoading = false;
   String? _casesError;
   List<RemoteWorkerCase> _remoteCases = const [];
@@ -137,6 +144,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   @override
   void initState() {
     super.initState();
+    _candidateSelected = widget.candidateSelected;
     if (widget.remoteProfile != null) {
       _casesLoading = true;
       Future<void>.microtask(_loadRemoteCases);
@@ -146,6 +154,9 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   @override
   void didUpdateWidget(covariant WorkerDetailPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.candidateSelected != widget.candidateSelected) {
+      _candidateSelected = widget.candidateSelected;
+    }
     if (oldWidget.remoteProfile?.userId != widget.remoteProfile?.userId ||
         oldWidget.caseApi != widget.caseApi) {
       _remoteCases = const [];
@@ -189,18 +200,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     '保洁': '清洁师傅',
   };
 
-  // 各工种默认技能
-  static const _defaultSkills = <String, List<String>>{
-    '拆除师傅': ['墙体拆除', '旧装修拆除', '铲墙皮', '垃圾清运', '地面破除', '门窗拆除'],
-    '水电师傅': ['水电改造', '管道安装', '电路布线', '开关插座'],
-    '泥工师傅': ['地砖铺贴', '墙砖铺贴', '地面找平', '砌墙抹灰'],
-    '防水师傅': ['厨卫防水', '阳台防水', '屋面防水', '地下室防潮'],
-    '木工师傅': ['全屋定制', '衣柜橱柜', '吊顶安装'],
-    '油漆师傅': ['墙面刷漆', '刮腻子', '艺术漆', '旧墙翻新'],
-    '安装师傅': ['灯具安装', '五金安装', '卫浴安装'],
-    '清洁师傅': ['开荒保洁', '全屋深度', '玻璃清洁'],
-  };
-
   // 工种 emoji
   static const _tradeEmoji = <String, String>{
     '拆除师傅': '👷',
@@ -212,44 +211,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     '安装师傅': '🔧',
     '清洁师傅': '🧹',
   };
-
-  // 基于工种+姓名的稳定 picsum URL
-  static List<String> _caseImages(WorkerDetail w) => List.generate(
-    6,
-    (i) => 'https://picsum.photos/seed/${w.name}_case$i/600/400',
-  );
-
-  static List<Review> _mockReviews(WorkerDetail w) => [
-    Review(
-      userName: '李先生',
-      city: '杭州',
-      rating: 5,
-      text: '师傅手艺确实好，${w.skills.first}做得非常到位，现场也收拾得很干净，下次装修还找他！',
-      photos: [
-        'https://picsum.photos/seed/${w.name}_r1a/400/400',
-        'https://picsum.photos/seed/${w.name}_r1b/400/400',
-      ],
-    ),
-    Review(
-      userName: '王女士',
-      city: '上海',
-      rating: 4,
-      text:
-          '整体满意，${w.skills.length > 1 ? w.skills[1] : w.skills.first}效果不错。中间有点小问题但师傅很快解决了，态度很好。',
-      photos: ['https://picsum.photos/seed/${w.name}_r2a/400/400'],
-    ),
-    Review(
-      userName: '张先生',
-      city: '南京',
-      rating: 5,
-      text: '对比了好几家最终选的他，没让我失望。${w.skills.join('、')}都在行，价格也公道，强烈推荐！',
-      photos: [
-        'https://picsum.photos/seed/${w.name}_r3a/400/400',
-        'https://picsum.photos/seed/${w.name}_r3b/400/400',
-        'https://picsum.photos/seed/${w.name}_r3c/400/400',
-      ],
-    ),
-  ];
 
   /// 从 mockWorkers 中动态构建 WorkerDetail
   WorkerDetail _buildFromMock(String workerName, String tradeKey) {
@@ -272,37 +233,23 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   WorkerDetail _buildFromRemote(RemoteWorkerDirectoryProfile remote) {
     final tradeKey = _remoteTradeLabel(remote.primaryTrade);
-    final skills = _defaultSkills[tradeKey] ?? ['基础施工'];
+    final skills = [tradeKey];
     final city = remote.serviceCity ?? '本地';
     final bio = remote.bio?.trim();
     final dailyRate = _formatDailyRate(remote.dailyRate);
     return WorkerDetail(
       name: remote.name,
       trades: [tradeKey],
-      rating: 4.8,
+      rating: 0,
       completedOrders: 0,
       years: remote.experienceYears,
-      positiveRate: 97,
-      distanceKm: widget.distance ?? 0,
+      positiveRate: 0,
+      distanceKm: 0,
       avatarEmoji: _tradeEmoji[tradeKey] ?? '👷',
       skills: skills,
       matchReason:
           '服务城市：$city。参考日薪：$dailyRate元/天。${bio?.isNotEmpty == true ? bio! : '该师傅资料来自平台服务端，已完成基础资料登记。'}',
-      reviews: _mockReviews(
-        WorkerDetail(
-          name: remote.name,
-          trades: [tradeKey],
-          rating: 4.8,
-          completedOrders: 0,
-          years: remote.experienceYears,
-          positiveRate: 97,
-          distanceKm: widget.distance ?? 0,
-          avatarEmoji: _tradeEmoji[tradeKey] ?? '👷',
-          skills: skills,
-          matchReason: '',
-          reviews: const [],
-        ),
-      ),
+      reviews: const [],
     );
   }
 
@@ -345,7 +292,15 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   }
 
   String _remoteTradeLabel(String primaryTrade) {
-    final value = primaryTrade.trim();
+    final value = primaryTrade.trim().toLowerCase();
+    if (value == 'demolition') return '拆除师傅';
+    if (value == 'plumbing') return '水电师傅';
+    if (value == 'waterproof') return '防水师傅';
+    if (value == 'masonry') return '泥工师傅';
+    if (value == 'carpentry') return '木工师傅';
+    if (value == 'painting') return '油漆师傅';
+    if (value == 'installation') return '安装师傅';
+    if (value == 'cleaning') return '清洁师傅';
     if (value.contains('拆')) return '拆除师傅';
     if (value.contains('水电')) return '水电师傅';
     if (value.contains('防水')) return '防水师傅';
@@ -452,7 +407,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               ).showSnackBar(const SnackBar(content: Text('正在打开分享面板')));
               SharePlus.instance.share(
                 ShareParams(
-                  text: '推荐一位知底认证师傅：${detail.name}，评分 ${detail.rating}。',
+                  text: '知底师傅资料：${detail.name}，${detail.years}年从业经验。',
                 ),
               );
             },
@@ -470,14 +425,14 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                 _buildBasicCard(detail),
                 // ── 2. 擅长领域 ──
                 _buildSkills(detail),
+                // ── 3. 服务范围 / 施工标准 / 工价 ──
+                _buildServiceInfo(detail),
                 // ── 4. 匹配说明 ──
                 _buildMatchReason(detail),
                 // ── 4.5. 施工案例 ──
                 _buildCasesSection(detail),
                 // ── 5. 业主评价 ──
                 _buildReviews(detail),
-                // ── 6. 服务说明 ──
-                _buildServiceInfo(detail),
                 const SizedBox(height: 20),
               ],
             ),
@@ -491,9 +446,8 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   // ── 基础信息卡 ──
   Widget _buildBasicCard(WorkerDetail w) {
-    // 高匹配判定：评分 >= 4.9 或 好评率 >= 99%
-    final isTop = w.rating >= 4.9 || w.positiveRate >= 99;
-    final badgeText = isTop ? '平台优选' : '高匹配';
+    final isTop = w.rating >= 4.9 && w.positiveRate >= 99;
+    final badgeText = widget.remoteProfile != null ? '资料已完善' : '资料待核验';
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -646,7 +600,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
-                            '高匹配',
+                            '服务器资料',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
@@ -655,6 +609,17 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      w.matchReason,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: _textMid,
+                        height: 1.45,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     // 评分 + 接单量 + 从业年限 强化行
@@ -670,16 +635,24 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       child: Row(
                         children: [
                           _buildStatItem(
-                            '${w.rating}',
-                            '分',
-                            isHighlighted: true,
+                            w.rating > 0 ? '${w.rating}' : '暂无',
+                            '评价',
+                            isHighlighted: w.rating > 0,
                           ),
                           _buildStatDivider(),
-                          _buildStatItem('${w.completedOrders}', '单'),
+                          _buildStatItem(
+                            w.completedOrders > 0
+                                ? '${w.completedOrders}'
+                                : '暂无',
+                            '成交记录',
+                          ),
                           _buildStatDivider(),
                           _buildStatItem('${w.years}', '年经验'),
                           _buildStatDivider(),
-                          _buildStatItem('${w.positiveRate}%', '好评率'),
+                          _buildStatItem(
+                            w.positiveRate > 0 ? '${w.positiveRate}%' : '暂无',
+                            '好评率',
+                          ),
                         ],
                       ),
                     ),
@@ -712,7 +685,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                 SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    '平台担保交易 · 不满意可协调处理',
+                    '资料与施工案例均来自平台服务器',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -724,7 +697,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
             ),
           ),
           const SizedBox(height: 10),
-          // 认证标签
+          // 当前可核验能力
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -735,10 +708,9 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
             child: const Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _CertTag(icon: Icons.verified_user, label: '实名认证'),
-                _CertTag(icon: Icons.workspace_premium, label: '平台考核'),
-                _CertTag(icon: Icons.shield, label: '已购保险'),
-                _CertTag(icon: Icons.thumb_up_alt, label: '信用良好'),
+                _CertTag(icon: Icons.badge_outlined, label: '资料已填写'),
+                _CertTag(icon: Icons.work_history_outlined, label: '年限已登记'),
+                _CertTag(icon: Icons.receipt_long_outlined, label: '服务端报价'),
               ],
             ),
           ),
@@ -860,72 +832,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   // ── 施工案例 ──
   Widget _buildCasesSection(WorkerDetail w) {
     if (widget.remoteProfile != null) return _buildRemoteCasesSection();
-    final images = _caseImages(w);
-    return Container(
-      key: const Key('worker-case-mock-gallery'),
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(12)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.photo_library_outlined, size: 18, color: _primary),
-              SizedBox(width: 6),
-              Text(
-                '施工案例',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _textDark,
-                ),
-              ),
-              Spacer(),
-              Text('共6组', style: TextStyle(fontSize: 12, color: _textLight)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            height: 150,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: images.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: SizedBox(
-                  width: 220,
-                  child: Image.network(
-                    images[i],
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) => Container(
-                      color: const Color(0xFFF0EDE8),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.broken_image,
-                        size: 32,
-                        color: _textLight,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildRemoteCasesSection() {
@@ -1066,7 +973,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 主视觉推荐理由
           Row(
             children: [
               Container(
@@ -1076,7 +982,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text(
-                  '系统优选',
+                  '资料说明',
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
@@ -1087,7 +993,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  '系统已基于您的【工种需求 + 装修阶段】为您优选该师傅',
+                  '请结合工种、从业年限、日薪和真实案例自主选择',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
@@ -1099,49 +1005,14 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
             ],
           ),
           const SizedBox(height: 12),
-          // 匹配原因行
           Text(
-            '${_getTradeTag(w)}经验丰富 · 累计${w.completedOrders}单 · 好评率${w.positiveRate}% · 距您${w.distanceKm}km',
+            '${_getTradeTag(w)} · ${w.years}年从业经验',
             style: const TextStyle(fontSize: 13, color: _textMid, height: 1.7),
           ),
           const SizedBox(height: 8),
           Text(
             w.matchReason,
             style: const TextStyle(fontSize: 13, color: _textMid, height: 1.7),
-          ),
-          const SizedBox(height: 10),
-          // 距离强调
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF0F8FF),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0x304A90D9)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.location_on_outlined,
-                  size: 14,
-                  color: Color(0xFF4A90D9),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '距您 ${w.distanceKm}km',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF4A90D9),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  '| 即时上门服务',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF6B9BD2)),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -1150,6 +1021,23 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   // ── 业主评价 ──
   Widget _buildReviews(WorkerDetail w) {
+    if (w.reviews.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.only(top: 14),
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.all(Radius.circular(12)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.rate_review_outlined, size: 18, color: _primary),
+            SizedBox(width: 8),
+            Text('暂无真实业主评价', style: TextStyle(fontSize: 14, color: _textMid)),
+          ],
+        ),
+      );
+    }
     // 好评关键词
     const keywords = ['靠谱', '准时', '干净', '无加价'];
 
@@ -1353,7 +1241,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               Icon(Icons.info_outline_rounded, size: 18, color: _primary),
               SizedBox(width: 6),
               Text(
-                '服务说明',
+                '服务范围',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -1373,16 +1261,30 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       return '拆除/砸墙/铲墙皮/垃圾清运/门窗拆除';
                     case '拆除工':
                       return '拆除/砸墙/垃圾清运';
+                    case '水电师傅':
+                      return '水电改造/强弱电布线/给排水改造/灯具安装';
                     case '水电工':
                       return '水电改造/布线/防水施工';
+                    case '泥工师傅':
+                      return '贴砖/砌墙/地面找平/砌墙抹灰';
                     case '泥瓦工':
                       return '贴砖/砌墙/地面找平/砌墙抹灰';
+                    case '防水师傅':
+                      return '厨卫防水/阳台防水/闭水试验/漏点修补';
+                    case '木工师傅':
+                      return '吊顶/柜体/木作定制';
                     case '木工':
                       return '吊顶/柜体/木作定制';
+                    case '油漆师傅':
+                      return '墙面处理/喷涂/旧墙翻新';
                     case '油漆工':
                       return '墙面处理/喷涂/墙纸';
+                    case '安装师傅':
+                      return '橱柜/卫浴/灯具安装';
                     case '安装工':
                       return '橱柜/卫浴/灯具安装';
+                    case '清洁师傅':
+                      return '开荒保洁/精保/除醛';
                     case '保洁':
                       return '开荒保洁/精保/除醛';
                     default:
@@ -1392,10 +1294,48 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                 .join('、'),
           ),
           const SizedBox(height: 10),
+          InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const ConstructionStandardsPage(),
+              ),
+            ),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: _primaryLight,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFE0CC)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.verified_user_outlined, size: 18, color: _primary),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '施工标准',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '查看平台施工标准',
+                    style: TextStyle(fontSize: 12, color: _textMid),
+                  ),
+                  Icon(Icons.chevron_right_rounded, size: 18, color: _textLight),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
           const _BuildServiceRow(
             Icons.attach_money_rounded,
-            '费用说明',
-            '平台统一标准价，无隐藏收费，施工前确认报价',
+            '工价标准（平台统一）',
+            '按服务端固定价格目录报价，施工前由师傅提交明细清单',
           ),
           const SizedBox(height: 10),
           const _BuildServiceRow(
@@ -1478,6 +1418,17 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                   flex: 2,
                   child: GestureDetector(
                     onTap: () async {
+                      if (widget.onAddCandidate != null) {
+                        if (_candidateSelected || _addingCandidate) return;
+                        setState(() => _addingCandidate = true);
+                        final added = await widget.onAddCandidate!();
+                        if (!mounted) return;
+                        setState(() {
+                          _addingCandidate = false;
+                          if (added) _candidateSelected = true;
+                        });
+                        return;
+                      }
                       if (_booking) return;
                       final d = _resolveDetail();
                       final trade = d.trades.isEmpty ? '施工' : d.trades.first;
@@ -1555,7 +1506,15 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       ),
                       alignment: Alignment.center,
                       child: Text(
-                        _booking ? '预约中...' : '立即预约师傅',
+                        widget.onAddCandidate != null
+                            ? _candidateSelected
+                                  ? '已添加候选'
+                                  : _addingCandidate
+                                  ? '添加中...'
+                                  : '添加为候选'
+                            : _booking
+                            ? '预约中...'
+                            : '立即预约师傅',
                         style: const TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,

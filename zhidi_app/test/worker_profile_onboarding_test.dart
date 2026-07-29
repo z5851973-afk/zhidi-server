@@ -75,6 +75,51 @@ void main() {
     expect(find.text('完善工人资料'), findsNothing);
     expect(find.text('工匠工作台'), findsOneWidget);
   });
+
+  testWidgets('expired worker session logs out during profile save', (
+    tester,
+  ) async {
+    final state = await WorkerAppState.memory();
+    await state.loginOnline(
+      _loginResponse,
+      remoteProfile: const RemoteWorkerProfile(
+        phone: '13800138102',
+        serviceCity: '成都',
+        profileComplete: false,
+      ),
+    );
+    await tester.pumpWidget(
+      WorkerApp(
+        workerState: state,
+        workerProfileApi: _ExpiredSessionProfileApi(),
+        workerHome: const Scaffold(body: Text('工匠工作台')),
+      ),
+    );
+    await tester.pump();
+
+    await tester.enterText(find.byKey(const Key('worker-profile-name')), '张师傅');
+    await tester.enterText(find.byKey(const Key('worker-profile-city')), '成都');
+    await tester.tap(find.byKey(const Key('worker-profile-trade')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('水电工').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('worker-profile-years')), '8');
+    await tester.enterText(
+      find.byKey(const Key('worker-profile-daily-rate')),
+      '500',
+    );
+    await tester.enterText(
+      find.byKey(const Key('worker-profile-bio')),
+      '擅长旧房水电改造',
+    );
+    await tester.ensureVisible(find.byKey(const Key('worker-profile-save')));
+    await tester.tap(find.byKey(const Key('worker-profile-save')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(state.isLoggedIn, isFalse);
+    expect(find.text('登录已过期，请重新登录'), findsOneWidget);
+  });
 }
 
 const _loginResponse = OwnerLoginResponse(
@@ -112,6 +157,36 @@ final class _ProfileApi implements OwnerAuthApi {
         bio: '擅长旧房水电改造',
         profileComplete: true,
       );
+
+  @override
+  Future<OwnerLoginResponse> loginOwner(String phone, String code) =>
+      throw UnimplementedError();
+
+  @override
+  Future<OwnerLoginResponse> loginWorker(String phone, String code) =>
+      throw UnimplementedError();
+
+  @override
+  Future<SmsCodeResponse> requestSmsCode(String phone) =>
+      throw UnimplementedError();
+}
+
+final class _ExpiredSessionProfileApi implements OwnerAuthApi {
+  @override
+  Future<void> updateWorkerProfile(
+    String token,
+    Map<String, dynamic> body,
+  ) async {
+    throw const AuthApiException(
+      code: 'UNAUTHORIZED',
+      message: 'access token invalid',
+      statusCode: 401,
+    );
+  }
+
+  @override
+  Future<RemoteWorkerProfile> getWorkerProfile(String token) =>
+      throw UnimplementedError();
 
   @override
   Future<OwnerLoginResponse> loginOwner(String phone, String code) =>

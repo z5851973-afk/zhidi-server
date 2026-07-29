@@ -3,6 +3,17 @@ import '../../../design/tokens.dart';
 import '../../../services/auth_api_client.dart';
 import '../../../services/service_request_api_client.dart';
 import '../../../services/worker_directory_api_client.dart';
+import '../../renovation/worker_detail_page.dart';
+
+class CandidatePickerResult {
+  const CandidatePickerResult({
+    required this.requestId,
+    required this.candidateIds,
+  });
+
+  final String requestId;
+  final Set<String> candidateIds;
+}
 
 /// 候选人选择页 — 业主为已创建的需求挑选多个候选师傅
 ///
@@ -57,9 +68,7 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
       if (!mounted) return;
       // filter by trade match
       setState(() {
-        _workers = workers
-            .where((w) => _tradeMatch(w.primaryTrade))
-            .toList();
+        _workers = workers.where((w) => _tradeMatch(w.primaryTrade)).toList();
         _loadingWorkers = false;
       });
     } catch (e) {
@@ -100,22 +109,71 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
 
   bool _isAdding(String userId) => _addingIds.contains(userId);
 
-  Future<void> _addCandidate(RemoteWorkerDirectoryProfile worker) async {
+  Future<bool> _addCandidate(RemoteWorkerDirectoryProfile worker) async {
     final uid = worker.userId;
-    if (_addingIds.contains(uid)) return;
+    if (_candidateIds.contains(uid)) return true;
+    if (_candidateIds.length >= 3) {
+      _showError('最多选择 3 位候选师傅');
+      return false;
+    }
+    if (_addingIds.contains(uid)) return false;
     setState(() => _addingIds = {..._addingIds, uid});
     try {
       await _api.addCandidate(widget.accessToken, widget.requestId, uid);
-      if (!mounted) return;
+      if (!mounted) return false;
       setState(() {
         _candidateIds = {..._candidateIds, uid};
         _addingIds = _addingIds.difference({uid});
       });
+      return true;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
+      if (_isAlreadyCandidateError(e)) {
+        setState(() {
+          _candidateIds = {..._candidateIds, uid};
+          _addingIds = _addingIds.difference({uid});
+        });
+        return true;
+      }
       setState(() => _addingIds = _addingIds.difference({uid}));
       _showError('添加失败: ${e is AuthApiException ? e.message : '请重试'}');
+      return false;
     }
+  }
+
+  bool _isAlreadyCandidateError(Object error) {
+    if (error is! AuthApiException) return false;
+    final code = error.code.toUpperCase();
+    final message = error.message;
+    return code.contains('CANDIDATE_ALREADY') ||
+        code.contains('ALREADY_CANDIDATE') ||
+        message.contains('已经是候选') ||
+        message.contains('已是候选');
+  }
+
+  Future<void> _openWorker(RemoteWorkerDirectoryProfile worker) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => WorkerDetailPage(
+          workerName: worker.name,
+          remoteProfile: worker,
+          candidateSelected: _isCandidate(worker.userId),
+          onAddCandidate: () => _addCandidate(worker),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  void _completeSelection() {
+    if (_candidateIds.isEmpty) return;
+    Navigator.pop(
+      context,
+      CandidatePickerResult(
+        requestId: widget.requestId,
+        candidateIds: Set.unmodifiable(_candidateIds),
+      ),
+    );
   }
 
   void _showError(String message) {
@@ -139,8 +197,11 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios,
-              color: ZdColors.textPrimary, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios,
+            color: ZdColors.textPrimary,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context, _candidateIds),
         ),
         title: const Text(
@@ -154,6 +215,17 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         centerTitle: true,
       ),
       body: _buildBody(),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: FilledButton(
+            key: const Key('candidate-complete'),
+            onPressed: _candidateIds.isEmpty ? null : _completeSelection,
+            child: Text('完成选择（已选 ${_candidateIds.length}/3）'),
+          ),
+        ),
+      ),
     );
   }
 
@@ -166,8 +238,11 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded,
-                size: 48, color: ZdColors.textHint),
+            const Icon(
+              Icons.cloud_off_rounded,
+              size: 48,
+              color: ZdColors.textHint,
+            ),
             const SizedBox(height: 12),
             Text(_error!, style: ZdText.caption),
           ],
@@ -194,6 +269,8 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
                       worker: worker,
                       isCandidate: _isCandidate(worker.userId),
                       isAdding: _isAdding(worker.userId),
+                      canAdd: _candidateIds.length < 3,
+                      onView: () => _openWorker(worker),
                       onAdd: () => _addCandidate(worker),
                     );
                   },
@@ -235,26 +312,32 @@ class _RequestHeader extends StatelessWidget {
               color: const Color(0xFFFFF0E5),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.engineering_rounded,
-                color: ZdColors.primary, size: 20),
+            child: const Icon(
+              Icons.engineering_rounded,
+              color: ZdColors.primary,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('$trade · $cityName',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                        color: ZdColors.textPrimary)),
+                Text(
+                  '${_tradeLabel(trade)} · $cityName',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: ZdColors.textPrimary,
+                  ),
+                ),
                 const SizedBox(height: 2),
                 Text(
-                  candidateCount > 0
-                      ? '已选 $candidateCount 位候选人'
-                      : '请为需求挑选候选师傅',
+                  candidateCount > 0 ? '已选 $candidateCount 位候选人' : '请为需求挑选候选师傅',
                   style: const TextStyle(
-                      fontSize: 12, color: ZdColors.textSecondary),
+                    fontSize: 12,
+                    color: ZdColors.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -267,8 +350,11 @@ class _RequestHeader extends StatelessWidget {
                 color: ZdColors.successSoft,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.check_rounded,
-                  size: 18, color: ZdColors.success),
+              child: const Icon(
+                Icons.check_rounded,
+                size: 18,
+                color: ZdColors.success,
+              ),
             ),
         ],
       ),
@@ -282,116 +368,157 @@ class _CandidateItem extends StatelessWidget {
     required this.worker,
     required this.isCandidate,
     required this.isAdding,
+    required this.canAdd,
+    required this.onView,
     required this.onAdd,
   });
 
   final RemoteWorkerDirectoryProfile worker;
   final bool isCandidate;
   final bool isAdding;
+  final bool canAdd;
+  final VoidCallback onView;
   final VoidCallback onAdd;
 
   String get _avatarLabel => worker.name.isNotEmpty ? worker.name[0] : '工';
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isCandidate ? const Color(0xFFFAF8F5) : Colors.white,
-        borderRadius: BorderRadius.circular(ZdRadius.card),
-        border: isCandidate
-            ? Border.all(color: ZdColors.success.withAlpha(80))
-            : null,
-        boxShadow: ZdShadow.card,
-      ),
-      child: Row(
-        children: [
-          // 头像
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF5F0EB),
-              borderRadius: BorderRadius.circular(ZdRadius.md),
-            ),
-            alignment: Alignment.center,
-            child: Text(
-              _avatarLabel,
-              style: const TextStyle(
+    return InkWell(
+      onTap: onView,
+      borderRadius: BorderRadius.circular(ZdRadius.card),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isCandidate ? const Color(0xFFFAF8F5) : Colors.white,
+          borderRadius: BorderRadius.circular(ZdRadius.card),
+          border: isCandidate
+              ? Border.all(color: ZdColors.success.withAlpha(80))
+              : null,
+          boxShadow: ZdShadow.card,
+        ),
+        child: Row(
+          children: [
+            // 头像
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F0EB),
+                borderRadius: BorderRadius.circular(ZdRadius.md),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                _avatarLabel,
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w700,
-                  color: ZdColors.primaryDark),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // 信息
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(worker.name,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                            color: ZdColors.textPrimary)),
-                    if (isCandidate) ...[
-                      const SizedBox(width: 6),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: ZdColors.successSoft,
-                          borderRadius: BorderRadius.circular(ZdRadius.pill),
-                        ),
-                        child: const Text('已选',
-                            style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: ZdColors.success)),
-                      ),
-                    ],
-                  ],
+                  color: ZdColors.primaryDark,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  worker.primaryTrade,
-                  style: const TextStyle(
-                      fontSize: 13, color: ZdColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          // 操作按钮
-          if (isCandidate)
-            const Icon(Icons.check_circle_rounded,
-                size: 28, color: ZdColors.success)
-          else if (isAdding)
-            const SizedBox(
-              width: 28,
-              height: 28,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            GestureDetector(
-              onTap: onAdd,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: ZdColors.primary,
-                  borderRadius: BorderRadius.circular(ZdRadius.pill),
-                ),
-                child: const Text('添加',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
               ),
             ),
-        ],
+            const SizedBox(width: 12),
+            // 信息
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        worker.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                          color: ZdColors.textPrimary,
+                        ),
+                      ),
+                      if (isCandidate) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: ZdColors.successSoft,
+                            borderRadius: BorderRadius.circular(ZdRadius.pill),
+                          ),
+                          child: const Text(
+                            '已选',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: ZdColors.success,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _tradeLabel(worker.primaryTrade),
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: ZdColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // 操作按钮
+            if (isCandidate)
+              const Icon(
+                Icons.check_circle_rounded,
+                size: 28,
+                color: ZdColors.success,
+              )
+            else if (isAdding)
+              const SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              GestureDetector(
+                onTap: canAdd ? onAdd : null,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: canAdd ? ZdColors.primary : ZdColors.textHint,
+                    borderRadius: BorderRadius.circular(ZdRadius.pill),
+                  ),
+                  child: Text(
+                    canAdd ? '添加' : '已满',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
+}
+
+String _tradeLabel(String apiTrade) {
+  return switch (apiTrade.trim()) {
+    'demolition' => '拆除',
+    'plumbing' => '水电',
+    'masonry' => '泥瓦',
+    'waterproof' => '防水',
+    'carpentry' => '木工',
+    'painting' => '油漆',
+    'installation' => '安装',
+    'cleaning' => '保洁',
+    final value => value,
+  };
 }

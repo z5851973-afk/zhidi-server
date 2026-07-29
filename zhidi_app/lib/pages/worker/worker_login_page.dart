@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import '../../design/tokens.dart';
 import '../../app/worker_app_scope.dart';
 import '../../services/auth_api_client.dart';
-import '../../services/daily_report_api_client.dart';
 import '../../services/worker_booking_api_client.dart';
 
 class WorkerLoginPage extends StatefulWidget {
@@ -28,6 +27,7 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
   bool _sendingCode = false;
   int _countdown = 0;
   Timer? _countdownTimer;
+  String? _codePhone;
   late final OwnerAuthApi _api;
 
   @override
@@ -57,6 +57,7 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
     try {
       final response = await _api.requestSmsCode(phone);
       if (!mounted) return;
+      _codePhone = phone;
       if (response.simulatedCode case final code?) {
         _codeController.text = code;
         ScaffoldMessenger.of(
@@ -93,6 +94,7 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
   }
 
   Future<void> _login() async {
+    if (_loading) return;
     if (!_agreeTerms) {
       ScaffoldMessenger.of(
         context,
@@ -106,12 +108,16 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
       ).showSnackBar(const SnackBar(content: Text('请输入手机号和验证码')));
       return;
     }
+    final phone = _phoneController.text.trim();
+    if (_codePhone != null && _codePhone != phone) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('手机号已更改，请重新获取验证码')),
+      );
+      return;
+    }
     final scope = WorkerAppScope.of(context);
     setState(() => _loading = true);
-    await Future.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
     try {
-      final phone = _phoneController.text.trim();
       final code = _codeController.text.trim();
       final loginResp = await _api.loginWorker(phone, code);
       RemoteWorkerProfile? remoteProfile;
@@ -125,19 +131,14 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
         api: WorkerBookingApiClient(),
         accessToken: loginResp.accessToken,
       );
-      scope.initReportApi(
-        api: DailyReportApiClient(),
-        accessToken: loginResp.accessToken,
-      );
-
       if (!mounted) return;
       // WorkerApp 会根据真实登录状态切换首页。
     } catch (error) {
       if (!mounted) return;
       _showAuthError(error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (!mounted) return;
-    setState(() => _loading = false);
   }
 
   void _showAuthError(Object error, {bool sendingCode = false}) {
@@ -207,6 +208,15 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
               // 手机号输入
               TextField(
                 controller: _phoneController,
+                onChanged: (value) {
+                  if (_codePhone == null || value.trim() == _codePhone) return;
+                  _countdownTimer?.cancel();
+                  setState(() {
+                    _codePhone = null;
+                    _countdown = 0;
+                    _codeController.clear();
+                  });
+                },
                 keyboardType: TextInputType.phone,
                 maxLength: 11,
                 decoration: InputDecoration(
