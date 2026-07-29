@@ -17,7 +17,8 @@ class PaymentOrderOfflineFlowTest {
 
 		assertThat(order.getPaymentMethod()).isEqualTo("OFFLINE");
 		assertThat(order.getPlatformFee()).isEqualByComparingTo("0.00");
-		assertThat(order.getWorkerSettlement()).isEqualByComparingTo("1200.00");
+		assertThat(order.getWorkerSettlement()).isEqualByComparingTo("1080.00");
+		assertThat(order.getWarrantyRetention()).isEqualByComparingTo("120.00");
 		assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.PENDING);
 	}
 

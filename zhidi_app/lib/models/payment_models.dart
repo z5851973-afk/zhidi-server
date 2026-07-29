@@ -7,6 +7,7 @@ class PaymentOrderModel {
   final double amount;
   final double platformFee;
   final double workerSettlement;
+  final double warrantyRetention;
   final String
   status; // PENDING/OWNER_REPORTED_PAID/PAID/CANCELLED/REFUNDED/FAILED
   final String? paymentMethod;
@@ -30,6 +31,7 @@ class PaymentOrderModel {
     required this.amount,
     required this.platformFee,
     required this.workerSettlement,
+    required this.warrantyRetention,
     required this.status,
     this.paymentMethod,
     this.transactionId,
@@ -54,6 +56,8 @@ class PaymentOrderModel {
       amount: (json['amount'] as num).toDouble(),
       platformFee: (json['platformFee'] as num).toDouble(),
       workerSettlement: (json['workerSettlement'] as num).toDouble(),
+      warrantyRetention: (json['warrantyRetention'] as num?)?.toDouble() ??
+          _calculateWarrantyRetention(json),
       status: json['status'] as String,
       paymentMethod: json['paymentMethod'] as String?,
       transactionId: json['transactionId'] as String?,
@@ -85,6 +89,14 @@ class PaymentOrderModel {
       _ => status,
     };
   }
+}
+
+double _calculateWarrantyRetention(Map<String, dynamic> json) {
+  final amount = (json['amount'] as num).toDouble();
+  final platformFee = (json['platformFee'] as num).toDouble();
+  final workerSettlement = (json['workerSettlement'] as num).toDouble();
+  final retained = amount - platformFee - workerSettlement;
+  return retained <= 0 ? 0 : double.parse(retained.toStringAsFixed(2));
 }
 
 class SettlementModel {

@@ -100,7 +100,7 @@ class PaymentOrderServiceOfflineTest {
 	}
 
 	@Test
-	void workerConfirmationCreatesAnAlreadyReceivedSettlement() {
+	void workerConfirmationCreatesANinetyPercentSettlementAndKeepsTenPercentWarrantyRetention() {
 		UUID orderId = UUID.randomUUID();
 		UUID ownerId = UUID.randomUUID();
 		UUID workerId = UUID.randomUUID();
@@ -121,7 +121,9 @@ class PaymentOrderServiceOfflineTest {
 		ArgumentCaptor<Settlement> captor = ArgumentCaptor.forClass(Settlement.class);
 		verify(settlements).saveAndFlush(captor.capture());
 		assertThat(captor.getValue().getStatus()).isEqualTo(SettlementStatus.SETTLED);
-		assertThat(captor.getValue().getAmount()).isEqualByComparingTo("360.00");
+		assertThat(captor.getValue().getAmount()).isEqualByComparingTo("324.00");
+		assertThat(response.workerSettlement()).isEqualByComparingTo("324.00");
+		assertThat(response.warrantyRetention()).isEqualByComparingTo("36.00");
 	}
 
 	@Test

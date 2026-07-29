@@ -284,9 +284,15 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
               const Divider(height: 16, color: _line),
               _row('应付金额', '¥${order.amount.toStringAsFixed(2)}', bold: true),
               _row(
-                '工人结算',
+                '工人可结算 90%',
                 '¥${order.workerSettlement.toStringAsFixed(2)}',
                 color: _textLight,
+                fontSize: 12,
+              ),
+              _row(
+                '质保金冻结 10%',
+                '¥${order.warrantyRetention.toStringAsFixed(2)}',
+                color: _primary,
                 fontSize: 12,
               ),
             ],

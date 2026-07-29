@@ -16,6 +16,8 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "payment_orders")
 public class PaymentOrder extends BaseEntity {
+	private static final BigDecimal WARRANTY_RETENTION_RATE =
+		new BigDecimal("0.10");
 
 	@JdbcTypeCode(SqlTypes.BINARY)
 	@Column(name = "booking_id", nullable = false, updatable = false,
@@ -104,7 +106,9 @@ public class PaymentOrder extends BaseEntity {
 			bookingId, ownerUserId, workerUserId, quoteId, amount);
 		order.paymentMethod = "OFFLINE";
 		order.platformFee = BigDecimal.ZERO.setScale(2);
-		order.workerSettlement = amount.setScale(2,
+		order.workerSettlement = amount
+			.subtract(calculateWarrantyRetention(amount))
+			.setScale(2,
 			java.math.RoundingMode.HALF_UP);
 		return order;
 	}
@@ -116,6 +120,13 @@ public class PaymentOrder extends BaseEntity {
 	public BigDecimal getAmount() { return amount; }
 	public BigDecimal getPlatformFee() { return platformFee; }
 	public BigDecimal getWorkerSettlement() { return workerSettlement; }
+	public BigDecimal getWarrantyRetention() {
+		BigDecimal retained = amount
+			.subtract(platformFee)
+			.subtract(workerSettlement)
+			.setScale(2, java.math.RoundingMode.HALF_UP);
+		return retained.max(BigDecimal.ZERO.setScale(2));
+	}
 	public PaymentOrderStatus getStatus() { return status; }
 	public String getPaymentMethod() { return paymentMethod; }
 	public String getTransactionId() { return transactionId; }
@@ -156,6 +167,11 @@ public class PaymentOrder extends BaseEntity {
 
 	private static String normalize(String value) {
 		return value == null || value.isBlank() ? null : value.trim();
+	}
+
+	private static BigDecimal calculateWarrantyRetention(BigDecimal amount) {
+		return amount.multiply(WARRANTY_RETENTION_RATE)
+			.setScale(2, java.math.RoundingMode.HALF_UP);
 	}
 
 	public void markPaid(String transactionId, String paymentMethod) {
