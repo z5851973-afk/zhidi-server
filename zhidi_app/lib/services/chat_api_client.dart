@@ -17,6 +17,8 @@ abstract interface class ChatApi {
     int size = 30,
   });
 
+  Future<void> markRoomRead(String accessToken, String roomId);
+
   Future<ChatMessageModel> sendMessage(
     String accessToken,
     String roomId, {
@@ -105,6 +107,24 @@ final class ChatApiClient implements ChatApi {
     }
 
     throw _chatApiException(response, fallbackCode: 'CHAT_MESSAGES_FAILED', fallbackMessage: '获取聊天记录失败');
+  }
+
+  @override
+  Future<void> markRoomRead(String accessToken, String roomId) async {
+    final response = await _httpClient
+        .post(
+          Uri.parse('$baseUrl/api/v1/chat/rooms/$roomId/read'),
+          headers: _headers(accessToken),
+        )
+        .timeout(requestTimeout);
+
+    if (response.statusCode == 200 || response.statusCode == 204) return;
+
+    throw _chatApiException(
+      response,
+      fallbackCode: 'CHAT_MARK_READ_FAILED',
+      fallbackMessage: '标记已读失败',
+    );
   }
 
   @override

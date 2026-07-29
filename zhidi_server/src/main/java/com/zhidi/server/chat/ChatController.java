@@ -58,6 +58,14 @@ public class ChatController {
 		return ResponseEntity.ok(ApiResponse.ok(messages, traceId()));
 	}
 
+	@PostMapping("/rooms/{roomId}/read")
+	ResponseEntity<ApiResponse<Void>> markRoomRead(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID roomId) {
+		chatRoomService.markAllRead(roomId, principal.userId());
+		return ResponseEntity.ok(ApiResponse.ok(null, traceId()));
+	}
+
 	@PostMapping("/rooms/{roomId}/messages")
 	ResponseEntity<ApiResponse<ChatMessageResponse>> sendMessage(
 			@AuthenticationPrincipal CurrentUserPrincipal principal,

@@ -73,6 +73,7 @@ zhidi/
 - 2026-07-29 已按“业主直连工人、平台只做保障”的产品初心微调业主端“找师傅”页：保留现有沉浸式照片工种卡，不改成平台派单/分配模式；顶部说明从“平台马上匹配”改为“看资料、看案例、看工价，自己选师傅”；工种卡可用状态从“X位可接单/0位可接单”调整为“X位可预约/暂无可约 · 先看工价”，弱化平台分配感并降低 0 人状态的挫败感。已通过 `test/trade_select_page_visual_test.dart`、双端登录回归测试与 `flutter analyze`，并重新构建安装业主端公网 debug APK 到 `emulator-5554`。
 - 2026-07-29 已修复业主端“我的家”预选候选师傅后误显示施工流程的问题：顶部工作台会根据候选状态切换为候选预约阶段或施工阶段；`PENDING/ACCEPTED/VISIT/ARRIVAL/ON_SITE/QUOTE_PENDING` 显示“师傅 · 候选”、预约/报价进度、预约记录与报价比价，不再显示“施工中/施工记录/验收”；只有 `HIRED` 后才进入施工项目文案。新增 `preselected candidate does not show construction workflow` 回归，相关“我的家/报价/验收”测试与 `flutter analyze` 通过；已重新构建并安装业主端公网 debug APK 到 `emulator-5554`。
 - 2026-07-29 已修复工人端消息页不显示业主聊天消息的问题：工人首页“消息”Tab 现在会调用真实 `GET /api/v1/chat/rooms` 展示聊天会话预览，并保留原订单/报价/验收通知；点击聊天会话进入同一套 `ChatDetailPage` 真实聊天室。新增 `worker messages tab shows remote chat room previews` 回归，`test/worker_bottom_navigation_test.dart`、`test/chat_api_client_test.dart` 与 `flutter analyze` 通过；已重新构建并安装工人端公网 debug APK 到 `emulator-5556`。
+- 2026-07-29 已修复工人端消息会话点击后未读气泡不消除的问题：后端新增 `POST /api/v1/chat/rooms/{roomId}/read` 标记房间已读；Flutter 聊天详情页打开后会调用已读接口，工人端消息列表点击会话时先本地乐观清零并在返回后刷新服务器会话列表；进入消息 Tab 时也会把本地订单/报价通知标为已读，避免底部消息红点进入页面后仍停留。新增 `marks a chat room as read` 和工人端消息红点回归，生产 ECS 健康检查 `UP` 且 Swagger 已包含新接口。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。
@@ -151,6 +152,7 @@ GET /api/v1/inspection-nodes/{nodeId}/records
 GET /api/v1/chat/rooms
 POST /api/v1/chat/rooms/by-booking/{bookingId}
 GET /api/v1/chat/rooms/{roomId}/messages
+POST /api/v1/chat/rooms/{roomId}/read
 POST /api/v1/chat/rooms/{roomId}/messages
 POST /api/v1/payment/orders
 GET /api/v1/payment/orders/{orderId}

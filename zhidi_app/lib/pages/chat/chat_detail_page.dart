@@ -18,19 +18,20 @@ class ChatDetailPage extends StatefulWidget {
     required this.otherUserName,
     required this.accessToken,
     required this.currentUserId,
+    this.api,
   });
 
   final String roomId;
   final String otherUserName;
   final String accessToken;
   final String currentUserId;
+  final ChatApi? api;
 
   @override
   State<ChatDetailPage> createState() => _ChatDetailPageState();
 }
 
 class _ChatDetailPageState extends State<ChatDetailPage> {
-  final _api = ChatApiClient();
   final _wsService = ChatWebSocketService();
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
@@ -40,6 +41,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   bool _loading = true;
   bool _wsConnected = false;
   String? _error;
+
+  ChatApi get _api => widget.api ?? ChatApiClient();
 
   @override
   void initState() {
@@ -59,6 +62,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   Future<void> _loadMessages() async {
     try {
       final msgs = await _api.getMessages(widget.accessToken, widget.roomId);
+      try {
+        await _api.markRoomRead(widget.accessToken, widget.roomId);
+      } catch (_) {
+        // 已读状态不应该阻断聊天记录展示；列表页会在返回后再次刷新服务器状态。
+      }
       final mapped = msgs
           .map((m) => m.copyWithIsMe(widget.currentUserId))
           .toList();

@@ -70,4 +70,22 @@ void main() {
       ),
     );
   });
+
+  test('marks a chat room as read', () async {
+    final api = ChatApiClient(
+      baseUrl: Uri.parse('http://api.example.test'),
+      httpClient: MockClient((request) async {
+        expect(request.method, 'POST');
+        expect(request.url.path, '/api/v1/chat/rooms/room-1/read');
+        expect(request.headers['Authorization'], 'Bearer jwt');
+        return http.Response(
+          jsonEncode({'code': 'OK', 'message': 'success', 'data': null}),
+          200,
+          headers: {'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await api.markRoomRead('jwt', 'room-1');
+  });
 }

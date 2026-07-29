@@ -135,7 +135,12 @@ class _WorkerHomePageState extends State<WorkerHomePage>
           ),
           child: BottomNavigationBar(
             currentIndex: _tabIndex,
-            onTap: (i) => setState(() => _tabIndex = i),
+            onTap: (i) {
+              setState(() => _tabIndex = i);
+              if (i == 1) {
+                unawaited(state.markAllMessagesRead());
+              }
+            },
             type: BottomNavigationBarType.fixed,
             backgroundColor: _cardBg,
             selectedItemColor: _primary,
@@ -977,6 +982,37 @@ class _MessagesTabState extends State<_MessagesTab> {
     }
   }
 
+  Future<void> _markRoomRead(ChatRoomModel room) async {
+    final token = widget.state.getAccessToken();
+    if (token == null || room.unreadCount <= 0) return;
+    setState(() {
+      _rooms = [
+        for (final value in _rooms)
+          if (value.id == room.id)
+            ChatRoomModel(
+              id: value.id,
+              bookingId: value.bookingId,
+              ownerUserId: value.ownerUserId,
+              workerUserId: value.workerUserId,
+              otherUserId: value.otherUserId,
+              otherUserName: value.otherUserName,
+              otherUserAvatar: value.otherUserAvatar,
+              lastMessageText: value.lastMessageText,
+              lastMessageAt: value.lastMessageAt,
+              unreadCount: 0,
+              createdAt: value.createdAt,
+            )
+          else
+            value,
+      ];
+    });
+    try {
+      await widget.chatApi.markRoomRead(token, room.id);
+    } catch (_) {
+      // 进入聊天室后会再次尝试标记已读；这里不阻断打开聊天。
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final msgs = widget.state.messages;
@@ -1141,7 +1177,7 @@ class _MessagesTabState extends State<_MessagesTab> {
     );
   }
 
-  void _openChat(ChatRoomModel room) {
+  Future<void> _openChat(ChatRoomModel room) async {
     final token = widget.state.getAccessToken();
     final currentUserId = _currentUserId;
     if (token == null || currentUserId == null) {
@@ -1150,7 +1186,9 @@ class _MessagesTabState extends State<_MessagesTab> {
       ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
       return;
     }
-    Navigator.push(
+    await _markRoomRead(room);
+    if (!mounted) return;
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => ChatDetailPage(
@@ -1158,9 +1196,11 @@ class _MessagesTabState extends State<_MessagesTab> {
           otherUserName: room.otherUserName.isEmpty ? '业主' : room.otherUserName,
           accessToken: token,
           currentUserId: currentUserId,
+          api: widget.chatApi,
         ),
       ),
     );
+    if (mounted) unawaited(_loadRooms());
   }
 
   String _formatRoomTime(DateTime? time) {
