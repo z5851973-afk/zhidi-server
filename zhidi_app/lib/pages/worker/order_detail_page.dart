@@ -573,7 +573,9 @@ class _BottomBar extends StatelessWidget {
         );
 
       case WorkerOrderStatus.onSite:
-        final quotation = WorkerAppScope.of(context).getOrderQuotation(order.id);
+        final quotation = WorkerAppScope.of(
+          context,
+        ).getOrderQuotation(order.id);
         if (quotation == null) {
           return ZdPrimaryButton(
             label: '提交报价单',
@@ -585,9 +587,9 @@ class _BottomBar extends StatelessWidget {
           onTap: () async {
             await WorkerAppScope.of(context).startOrder(order.id);
             if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('已开始施工')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('已开始施工')));
             }
           },
         );
@@ -661,7 +663,10 @@ class _BottomBar extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => InspectionPage(orderId: order.id),
+                        builder: (_) => InspectionPage(
+                          orderId: order.id,
+                          tradeLabel: order.trade,
+                        ),
                       ),
                     );
                   }),
@@ -692,9 +697,7 @@ class _BottomBar extends StatelessWidget {
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => WorkerSettlementPage(),
-                    ),
+                    MaterialPageRoute(builder: (_) => WorkerSettlementPage()),
                   );
                 },
                 icon: const Icon(Icons.account_balance_wallet_outlined),
@@ -734,7 +737,10 @@ class _BottomBar extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => InspectionPage(orderId: order.id),
+                        builder: (_) => InspectionPage(
+                          orderId: order.id,
+                          tradeLabel: order.trade,
+                        ),
                       ),
                     );
                   }),
@@ -806,16 +812,18 @@ class _BottomBar extends StatelessWidget {
     await state.fetchRemoteBookings();
     if (!context.mounted) return;
     if (!state.isRemoteOrder(order.id)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('该预约已失效或不属于当前账号，请返回订单列表刷新')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('该预约已失效或不属于当前账号，请返回订单列表刷新')));
       return;
     }
-    final latest = state.orders.where((item) => item.id == order.id).firstOrNull;
+    final latest = state.orders
+        .where((item) => item.id == order.id)
+        .firstOrNull;
     if (latest == null || latest.status != WorkerOrderStatus.accepted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('预约状态已更新，请按当前状态继续操作')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('预约状态已更新，请按当前状态继续操作')));
       return;
     }
     _showProposeVisitTimePicker(context, latest);
@@ -1040,15 +1048,22 @@ class _BottomBar extends StatelessWidget {
                   final token = state.getAccessToken();
                   if (token == null) {
                     if (ctx.mounted) {
-                      ScaffoldMessenger.of(ctx).showSnackBar(
-                        const SnackBar(content: Text('登录已过期')),
-                      );
+                      ScaffoldMessenger.of(
+                        ctx,
+                      ).showSnackBar(const SnackBar(content: Text('登录已过期')));
                     }
                     return;
                   }
                   final api = ServiceRequestApiClient();
-                  final result = await api.proposeVisit(token, order.id, visitTime);
-                  state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
+                  final result = await api.proposeVisit(
+                    token,
+                    order.id,
+                    visitTime,
+                  );
+                  state.updateOrderFromApi(
+                    order.id,
+                    result.toRemoteWorkerBooking(),
+                  );
                   if (ctx.mounted) Navigator.pop(ctx);
                 } on AuthApiException catch (e) {
                   if (ctx.mounted) {
@@ -1064,9 +1079,9 @@ class _BottomBar extends StatelessWidget {
                   }
                 } catch (e) {
                   if (ctx.mounted) {
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(content: Text('操作失败：$e')),
-                    );
+                    ScaffoldMessenger.of(
+                      ctx,
+                    ).showSnackBar(SnackBar(content: Text('操作失败：$e')));
                   }
                 }
               },
@@ -1082,9 +1097,9 @@ class _BottomBar extends StatelessWidget {
       final token = state.getAccessToken();
       if (token == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('登录已过期')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('登录已过期')));
         }
         return;
       }
@@ -1092,34 +1107,37 @@ class _BottomBar extends StatelessWidget {
       final result = await api.workerArrive(token, order.id);
       state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已标记到达')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已标记到达')));
       }
     } on AuthApiException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败：$e')));
       }
     }
   }
 
-  Future<void> _workerConfirmArrival(BuildContext context, WorkerOrder order) async {
+  Future<void> _workerConfirmArrival(
+    BuildContext context,
+    WorkerOrder order,
+  ) async {
     try {
       // ignore: await_only_futures
       final token = await state.getAccessToken();
       if (token == null) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('登录已过期')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('登录已过期')));
         }
         return;
       }
@@ -1127,21 +1145,21 @@ class _BottomBar extends StatelessWidget {
       final result = await api.workerConfirmArrival(token, order.id);
       state.updateOrderFromApi(order.id, result.toRemoteWorkerBooking());
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已确认业主到场')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已确认业主到场')));
       }
     } on AuthApiException catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败：$e')));
       }
     }
   }
@@ -1160,9 +1178,9 @@ class _BottomBar extends StatelessWidget {
   ) async {
     final accessToken = state.getAccessToken();
     if (accessToken == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('登录已过期，请重新登录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
       return;
     }
 
@@ -1176,9 +1194,9 @@ class _BottomBar extends StatelessWidget {
     final currentUserId = remote?.workerUserId ?? await state.getUserId();
     if (currentUserId == null) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('登录已过期，请重新登录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
       return;
     }
 
@@ -1192,21 +1210,21 @@ class _BottomBar extends StatelessWidget {
         if (e.statusCode == 401) {
           await state.logout();
           if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('登录已过期，请重新登录')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
           return;
         }
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法创建聊天：${e.message}')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法创建聊天：${e.message}')));
       }
       return;
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('无法创建聊天：$e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('无法创建聊天：$e')));
       }
       return;
     }

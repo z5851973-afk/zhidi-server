@@ -782,7 +782,10 @@ class _ActiveList extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => InspectionPage(orderId: o.id),
+                          builder: (_) => InspectionPage(
+                            orderId: o.id,
+                            tradeLabel: o.trade,
+                          ),
                         ),
                       );
                     }),
@@ -1113,10 +1116,7 @@ class _MessagesTabState extends State<_MessagesTab> {
         backgroundColor: _success.withValues(alpha: 0.12),
         child: Text(
           room.otherUserName.isEmpty ? '业' : room.otherUserName[0],
-          style: const TextStyle(
-            color: _success,
-            fontWeight: FontWeight.w900,
-          ),
+          style: const TextStyle(color: _success, fontWeight: FontWeight.w900),
         ),
       ),
       title: room.otherUserName.isEmpty ? '业主' : room.otherUserName,

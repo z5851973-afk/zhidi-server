@@ -21,10 +21,12 @@ class InspectionPage extends StatefulWidget {
   const InspectionPage({
     super.key,
     required this.orderId,
+    required this.tradeLabel,
     this.api,
   });
 
   final String orderId;
+  final String tradeLabel;
   final InspectionApi? api;
 
   @override
@@ -40,7 +42,9 @@ class _InspectionPageState extends State<InspectionPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_loadStarted) return;
+    if (_loadStarted) {
+      return;
+    }
     _loadStarted = true;
     _loadNodes();
   }
@@ -49,34 +53,67 @@ class _InspectionPageState extends State<InspectionPage> {
     final state = WorkerAppScope.of(context);
     final token = state.getAccessToken();
     if (token == null) {
-      if (mounted) setState(() { _loading = false; _errorMsg = '未登录'; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _errorMsg = '未登录';
+        });
+      }
       return;
     }
     try {
       final api = widget.api ?? InspectionApiClient();
       final nodes = await api.getNodes(token, widget.orderId);
-      if (nodes.isEmpty) {
+      final visibleNodes = _nodesForCurrentTrade(nodes);
+      if (visibleNodes.isEmpty) {
         final created = await _createDefaultNodes(token);
-        if (mounted) setState(() { _nodes = created; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _nodes = _nodesForCurrentTrade(created);
+            _loading = false;
+          });
+        }
       } else {
-        if (mounted) setState(() { _nodes = nodes; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _nodes = visibleNodes;
+            _loading = false;
+          });
+        }
       }
     } on AuthApiException catch (e) {
-      if (mounted) setState(() { _loading = false; _errorMsg = e.message; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _errorMsg = e.message;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _errorMsg = '加载失败：$e'; });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _errorMsg = '加载失败：$e';
+        });
+      }
     }
   }
 
   Future<List<RemoteInspectionNode>> _createDefaultNodes(String token) async {
     final api = widget.api ?? InspectionApiClient();
-    const defaults = [
-      {'name': '水电验收', 'description': '水管、电路布线验收', 'sortOrder': 1},
-      {'name': '木工验收', 'description': '吊顶、柜体结构验收', 'sortOrder': 2},
-      {'name': '油漆验收', 'description': '墙面平整度、颜色均匀度验收', 'sortOrder': 3},
-      {'name': '竣工验收', 'description': '整体装修质量终验', 'sortOrder': 4},
-    ];
-    return await api.createNodes(token, widget.orderId, defaults.map((d) => Map<String, dynamic>.from(d)).toList());
+    final node = _defaultNodeForTrade(widget.tradeLabel);
+    return await api.createNodes(token, widget.orderId, [node]);
+  }
+
+  List<RemoteInspectionNode> _nodesForCurrentTrade(
+    List<RemoteInspectionNode> nodes,
+  ) {
+    final normalizedTrade = _normalizeTradeLabel(widget.tradeLabel);
+    final expectedName = '$normalizedTrade验收';
+    return nodes.where((node) {
+      final normalizedName = _normalizeTradeLabel(node.name);
+      return normalizedName == expectedName ||
+          normalizedName.startsWith(normalizedTrade);
+    }).toList();
   }
 
   Future<void> _requestInspection(String nodeId) async {
@@ -85,7 +122,9 @@ class _InspectionPageState extends State<InspectionPage> {
     final token = await state.getAccessToken();
     if (token == null) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('登录已过期')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('登录已过期')));
       }
       return;
     }
@@ -93,16 +132,22 @@ class _InspectionPageState extends State<InspectionPage> {
       final api = widget.api ?? InspectionApiClient();
       await api.requestInspection(token, nodeId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已申请验收')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已申请验收')));
       }
       await _loadNodes();
     } on AuthApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('操作失败：$e')));
       }
     }
   }
@@ -130,7 +175,16 @@ class _InspectionPageState extends State<InspectionPage> {
           children: [
             Text(_errorMsg!, style: ZdText.caption.copyWith(color: _textLight)),
             const SizedBox(height: ZdSpacing.md),
-            ZdPrimaryButton(label: '重试', onTap: () { setState(() { _loading = true; _errorMsg = null; }); _loadNodes(); }),
+            ZdPrimaryButton(
+              label: '重试',
+              onTap: () {
+                setState(() {
+                  _loading = true;
+                  _errorMsg = null;
+                });
+                _loadNodes();
+              },
+            ),
           ],
         ),
       );
@@ -158,6 +212,45 @@ class _InspectionPageState extends State<InspectionPage> {
   }
 }
 
+Map<String, dynamic> _defaultNodeForTrade(String tradeLabel) {
+  final normalized = _normalizeTradeLabel(tradeLabel);
+  final description = switch (normalized) {
+    '拆除' => '拆除范围、清运和现场安全验收',
+    '水电' => '水管、电路布线验收',
+    '泥瓦' => '贴砖、砌墙、地面找平验收',
+    '防水' => '防水涂刷、闭水和节点验收',
+    '木工' => '吊顶、柜体结构验收',
+    '油漆' => '墙面平整度、颜色均匀度验收',
+    '安装' => '灯具、洁具、五金安装验收',
+    '保洁' => '全屋清洁、细节收尾验收',
+    _ => '$normalized施工质量验收',
+  };
+  return {'name': '$normalized验收', 'description': description, 'sortOrder': 1};
+}
+
+String _normalizeTradeLabel(String value) {
+  final trimmed = value.trim();
+  return switch (trimmed) {
+    'demolition' || '拆除师傅' || '拆除验收' => '拆除',
+    'plumbing' || '水电师傅' || '水电验收' => '水电',
+    'masonry' || '泥瓦师傅' || '泥瓦验收' || '泥工' || '泥工验收' => '泥瓦',
+    'waterproof' || '防水师傅' || '防水验收' => '防水',
+    'carpentry' || '木工师傅' || '木工验收' => '木工',
+    'painting' || '油漆师傅' || '油漆验收' => '油漆',
+    'installation' || '安装师傅' || '安装验收' => '安装',
+    'cleaning' || '保洁师傅' || '保洁验收' => '保洁',
+    _ when trimmed.endsWith('师傅') => trimmed.substring(
+      0,
+      trimmed.length - '师傅'.length,
+    ),
+    _ when trimmed.endsWith('验收') => trimmed.substring(
+      0,
+      trimmed.length - '验收'.length,
+    ),
+    _ => trimmed.isEmpty ? '工种' : trimmed,
+  };
+}
+
 class _NodeCard extends StatelessWidget {
   const _NodeCard({required this.node, required this.onRequestInspection});
   final RemoteInspectionNode node;
@@ -165,31 +258,46 @@ class _NodeCard extends StatelessWidget {
 
   Color get _statusColor {
     switch (node.status) {
-      case 'PENDING': return _textMid;
-      case 'INSPECTING': return _primary;
-      case 'PASSED': return _success;
-      case 'FAILED': return _error;
-      default: return _textMid;
+      case 'PENDING':
+        return _textMid;
+      case 'INSPECTING':
+        return _primary;
+      case 'PASSED':
+        return _success;
+      case 'FAILED':
+        return _error;
+      default:
+        return _textMid;
     }
   }
 
   String get _statusLabel {
     switch (node.status) {
-      case 'PENDING': return '待验收';
-      case 'INSPECTING': return '验收中';
-      case 'PASSED': return '已通过';
-      case 'FAILED': return '未通过';
-      default: return node.status;
+      case 'PENDING':
+        return '待验收';
+      case 'INSPECTING':
+        return '验收中';
+      case 'PASSED':
+        return '已通过';
+      case 'FAILED':
+        return '未通过';
+      default:
+        return node.status;
     }
   }
 
   IconData get _statusIcon {
     switch (node.status) {
-      case 'PENDING': return Icons.hourglass_empty;
-      case 'INSPECTING': return Icons.pending_actions;
-      case 'PASSED': return Icons.check_circle_outline;
-      case 'FAILED': return Icons.cancel_outlined;
-      default: return Icons.help_outline;
+      case 'PENDING':
+        return Icons.hourglass_empty;
+      case 'INSPECTING':
+        return Icons.pending_actions;
+      case 'PASSED':
+        return Icons.check_circle_outline;
+      case 'FAILED':
+        return Icons.cancel_outlined;
+      default:
+        return Icons.help_outline;
     }
   }
 
@@ -202,7 +310,8 @@ class _NodeCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 40, height: 40,
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
                   color: _statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(ZdRadius.sm),
@@ -215,18 +324,33 @@ class _NodeCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(node.name, style: ZdText.subtitle),
-                    if (node.description != null && node.description!.isNotEmpty)
-                      Text(node.description!, style: ZdText.tiny, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    if (node.description != null &&
+                        node.description!.isNotEmpty)
+                      Text(
+                        node.description!,
+                        style: ZdText.tiny,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: _statusColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(ZdRadius.pill),
                 ),
-                child: Text(_statusLabel, style: ZdText.tiny.copyWith(color: _statusColor, fontWeight: FontWeight.w500)),
+                child: Text(
+                  _statusLabel,
+                  style: ZdText.tiny.copyWith(
+                    color: _statusColor,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
             ],
           ),
@@ -239,7 +363,9 @@ class _NodeCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primary,
                   side: const BorderSide(color: _primary),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZdRadius.pill)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(ZdRadius.pill),
+                  ),
                 ),
                 child: const Text('申请验收'),
               ),
@@ -254,7 +380,10 @@ class _NodeCard extends StatelessWidget {
                 color: _error.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(ZdRadius.sm),
               ),
-              child: Text('验收未通过，请整改后重新申请', style: ZdText.tiny.copyWith(color: _error)),
+              child: Text(
+                '验收未通过，请整改后重新申请',
+                style: ZdText.tiny.copyWith(color: _error),
+              ),
             ),
             const SizedBox(height: ZdSpacing.sm),
             SizedBox(
@@ -264,7 +393,9 @@ class _NodeCard extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _primary,
                   side: const BorderSide(color: _primary),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(ZdRadius.pill)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(ZdRadius.pill),
+                  ),
                 ),
                 child: const Text('申请重新验收'),
               ),
