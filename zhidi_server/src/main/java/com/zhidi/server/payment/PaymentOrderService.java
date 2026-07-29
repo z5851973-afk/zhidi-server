@@ -58,14 +58,18 @@ public class PaymentOrderService {
 
 		List<InspectionNode> nodes =
 			inspectionNodes.findByBookingIdOrderBySortOrderAsc(bookingId);
-		if (nodes.isEmpty()) {
+		List<InspectionNode> tradeNodes =
+			nodes.stream()
+				.filter(node -> matchesBookingTrade(node, booking.getTrade()))
+				.toList();
+		if (tradeNodes.isEmpty()) {
 			throw new BusinessException(HttpStatus.CONFLICT,
-				"INSPECTION_REQUIRED", "请先创建并完成验收节点");
+				"INSPECTION_REQUIRED", "请先创建并完成当前工种验收节点");
 		}
-		if (nodes.stream().anyMatch(node ->
+		if (tradeNodes.stream().anyMatch(node ->
 				node.getStatus() != InspectionNodeStatus.PASSED)) {
 			throw new BusinessException(HttpStatus.CONFLICT,
-				"INSPECTION_NOT_PASSED", "全部验收节点通过后才能付款");
+				"INSPECTION_NOT_PASSED", "当前工种验收通过后才能付款");
 		}
 
 		// 查找已存在的支付订单，防止重复创建
@@ -96,6 +100,38 @@ public class PaymentOrderService {
 			acceptedQuote.getId(), total);
 
 		return PaymentOrderResponse.from(paymentOrders.saveAndFlush(order));
+	}
+
+	private boolean matchesBookingTrade(InspectionNode node, String bookingTrade) {
+		String tradeLabel = normalizeTradeLabel(bookingTrade);
+		String nodeName = normalizeTradeLabel(node.getName());
+		return nodeName.equals(tradeLabel + "验收") || nodeName.startsWith(tradeLabel);
+	}
+
+	private String normalizeTradeLabel(String value) {
+		if (value == null || value.trim().isEmpty()) {
+			return "工种";
+		}
+		String trimmed = value.trim();
+		return switch (trimmed) {
+			case "demolition", "拆除师傅", "拆除验收" -> "拆除";
+			case "plumbing", "水电师傅", "水电验收" -> "水电";
+			case "masonry", "泥瓦师傅", "泥瓦验收", "泥工", "泥工验收" -> "泥瓦";
+			case "waterproof", "防水师傅", "防水验收" -> "防水";
+			case "carpentry", "木工师傅", "木工验收" -> "木工";
+			case "painting", "油漆师傅", "油漆验收" -> "油漆";
+			case "installation", "安装师傅", "安装验收" -> "安装";
+			case "cleaning", "保洁师傅", "保洁验收" -> "保洁";
+			default -> {
+				if (trimmed.endsWith("师傅")) {
+					yield trimmed.substring(0, trimmed.length() - "师傅".length());
+				}
+				if (trimmed.endsWith("验收")) {
+					yield trimmed.substring(0, trimmed.length() - "验收".length());
+				}
+				yield trimmed;
+			}
+		};
 	}
 
 	@Transactional

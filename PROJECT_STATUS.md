@@ -75,6 +75,7 @@ zhidi/
 - 2026-07-29 已修复工人端消息页不显示业主聊天消息的问题：工人首页“消息”Tab 现在会调用真实 `GET /api/v1/chat/rooms` 展示聊天会话预览，并保留原订单/报价/验收通知；点击聊天会话进入同一套 `ChatDetailPage` 真实聊天室。新增 `worker messages tab shows remote chat room previews` 回归，`test/worker_bottom_navigation_test.dart`、`test/chat_api_client_test.dart` 与 `flutter analyze` 通过；已重新构建并安装工人端公网 debug APK 到 `emulator-5556`。
 - 2026-07-29 已修复工人端消息会话点击后未读气泡不消除的问题：后端新增 `POST /api/v1/chat/rooms/{roomId}/read` 标记房间已读；Flutter 聊天详情页打开后会调用已读接口，工人端消息列表点击会话时先本地乐观清零并在返回后刷新服务器会话列表；进入消息 Tab 时也会把本地订单/报价通知标为已读，避免底部消息红点进入页面后仍停留。新增 `marks a chat room as read` 和工人端消息红点回归，生产 ECS 健康检查 `UP` 且 Swagger 已包含新接口。
 - 2026-07-29 已修复工人端节点验收按固定四节点生成的问题：工人端验收页现在按当前订单工种生成并展示单一对应节点，例如水电订单只生成“水电验收”、泥瓦订单只生成“泥瓦验收”；历史订单若已存在其他工种旧节点，前端会过滤为当前工种节点。新增“只创建当前工种节点”和“隐藏历史杂节点”回归测试，`flutter analyze` 通过，并已构建安装工人端公网 debug APK 到 `emulator-5556`；现场复验泥瓦订单只显示“泥瓦验收”。后续资金闭环需继续实现验收通过后工人可结算 90%、冻结 10% 质保金。
+- 2026-07-30 已修复业主端生成支付订单仍要求“全部验收节点通过”的后端旧规则：`PaymentOrderService` 现在只校验当前预约工种对应验收节点是否已通过，历史残留的其他工种节点不再阻塞付款。新增后端回归 `paymentOrderOnlyRequiresTheBookingTradeInspectionToPass`，已打包部署到 ECS，健康检查 `UP`；在业主端 `emulator-5554` 原支付页重新点击“生成支付订单”已成功生成 ¥310 线下支付订单。下一步继续把资金结算从当前全额结算改为验收通过后 90% 可结算、10% 质保金冻结。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。
