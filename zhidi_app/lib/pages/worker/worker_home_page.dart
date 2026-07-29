@@ -11,6 +11,10 @@ import '../../app/worker_app_scope.dart';
 import '../../app/worker_app_state.dart';
 import '../../design/tokens.dart';
 import '../../design/components.dart';
+import '../../models/chat_models.dart';
+import '../../services/auth_api_client.dart';
+import '../../services/chat_api_client.dart';
+import '../chat/chat_detail_page.dart';
 import 'order_detail_page.dart';
 import 'daily_report_page.dart';
 import 'inspection_page.dart';
@@ -29,7 +33,9 @@ const _cardBg = Colors.white;
 const _success = ZdColors.success;
 
 class WorkerHomePage extends StatefulWidget {
-  const WorkerHomePage({super.key});
+  const WorkerHomePage({super.key, this.chatApi});
+
+  final ChatApi? chatApi;
 
   @override
   State<WorkerHomePage> createState() => _WorkerHomePageState();
@@ -102,7 +108,10 @@ class _WorkerHomePageState extends State<WorkerHomePage>
                 index: _tabIndex,
                 children: [
                   _OrdersTab(state: state),
-                  _MessagesTab(state: state),
+                  _MessagesTab(
+                    state: state,
+                    chatApi: widget.chatApi ?? ChatApiClient(),
+                  ),
                   _ProfileTab(state: state),
                 ],
               ),
@@ -899,23 +908,106 @@ Widget _emptyView(String text) {
 // 消息 Tab
 // ═══════════════════════════════════════════
 class _MessagesTab extends StatefulWidget {
-  const _MessagesTab({required this.state});
+  const _MessagesTab({required this.state, required this.chatApi});
   final WorkerAppState state;
+  final ChatApi chatApi;
 
   @override
   State<_MessagesTab> createState() => _MessagesTabState();
 }
 
 class _MessagesTabState extends State<_MessagesTab> {
+  List<ChatRoomModel> _rooms = const [];
+  bool _loadingRooms = true;
+  String? _roomsError;
+  String? _currentUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadRooms());
+  }
+
+  Future<void> _loadRooms() async {
+    final token = widget.state.getAccessToken();
+    if (token == null) {
+      if (!mounted) return;
+      setState(() {
+        _loadingRooms = false;
+        _roomsError = '登录已过期，请重新登录';
+      });
+      return;
+    }
+
+    setState(() {
+      _loadingRooms = true;
+      _roomsError = null;
+    });
+
+    try {
+      final userId = await widget.state.getUserId();
+      final rooms = await widget.chatApi.getRooms(token);
+      if (!mounted) return;
+      setState(() {
+        _currentUserId = userId;
+        _rooms = rooms;
+        _loadingRooms = false;
+      });
+    } on AuthApiException catch (e) {
+      if (!mounted) return;
+      if (e.statusCode == 401) {
+        await widget.state.logout();
+        if (!mounted) return;
+        setState(() {
+          _loadingRooms = false;
+          _roomsError = '登录已过期，请重新登录';
+        });
+        return;
+      }
+      setState(() {
+        _loadingRooms = false;
+        _roomsError = e.message;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingRooms = false;
+        _roomsError = '聊天加载失败：$e';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final msgs = widget.state.messages;
-    if (msgs.isEmpty) {
+    if (_loadingRooms && msgs.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_rooms.isEmpty && msgs.isEmpty && _roomsError == null) {
       return _emptyView('暂无消息');
     }
     return Column(
       children: [
-        if (widget.state.unreadMessageCount > 0)
+        if (_roomsError != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: ZdSpacing.sm),
+            color: _primary.withValues(alpha: 0.05),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Flexible(
+                  child: Text(
+                    _roomsError!,
+                    style: ZdText.tiny.copyWith(color: _primary),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(onPressed: _loadRooms, child: const Text('重试')),
+              ],
+            ),
+          )
+        else if (widget.state.unreadMessageCount > 0)
           GestureDetector(
             onTap: () => widget.state.markAllMessagesRead(),
             child: Container(
@@ -923,46 +1015,157 @@ class _MessagesTabState extends State<_MessagesTab> {
               padding: const EdgeInsets.symmetric(vertical: ZdSpacing.sm),
               color: _primary.withValues(alpha: 0.05),
               child: Text(
-                '${widget.state.unreadMessageCount} 条未读，点击全部标为已读',
+                '${widget.state.unreadMessageCount} 条通知未读，点击全部标为已读',
                 style: ZdText.tiny.copyWith(color: _primary),
                 textAlign: TextAlign.center,
               ),
             ),
           ),
         Expanded(
-          child: ListView.builder(
-            itemCount: msgs.length,
-            itemBuilder: (context, i) {
-              final m = msgs[i];
-              return ZdListItem(
-                image: Container(
-                  decoration: BoxDecoration(
-                    color: m.isRead
-                        ? Colors.grey.shade100
-                        : _primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(ZdRadius.sm),
+          child: RefreshIndicator(
+            onRefresh: _loadRooms,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                if (_rooms.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      ZdSpacing.md,
+                      ZdSpacing.md,
+                      ZdSpacing.md,
+                      ZdSpacing.xs,
+                    ),
+                    child: Text(
+                      '聊天',
+                      style: ZdText.caption.copyWith(
+                        color: _textMid,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                  child: Icon(
-                    m.category == '订单'
-                        ? Icons.receipt_long_outlined
-                        : m.category == '验收'
-                        ? Icons.fact_check_outlined
-                        : m.category == '收入'
-                        ? Icons.payments_outlined
-                        : Icons.notifications_outlined,
-                    color: m.isRead ? _textMid : _primary,
+                  for (final room in _rooms) _chatRoomItem(room),
+                ],
+                if (msgs.isNotEmpty) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      ZdSpacing.md,
+                      ZdSpacing.md,
+                      ZdSpacing.md,
+                      ZdSpacing.xs,
+                    ),
+                    child: Text(
+                      '通知',
+                      style: ZdText.caption.copyWith(
+                        color: _textMid,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
-                title: m.title,
-                subtitle: m.content,
-                trailing: Text(_formatMsgTime(m.createdAt), style: ZdText.tiny),
-                onTap: () => widget.state.markMessageRead(m.id),
-              );
-            },
+                  for (final m in msgs) _notificationItem(m),
+                ],
+              ],
+            ),
           ),
         ),
       ],
     );
+  }
+
+  Widget _chatRoomItem(ChatRoomModel room) {
+    return ZdListItem(
+      image: CircleAvatar(
+        backgroundColor: _success.withValues(alpha: 0.12),
+        child: Text(
+          room.otherUserName.isEmpty ? '业' : room.otherUserName[0],
+          style: const TextStyle(
+            color: _success,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+      title: room.otherUserName.isEmpty ? '业主' : room.otherUserName,
+      subtitle: room.lastMessageText ?? '暂无消息',
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(_formatRoomTime(room.lastMessageAt), style: ZdText.tiny),
+          if (room.unreadCount > 0) ...[
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: _primary,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      onTap: () => _openChat(room),
+    );
+  }
+
+  Widget _notificationItem(WorkerMessage m) {
+    return ZdListItem(
+      image: Container(
+        decoration: BoxDecoration(
+          color: m.isRead
+              ? Colors.grey.shade100
+              : _primary.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(ZdRadius.sm),
+        ),
+        child: Icon(
+          m.category == '订单'
+              ? Icons.receipt_long_outlined
+              : m.category == '验收'
+              ? Icons.fact_check_outlined
+              : m.category == '收入'
+              ? Icons.payments_outlined
+              : Icons.notifications_outlined,
+          color: m.isRead ? _textMid : _primary,
+        ),
+      ),
+      title: m.title,
+      subtitle: m.content,
+      trailing: Text(_formatMsgTime(m.createdAt), style: ZdText.tiny),
+      onTap: () => widget.state.markMessageRead(m.id),
+    );
+  }
+
+  void _openChat(ChatRoomModel room) {
+    final token = widget.state.getAccessToken();
+    final currentUserId = _currentUserId;
+    if (token == null || currentUserId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatDetailPage(
+          roomId: room.id,
+          otherUserName: room.otherUserName.isEmpty ? '业主' : room.otherUserName,
+          accessToken: token,
+          currentUserId: currentUserId,
+        ),
+      ),
+    );
+  }
+
+  String _formatRoomTime(DateTime? time) {
+    if (time == null) return '';
+    return _formatMsgTime(time);
   }
 
   String _formatMsgTime(DateTime t) {
