@@ -35,6 +35,8 @@ import java.util.UUID;
 import org.springframework.data.domain.PageImpl;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 class AdminControllerTest {
 
@@ -170,5 +172,32 @@ class AdminControllerTest {
 		assertThat(dashboard.pendingWorkerReceipts()).isEqualTo(1);
 		assertThat(dashboard.heldWarrantyAmount()).isEqualByComparingTo("31.00");
 		assertThat(dashboard.paidAmountToday()).isEqualByComparingTo("260.00");
+	}
+
+	@Test
+	void adminCanListOperationLogsWithFilters() {
+		UserRepository users = mock(UserRepository.class);
+		BookingRepository bookings = mock(BookingRepository.class);
+		OperationLogRepository logs = mock(OperationLogRepository.class);
+		AdminController controller = new AdminController(users, bookings, logs,
+			mock(AfterSaleService.class), mock(WarrantyRetentionService.class),
+			mock(AfterSaleRepository.class), mock(WarrantyRetentionRepository.class),
+			mock(PaymentOrderRepository.class));
+		OperationLog log = OperationLog.success(UUID.randomUUID(),
+			"ADMIN_AFTER_SALE_PROCESS", "AFTER_SALE", UUID.randomUUID().toString(),
+			"trace-1", "{\"warrantyDeductionAmount\":\"30.00\"}");
+		when(logs.findAll(any(Specification.class), any(Pageable.class)))
+			.thenReturn(new PageImpl<>(List.of(log)));
+
+		var page = controller.listOperationLogs(0, 20,
+			"ADMIN_AFTER_SALE_PROCESS", "AFTER_SALE", "SUCCESS")
+			.getBody().data();
+
+		assertThat(page.getContent()).hasSize(1);
+		assertThat(page.getContent().getFirst().action())
+			.isEqualTo("ADMIN_AFTER_SALE_PROCESS");
+		assertThat(page.getContent().getFirst().targetType()).isEqualTo("AFTER_SALE");
+		assertThat(page.getContent().getFirst().result()).isEqualTo("SUCCESS");
+		assertThat(page.getContent().getFirst().detailJson()).contains("30.00");
 	}
 }

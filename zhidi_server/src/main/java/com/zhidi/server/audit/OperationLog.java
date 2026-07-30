@@ -70,6 +70,10 @@ public class OperationLog {
 		this.createdAt = Instant.now();
 	}
 
+	public UUID getId() {
+		return id;
+	}
+
 	public UUID getActorUserId() {
 		return actorUserId;
 	}
@@ -96,5 +100,9 @@ public class OperationLog {
 
 	public String getDetailJson() {
 		return detailJson;
+	}
+
+	public Instant getCreatedAt() {
+		return createdAt;
 	}
 }

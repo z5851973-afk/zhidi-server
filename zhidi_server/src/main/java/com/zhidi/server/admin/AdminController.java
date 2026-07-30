@@ -281,6 +281,32 @@ public class AdminController {
 		return ResponseEntity.ok(ApiResponse.ok(result, traceId()));
 	}
 
+	@GetMapping("/operation-logs")
+	ResponseEntity<ApiResponse<Page<OperationLogResponse>>> listOperationLogs(
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) String action,
+			@RequestParam(required = false) String targetType,
+			@RequestParam(required = false) String result) {
+		Specification<OperationLog> spec = (root, query, cb) -> {
+			var predicates = new java.util.ArrayList<Predicate>();
+			if (StringUtils.hasText(action)) {
+				predicates.add(cb.equal(root.get("action"), action.trim()));
+			}
+			if (StringUtils.hasText(targetType)) {
+				predicates.add(cb.equal(root.get("targetType"), targetType.trim()));
+			}
+			if (StringUtils.hasText(result)) {
+				predicates.add(cb.equal(root.get("result"), result.trim().toUpperCase()));
+			}
+			return cb.and(predicates.toArray(new Predicate[0]));
+		};
+		Page<OperationLogResponse> logs = operationLogRepository
+			.findAll(spec, pageRequest(page, size))
+			.map(OperationLogResponse::from);
+		return ResponseEntity.ok(ApiResponse.ok(logs, traceId()));
+	}
+
 	private PageRequest pageRequest(int page, int size) {
 		if (page < 0 || size < 1 || size > 100) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST,

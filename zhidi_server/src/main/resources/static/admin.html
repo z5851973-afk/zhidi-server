@@ -214,6 +214,7 @@
       <button class="tab" data-tab="retentions">质保金账本</button>
       <button class="tab" data-tab="bookings">订单查询</button>
       <button class="tab" data-tab="users">用户查询</button>
+      <button class="tab" data-tab="logs">操作审计</button>
     </div>
 
     <section id="afterSalesView">
@@ -381,6 +382,36 @@
         </table>
       </div>
     </section>
+
+    <section id="logsView" style="display:none">
+      <div class="panel toolbar">
+        <h2>操作审计</h2>
+        <div class="row">
+          <input id="logAction" placeholder="动作，如 ADMIN_AFTER_SALE_PROCESS" style="width:260px" />
+          <input id="logTargetType" placeholder="目标，如 AFTER_SALE" style="width:180px" />
+          <select id="logResult" style="width:140px">
+            <option value="">全部结果</option>
+            <option value="SUCCESS">成功</option>
+          </select>
+          <button class="btn secondary" id="refreshLogs">查询审计</button>
+        </div>
+      </div>
+      <div class="panel table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>动作</th>
+              <th>目标</th>
+              <th>操作人</th>
+              <th>结果/追踪</th>
+              <th>详情</th>
+            </tr>
+          </thead>
+          <tbody id="logsBody"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <div class="toast" id="toast"></div>
 
@@ -415,6 +446,7 @@
         $('retentionsView').style.display = state.tab === 'retentions' ? '' : 'none';
         $('bookingsView').style.display = state.tab === 'bookings' ? '' : 'none';
         $('usersView').style.display = state.tab === 'users' ? '' : 'none';
+        $('logsView').style.display = state.tab === 'logs' ? '' : 'none';
         refreshAll();
       };
     });
@@ -423,12 +455,16 @@
     $('refreshRetentions').onclick = loadRetentions;
     $('refreshBookings').onclick = loadBookings;
     $('refreshUsers').onclick = loadUsers;
+    $('refreshLogs').onclick = loadLogs;
     $('afterSaleStatus').onchange = loadAfterSales;
     $('retentionStatus').onchange = loadRetentions;
     $('bookingStatus').onchange = loadBookings;
     $('bookingTrade').onkeydown = event => { if (event.key === 'Enter') loadBookings(); };
     $('userRole').onchange = loadUsers;
     $('userPhone').onkeydown = event => { if (event.key === 'Enter') loadUsers(); };
+    $('logResult').onchange = loadLogs;
+    $('logAction').onkeydown = event => { if (event.key === 'Enter') loadLogs(); };
+    $('logTargetType').onkeydown = event => { if (event.key === 'Enter') loadLogs(); };
     $('processAfterSale').onclick = processAfterSale;
     $('deductRetention').onclick = deductRetention;
     $('releaseRetention').onclick = releaseRetention;
@@ -641,6 +677,34 @@
       </tr>`;
     }
 
+    async function loadLogs() {
+      try {
+        const params = new URLSearchParams();
+        if ($('logAction').value.trim()) params.set('action', $('logAction').value.trim());
+        if ($('logTargetType').value.trim()) params.set('targetType', $('logTargetType').value.trim());
+        if ($('logResult').value) params.set('result', $('logResult').value);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const page = await api(`/api/v1/admin/operation-logs${query}`);
+        const rows = page.content || [];
+        $('logsBody').innerHTML = rows.length
+          ? rows.map(logRow).join('')
+          : `<tr><td colspan="6" class="empty">暂无审计记录</td></tr>`;
+      } catch (error) {
+        showTableError('logsBody', error, 6);
+      }
+    }
+
+    function logRow(item) {
+      return `<tr>
+        <td><span class="mono">${dateTime(item.createdAt)}</span></td>
+        <td><strong>${escapeHtml(item.action || '—')}</strong></td>
+        <td>${escapeHtml(item.targetType || '—')}<br><span class="mono">${escapeHtml(item.targetId || '')}</span></td>
+        <td><span class="mono">${shortId(item.actorUserId)}</span></td>
+        <td>${pill(item.result, logResultText(item.result))}<br><span class="mono">${escapeHtml(item.traceId || '')}</span></td>
+        <td><span class="mono">${escapeHtml(compactJson(item.detailJson))}</span></td>
+      </tr>`;
+    }
+
     window.selectAfterSale = (id) => {
       state.selectedAfterSaleId = id;
       $('selectedAfterSale').value = id;
@@ -713,7 +777,8 @@
       if (state.tab === 'afterSales') return loadAfterSales();
       if (state.tab === 'retentions') return loadRetentions();
       if (state.tab === 'bookings') return loadBookings();
-      return loadUsers();
+      if (state.tab === 'users') return loadUsers();
+      return loadLogs();
     }
     function showTableError(id, error, colspan = 5) {
       $(id).innerHTML = `<tr><td colspan="${colspan}" class="empty danger-text">${escapeHtml(error.message)}</td></tr>`;
@@ -751,6 +816,9 @@
     function roleText(role) {
       return { OWNER: '业主', WORKER: '工人', ADMIN: '管理员' }[role] || role;
     }
+    function logResultText(result) {
+      return { SUCCESS: '成功' }[result] || result || '—';
+    }
     function tradeText(trade) {
       return {
         demolition: '拆除',
@@ -771,6 +839,14 @@
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return escapeHtml(value);
       return date.toLocaleString('zh-CN', { hour12: false });
+    }
+    function compactJson(value) {
+      if (!value) return '—';
+      try {
+        return JSON.stringify(JSON.parse(value));
+      } catch (error) {
+        return value;
+      }
     }
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
