@@ -93,6 +93,21 @@ public class AuthService {
 		return login(rawPhone, code, UserRole.WORKER);
 	}
 
+	@Transactional(noRollbackFor = BusinessException.class)
+	public LoginResult loginAdmin(String rawPhone, String code) {
+		String phone = User.normalizePhone(rawPhone);
+		verifyAndConsume(phone, code, clock.instant());
+
+		User user = userRepository.findByPhone(phone)
+			.orElseThrow(() -> business(HttpStatus.FORBIDDEN,
+				"ADMIN_ACCESS_DENIED", "admin access is not allowed"));
+		requireRoleAccess(user, UserRole.ADMIN);
+		JwtTokenResult token = jwtTokenService.issue(
+			user.getId(), user.getPhone(), user.getRoles());
+		return new LoginResult(token.accessToken(), "Bearer", token.expiresInSeconds(),
+			registrationResult(user));
+	}
+
 	private RegistrationResult register(String rawPhone, String code, UserRole role) {
 		String phone = User.normalizePhone(rawPhone);
 		if (userRepository.findByPhone(phone).isPresent()) {
@@ -136,6 +151,9 @@ public class AuthService {
 		}
 		if (role == UserRole.WORKER && !user.hasRole(UserRole.WORKER)) {
 			throw business(HttpStatus.FORBIDDEN, "WORKER_ACCESS_DENIED", "worker access is not allowed");
+		}
+		if (role == UserRole.ADMIN && !user.hasRole(UserRole.ADMIN)) {
+			throw business(HttpStatus.FORBIDDEN, "ADMIN_ACCESS_DENIED", "admin access is not allowed");
 		}
 	}
 

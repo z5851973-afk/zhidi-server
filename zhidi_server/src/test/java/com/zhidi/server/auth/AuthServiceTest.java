@@ -251,6 +251,42 @@ class AuthServiceTest {
 	}
 
 	@Test
+	void logsInAnExistingActiveAdminWithoutCreatingAnotherUser() {
+		givenValidCode("13800000000", "123456");
+		User existingAdmin = admin("13800000000");
+		when(userRepository.findByPhone("13800000000"))
+			.thenReturn(Optional.of(existingAdmin));
+		when(jwtTokenService.issue(existingAdmin.getId(), existingAdmin.getPhone(),
+			existingAdmin.getRoles())).thenReturn(new JwtTokenResult("jwt-admin", 2_592_000));
+
+		LoginResult result = service.loginAdmin("13800000000", "123456");
+
+		assertThat(result.accessToken()).isEqualTo("jwt-admin");
+		assertThat(result.user().roles()).containsExactly(UserRole.ADMIN);
+		verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(any(User.class));
+	}
+
+	@Test
+	void rejectsUsersWithoutAdminRole() {
+		givenValidCode("16600000012", "123456");
+		User owner = user("16600000012", UserStatus.ACTIVE, Set.of(UserRole.OWNER));
+		when(userRepository.findByPhone("16600000012")).thenReturn(Optional.of(owner));
+
+		assertBusinessCode(() -> service.loginAdmin("16600000012", "123456"),
+			"ADMIN_ACCESS_DENIED");
+	}
+
+	@Test
+	void doesNotAutoCreateAdminAccounts() {
+		givenValidCode("13800000001", "123456");
+		when(userRepository.findByPhone("13800000001")).thenReturn(Optional.empty());
+
+		assertBusinessCode(() -> service.loginAdmin("13800000001", "123456"),
+			"ADMIN_ACCESS_DENIED");
+		verify(userRepository, org.mockito.Mockito.never()).saveAndFlush(any(User.class));
+	}
+
+	@Test
 	void rejectsDisabledOwners() {
 		givenValidCode("16600000003", "123456");
 		User disabledOwner = user("16600000003", UserStatus.DISABLED,
@@ -322,6 +358,10 @@ class AuthServiceTest {
 		return user(phone, UserStatus.ACTIVE, Set.of(UserRole.WORKER));
 	}
 
+	private User admin(String phone) {
+		return user(phone, UserStatus.ACTIVE, Set.of(UserRole.ADMIN));
+	}
+
 	private User user(String phone, UserStatus status, Set<UserRole> roles) {
 		User user = mock(User.class);
 		when(user.getId()).thenReturn(UUID.randomUUID());
@@ -330,6 +370,7 @@ class AuthServiceTest {
 		when(user.getRoles()).thenReturn(roles);
 		when(user.hasRole(UserRole.OWNER)).thenReturn(roles.contains(UserRole.OWNER));
 		when(user.hasRole(UserRole.WORKER)).thenReturn(roles.contains(UserRole.WORKER));
+		when(user.hasRole(UserRole.ADMIN)).thenReturn(roles.contains(UserRole.ADMIN));
 		return user;
 	}
 

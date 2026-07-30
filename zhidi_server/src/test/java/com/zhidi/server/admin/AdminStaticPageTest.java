@@ -14,6 +14,8 @@ class AdminStaticPageTest {
 
 		assertThat(page.exists()).isTrue();
 		String html = page.getContentAsString(StandardCharsets.UTF_8);
+		assertThat(html).contains("/api/v1/auth/admin/login");
+		assertThat(html).contains("/api/v1/auth/sms-codes");
 		assertThat(html).contains("/api/v1/admin/after-sales");
 		assertThat(html).contains("/api/v1/admin/warranty-retentions");
 		assertThat(html).contains("warrantyDeductionAmount");

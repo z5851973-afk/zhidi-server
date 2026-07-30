@@ -143,6 +143,17 @@
         <p class="sub">用于处理业主售后、扣减或释放 10% 质保金。页面只负责运营操作，所有权限仍由后端管理员 JWT 校验。</p>
       </div>
       <div class="panel auth">
+        <label for="adminPhone">管理员手机号</label>
+        <input id="adminPhone" placeholder="例如 13800000000" />
+        <div class="row" style="margin-top:12px">
+          <input id="adminCode" placeholder="六位验证码" maxlength="6" style="flex:1; min-width:160px" />
+          <button class="btn secondary" id="sendCode">发送验证码</button>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="adminLogin">登录管理台</button>
+        </div>
+        <p class="hint">管理员账号必须已经在后端拥有 ADMIN 角色；普通业主或工人验证码不能进入管理台。</p>
+        <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
         <label for="token">管理员 JWT</label>
         <textarea id="token" placeholder="从管理员登录接口获取 token 后粘贴到这里"></textarea>
         <div class="row" style="margin-top:12px">
@@ -281,6 +292,8 @@
       $('token').value = '';
       toast('已清除 token');
     };
+    $('sendCode').onclick = sendAdminCode;
+    $('adminLogin').onclick = adminLogin;
 
     document.querySelectorAll('.tab').forEach(button => {
       button.onclick = () => {
@@ -303,8 +316,24 @@
 
     function token() {
       const value = $('token').value.trim() || localStorage.getItem('zhidiAdminToken') || '';
-      if (!value) throw new Error('请先粘贴管理员 JWT');
+      if (!value) throw new Error('请先登录管理台或粘贴管理员 JWT');
       return value;
+    }
+
+    async function publicApi(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok || body.code && body.code !== 'OK') {
+        throw new Error(body.message || body.code || `HTTP ${response.status}`);
+      }
+      return body.data;
     }
 
     async function api(path, options = {}) {
@@ -322,6 +351,44 @@
         throw new Error(body.message || body.code || `HTTP ${response.status}`);
       }
       return body.data;
+    }
+
+    async function sendAdminCode() {
+      const phone = $('adminPhone').value.trim();
+      if (!/^1[3-9]\d{9}$/.test(phone)) return toast('请填写正确的管理员手机号');
+      try {
+        const result = await publicApi('/api/v1/auth/sms-codes', {
+          method: 'POST',
+          body: JSON.stringify({ phone }),
+        });
+        if (result && result.simulatedCode) {
+          $('adminCode').value = result.simulatedCode;
+          toast(`开发环境验证码：${result.simulatedCode}`);
+        } else {
+          toast('验证码已发送');
+        }
+      } catch (error) {
+        toast(`验证码发送失败：${error.message}`);
+      }
+    }
+
+    async function adminLogin() {
+      const phone = $('adminPhone').value.trim();
+      const code = $('adminCode').value.trim();
+      if (!/^1[3-9]\d{9}$/.test(phone)) return toast('请填写正确的管理员手机号');
+      if (!/^\d{6}$/.test(code)) return toast('请填写六位验证码');
+      try {
+        const result = await publicApi('/api/v1/auth/admin/login', {
+          method: 'POST',
+          body: JSON.stringify({ phone, code }),
+        });
+        $('token').value = result.accessToken;
+        localStorage.setItem('zhidiAdminToken', result.accessToken);
+        toast('管理员登录成功，正在加载数据');
+        await refreshCurrent();
+      } catch (error) {
+        toast(`登录失败：${error.message}`);
+      }
     }
 
     async function loadAfterSales() {

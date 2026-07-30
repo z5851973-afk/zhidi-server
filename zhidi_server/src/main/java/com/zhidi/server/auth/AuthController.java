@@ -83,6 +83,20 @@ public class AuthController {
 		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
 	}
 
+	@PostMapping("/admin/login")
+	@Operation(summary = "管理员短信验证码登录",
+		description = "仅允许已有 ADMIN 角色账户登录管理后台，不会自动创建管理员")
+	public ResponseEntity<ApiResponse<LoginResponse>> loginAdmin(
+			@Valid @RequestBody LoginRequest request) {
+		LoginResult result = authService.loginAdmin(request.phone(), request.code());
+		RegistrationResult user = result.user();
+		AuthUserResponse authUser = new AuthUserResponse(
+			user.id(), user.phone(), user.status(), user.roles());
+		LoginResponse response = new LoginResponse(
+			result.accessToken(), result.tokenType(), result.expiresInSeconds(), authUser);
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
 	private String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
