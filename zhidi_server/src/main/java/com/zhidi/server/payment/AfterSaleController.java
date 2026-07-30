@@ -7,7 +7,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.MDC;
@@ -68,7 +70,8 @@ public class AfterSaleController {
 			@PathVariable UUID id,
 			@Valid @RequestBody ProcessAfterSaleRequest request) {
 		return ApiResponse.ok(
-			afterSaleService.process(id, request.resolution()), traceId());
+			afterSaleService.process(id, request.resolution(),
+				request.warrantyDeductionAmount()), traceId());
 	}
 
 	private static String traceId() {
@@ -83,5 +86,8 @@ public class AfterSaleController {
 		@NotBlank String reason,
 		String evidence) {}
 
-	public record ProcessAfterSaleRequest(@NotBlank String resolution) {}
+	public record ProcessAfterSaleRequest(
+		@NotBlank String resolution,
+		@DecimalMin(value = "0.01") BigDecimal warrantyDeductionAmount
+	) {}
 }

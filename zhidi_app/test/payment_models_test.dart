@@ -72,4 +72,24 @@ void main() {
     expect(retention.remainingAmount, 0);
     expect(retention.statusLabel, '已释放');
   });
+
+  test('parses after-sale warranty deduction result', () {
+    final afterSale = AfterSaleModel.fromJson({
+      'id': 'after-sale-1',
+      'bookingId': 'booking-1',
+      'ownerUserId': 'owner-1',
+      'type': 'COMPLAINT',
+      'reason': '水管返潮',
+      'status': 'RESOLVED',
+      'resolution': '平台判定返修，扣减质保金',
+      'warrantyRetentionId': 'retention-1',
+      'warrantyDeductionAmount': 30,
+      'createdAt': '2026-07-30T00:00:00Z',
+      'updatedAt': '2026-07-30T01:00:00Z',
+    });
+
+    expect(afterSale.statusLabel, '已解决');
+    expect(afterSale.warrantyRetentionId, 'retention-1');
+    expect(afterSale.warrantyDeductionAmount, 30);
+  });
 }

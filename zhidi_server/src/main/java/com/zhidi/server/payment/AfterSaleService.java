@@ -3,6 +3,7 @@ package com.zhidi.server.payment;
 import com.zhidi.server.booking.Booking;
 import com.zhidi.server.booking.BookingRepository;
 import com.zhidi.server.common.error.BusinessException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -14,11 +15,14 @@ public class AfterSaleService {
 
 	private final AfterSaleRepository afterSales;
 	private final BookingRepository bookings;
+	private final WarrantyRetentionRepository warrantyRetentions;
 
 	public AfterSaleService(AfterSaleRepository afterSales,
-			BookingRepository bookings) {
+			BookingRepository bookings,
+			WarrantyRetentionRepository warrantyRetentions) {
 		this.afterSales = afterSales;
 		this.bookings = bookings;
+		this.warrantyRetentions = warrantyRetentions;
 	}
 
 	@Transactional
@@ -68,6 +72,12 @@ public class AfterSaleService {
 
 	@Transactional
 	public AfterSaleResponse process(UUID afterSaleId, String resolution) {
+		return process(afterSaleId, resolution, null);
+	}
+
+	@Transactional
+	public AfterSaleResponse process(UUID afterSaleId, String resolution,
+			BigDecimal warrantyDeductionAmount) {
 		AfterSale afterSale = afterSales.findById(afterSaleId)
 			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
 				"AFTER_SALE_NOT_FOUND", "售后工单不存在"));
@@ -82,7 +92,28 @@ public class AfterSaleService {
 				"RESOLUTION_REQUIRED", "处理方案不能为空");
 		}
 
-		afterSale.process(resolution.trim());
+		if (warrantyDeductionAmount != null
+				&& warrantyDeductionAmount.compareTo(BigDecimal.ZERO) > 0) {
+			WarrantyRetention retention =
+				warrantyRetentions.findFirstByBookingIdOrderByCreatedAtDesc(
+					afterSale.getBookingId())
+					.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+						"WARRANTY_RETENTION_NOT_FOUND", "该售后工单没有可扣减的质保金"));
+			try {
+				retention.deduct(warrantyDeductionAmount, resolution.trim());
+			} catch (IllegalArgumentException ex) {
+				throw new BusinessException(HttpStatus.BAD_REQUEST,
+					"INVALID_DEDUCTION_AMOUNT", ex.getMessage());
+			} catch (IllegalStateException ex) {
+				throw new BusinessException(HttpStatus.CONFLICT,
+					"INVALID_STATUS", ex.getMessage());
+			}
+			warrantyRetentions.saveAndFlush(retention);
+			afterSale.process(resolution.trim(), retention.getId(),
+				warrantyDeductionAmount.setScale(2));
+		} else {
+			afterSale.process(resolution.trim());
+		}
 		return AfterSaleResponse.from(afterSales.saveAndFlush(afterSale));
 	}
 }

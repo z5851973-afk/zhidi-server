@@ -12,6 +12,9 @@ public interface WarrantyRetentionRepository
 
 	Optional<WarrantyRetention> findByPaymentOrderId(UUID paymentOrderId);
 
+	Optional<WarrantyRetention> findFirstByBookingIdOrderByCreatedAtDesc(
+		UUID bookingId);
+
 	List<WarrantyRetention> findByWorkerUserIdOrderByCreatedAtDesc(UUID workerUserId);
 
 	List<WarrantyRetention> findByOwnerUserIdOrderByCreatedAtDesc(UUID ownerUserId);

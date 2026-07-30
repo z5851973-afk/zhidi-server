@@ -1,5 +1,6 @@
 package com.zhidi.server.payment;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -12,6 +13,8 @@ public record AfterSaleResponse(
 	String evidence,
 	AfterSaleStatus status,
 	String resolution,
+	UUID warrantyRetentionId,
+	BigDecimal warrantyDeductionAmount,
 	Instant createdAt,
 	Instant updatedAt
 ) {
@@ -22,6 +25,8 @@ public record AfterSaleResponse(
 			afterSale.getOwnerUserId(), afterSale.getType(),
 			afterSale.getReason(), afterSale.getEvidence(),
 			afterSale.getStatus(), afterSale.getResolution(),
+			afterSale.getWarrantyRetentionId(),
+			afterSale.getWarrantyDeductionAmount(),
 			afterSale.getCreatedAt(), afterSale.getUpdatedAt());
 	}
 }

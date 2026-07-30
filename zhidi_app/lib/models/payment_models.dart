@@ -221,6 +221,8 @@ class AfterSaleModel {
   final String? evidence;
   final String status; // OPEN/PLATFORM_PROCESSING/RESOLVED/CLOSED
   final String? resolution;
+  final String? warrantyRetentionId;
+  final double? warrantyDeductionAmount;
   final String createdAt;
   final String updatedAt;
 
@@ -233,6 +235,8 @@ class AfterSaleModel {
     this.evidence,
     required this.status,
     this.resolution,
+    this.warrantyRetentionId,
+    this.warrantyDeductionAmount,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -247,6 +251,9 @@ class AfterSaleModel {
       evidence: json['evidence'] as String?,
       status: json['status'] as String,
       resolution: json['resolution'] as String?,
+      warrantyRetentionId: json['warrantyRetentionId'] as String?,
+      warrantyDeductionAmount:
+          (json['warrantyDeductionAmount'] as num?)?.toDouble(),
       createdAt: json['createdAt'] as String,
       updatedAt: json['updatedAt'] as String,
     );

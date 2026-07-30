@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.util.Objects;
 import java.util.UUID;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -43,6 +44,13 @@ public class AfterSale extends BaseEntity {
 	@Column(columnDefinition = "TEXT")
 	private String resolution;
 
+	@JdbcTypeCode(SqlTypes.BINARY)
+	@Column(name = "warranty_retention_id", columnDefinition = "BINARY(16)")
+	private UUID warrantyRetentionId;
+
+	@Column(name = "warranty_deduction_amount", precision = 12, scale = 2)
+	private BigDecimal warrantyDeductionAmount;
+
 	protected AfterSale() {
 	}
 
@@ -68,10 +76,21 @@ public class AfterSale extends BaseEntity {
 	public String getEvidence() { return evidence; }
 	public AfterSaleStatus getStatus() { return status; }
 	public String getResolution() { return resolution; }
+	public UUID getWarrantyRetentionId() { return warrantyRetentionId; }
+	public BigDecimal getWarrantyDeductionAmount() {
+		return warrantyDeductionAmount;
+	}
 
 	public void process(String resolution) {
 		this.status = AfterSaleStatus.RESOLVED;
 		this.resolution = resolution;
+	}
+
+	public void process(String resolution, UUID warrantyRetentionId,
+			BigDecimal warrantyDeductionAmount) {
+		process(resolution);
+		this.warrantyRetentionId = warrantyRetentionId;
+		this.warrantyDeductionAmount = warrantyDeductionAmount;
 	}
 
 	public void markPlatformProcessing() {
