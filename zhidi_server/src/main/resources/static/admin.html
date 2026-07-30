@@ -75,6 +75,23 @@
     .btn.red { background: var(--red); box-shadow: 0 8px 18px rgba(229, 72, 77, .18); }
     .btn:disabled { opacity: .55; cursor: not-allowed; }
     .tabs { display: flex; gap: 10px; margin: 18px 0; }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 12px;
+      margin: 18px 0;
+    }
+    .metric {
+      padding: 16px;
+      background: rgba(255, 250, 247, .9);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: 0 10px 28px rgba(64, 37, 18, .07);
+    }
+    .metric .label { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+    .metric .value { font-size: 24px; font-weight: 900; line-height: 1; }
+    .metric.warning .value { color: var(--orange); }
+    .metric.money .value { color: var(--green); }
     .tab {
       padding: 12px 18px;
       border-radius: 999px;
@@ -128,6 +145,7 @@
     .danger-text { color: var(--red); }
     @media (max-width: 920px) {
       .hero, .content { grid-template-columns: 1fr; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .side { position: static; }
       table { min-width: 760px; }
       .table-card { overflow-x: auto; }
@@ -161,6 +179,33 @@
           <button class="btn secondary" id="clearToken">清除</button>
         </div>
         <p class="hint">提示：当前后端仍是无状态 JWT。页面不会存密码，只把 token 保存在本机浏览器 localStorage。</p>
+      </div>
+    </section>
+
+    <section class="metrics" id="dashboardMetrics">
+      <div class="metric">
+        <div class="label">总用户</div>
+        <div class="value" id="metricTotalUsers">—</div>
+      </div>
+      <div class="metric">
+        <div class="label">今日新增</div>
+        <div class="value" id="metricNewUsers">—</div>
+      </div>
+      <div class="metric warning">
+        <div class="label">活跃预约</div>
+        <div class="value" id="metricActiveBookings">—</div>
+      </div>
+      <div class="metric warning">
+        <div class="label">待处理售后</div>
+        <div class="value" id="metricOpenAfterSales">—</div>
+      </div>
+      <div class="metric warning">
+        <div class="label">待确认收款</div>
+        <div class="value" id="metricPendingReceipts">—</div>
+      </div>
+      <div class="metric money">
+        <div class="label">冻结质保金</div>
+        <div class="value" id="metricHeldWarranty">—</div>
       </div>
     </section>
 
@@ -285,7 +330,7 @@
     $('saveToken').onclick = () => {
       localStorage.setItem('zhidiAdminToken', $('token').value.trim());
       toast('已保存 token，正在刷新数据');
-      refreshCurrent();
+      refreshAll();
     };
     $('clearToken').onclick = () => {
       localStorage.removeItem('zhidiAdminToken');
@@ -302,7 +347,7 @@
         button.classList.add('active');
         $('afterSalesView').style.display = state.tab === 'afterSales' ? '' : 'none';
         $('retentionsView').style.display = state.tab === 'retentions' ? '' : 'none';
-        refreshCurrent();
+        refreshAll();
       };
     });
 
@@ -385,9 +430,29 @@
         $('token').value = result.accessToken;
         localStorage.setItem('zhidiAdminToken', result.accessToken);
         toast('管理员登录成功，正在加载数据');
-        await refreshCurrent();
+        await refreshAll();
       } catch (error) {
         toast(`登录失败：${error.message}`);
+      }
+    }
+
+    async function loadDashboard() {
+      try {
+        const dashboard = await api('/api/v1/admin/dashboard');
+        $('metricTotalUsers').textContent = dashboard.totalUsers ?? 0;
+        $('metricNewUsers').textContent = dashboard.newUsersToday ?? 0;
+        $('metricActiveBookings').textContent = dashboard.activeBookings ?? 0;
+        $('metricOpenAfterSales').textContent = dashboard.openAfterSales ?? 0;
+        $('metricPendingReceipts').textContent = dashboard.pendingWorkerReceipts ?? 0;
+        $('metricHeldWarranty').textContent = `¥${money(dashboard.heldWarrantyAmount)}`;
+      } catch (error) {
+        $('metricTotalUsers').textContent = '!';
+        $('metricNewUsers').textContent = '!';
+        $('metricActiveBookings').textContent = '!';
+        $('metricOpenAfterSales').textContent = '!';
+        $('metricPendingReceipts').textContent = '!';
+        $('metricHeldWarranty').textContent = '!';
+        toast(`运营总览加载失败：${error.message}`);
       }
     }
 
@@ -476,7 +541,7 @@
         toast('售后已处理');
         $('resolution').value = '';
         $('deduction').value = '';
-        await Promise.all([loadAfterSales(), loadRetentions()]);
+        await Promise.all([loadDashboard(), loadAfterSales(), loadRetentions()]);
       } catch (error) {
         toast(`处理失败：${error.message}`);
       }
@@ -495,7 +560,7 @@
         toast('质保金已扣减');
         $('manualDeduction').value = '';
         $('manualReason').value = '';
-        await loadRetentions();
+        await Promise.all([loadDashboard(), loadRetentions()]);
       } catch (error) {
         toast(`扣减失败：${error.message}`);
       }
@@ -509,13 +574,14 @@
           method: 'POST',
         });
         toast('剩余质保金已释放');
-        await loadRetentions();
+        await Promise.all([loadDashboard(), loadRetentions()]);
       } catch (error) {
         toast(`释放失败：${error.message}`);
       }
     }
 
-    function refreshCurrent() {
+    async function refreshAll() {
+      await loadDashboard();
       return state.tab === 'afterSales' ? loadAfterSales() : loadRetentions();
     }
     function showTableError(id, error) {
@@ -546,7 +612,7 @@
       setTimeout(() => el.classList.remove('show'), 3200);
     }
 
-    if ($('token').value.trim()) loadAfterSales();
+    if ($('token').value.trim()) refreshAll();
   </script>
 </body>
 </html>

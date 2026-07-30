@@ -13,8 +13,12 @@ import com.zhidi.server.common.api.TraceIdFilter;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.common.security.CurrentUserPrincipal;
 import com.zhidi.server.payment.AfterSaleResponse;
+import com.zhidi.server.payment.AfterSaleRepository;
 import com.zhidi.server.payment.AfterSaleService;
 import com.zhidi.server.payment.AfterSaleStatus;
+import com.zhidi.server.payment.PaymentOrderRepository;
+import com.zhidi.server.payment.PaymentOrderStatus;
+import com.zhidi.server.payment.WarrantyRetentionRepository;
 import com.zhidi.server.payment.WarrantyRetentionResponse;
 import com.zhidi.server.payment.WarrantyRetentionService;
 import com.zhidi.server.payment.WarrantyRetentionStatus;
@@ -60,32 +64,62 @@ public class AdminController {
 	private final OperationLogRepository operationLogRepository;
 	private final AfterSaleService afterSaleService;
 	private final WarrantyRetentionService warrantyRetentionService;
+	private final AfterSaleRepository afterSaleRepository;
+	private final WarrantyRetentionRepository warrantyRetentionRepository;
+	private final PaymentOrderRepository paymentOrderRepository;
 
 	public AdminController(UserRepository userRepository,
 			BookingRepository bookingRepository,
 			OperationLogRepository operationLogRepository,
 			AfterSaleService afterSaleService,
-			WarrantyRetentionService warrantyRetentionService) {
+			WarrantyRetentionService warrantyRetentionService,
+			AfterSaleRepository afterSaleRepository,
+			WarrantyRetentionRepository warrantyRetentionRepository,
+			PaymentOrderRepository paymentOrderRepository) {
 		this.userRepository = userRepository;
 		this.bookingRepository = bookingRepository;
 		this.operationLogRepository = operationLogRepository;
 		this.afterSaleService = afterSaleService;
 		this.warrantyRetentionService = warrantyRetentionService;
+		this.afterSaleRepository = afterSaleRepository;
+		this.warrantyRetentionRepository = warrantyRetentionRepository;
+		this.paymentOrderRepository = paymentOrderRepository;
 	}
 
 	@GetMapping("/dashboard")
 	ResponseEntity<ApiResponse<DashboardResponse>> dashboard() {
-		long todayStart = LocalDate.now()
-			.atStartOfDay(ZoneId.systemDefault()).toEpochSecond();
+		Instant todayStart = LocalDate.now()
+			.atStartOfDay(ZoneId.systemDefault()).toInstant();
 
 		long totalUsers = userRepository.count();
-		long newUsersToday = userRepository.countByCreatedAtAfter(
-			Instant.ofEpochSecond(todayStart));
+		long newUsersToday = userRepository.countByCreatedAtAfter(todayStart);
 
 		List<Booking> allBookings = bookingRepository.findAll();
 		long activeBookings = allBookings.stream()
 			.filter(b -> !isTerminal(b.getStatus()))
 			.count();
+		long openAfterSales = afterSaleRepository.findAll().stream()
+			.filter(afterSale -> afterSale.getStatus() == AfterSaleStatus.OPEN
+				|| afterSale.getStatus() == AfterSaleStatus.PLATFORM_PROCESSING)
+			.count();
+		long pendingWorkerReceipts = paymentOrderRepository.findAll().stream()
+			.filter(order -> order.getStatus()
+				== PaymentOrderStatus.OWNER_REPORTED_PAID)
+			.count();
+		BigDecimal heldWarrantyAmount = warrantyRetentionRepository.findAll()
+			.stream()
+			.filter(retention -> retention.getStatus()
+				== WarrantyRetentionStatus.HELD)
+			.map(retention -> retention.remainingAmount())
+			.reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add)
+			.setScale(2, RoundingMode.HALF_UP);
+		BigDecimal paidAmountToday = paymentOrderRepository.findAll().stream()
+			.filter(order -> order.getStatus() == PaymentOrderStatus.PAID)
+			.filter(order -> order.getPaidAt() != null
+				&& !order.getPaidAt().isBefore(todayStart))
+			.map(order -> order.getAmount())
+			.reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add)
+			.setScale(2, RoundingMode.HALF_UP);
 
 		Map<String, Long> statusDistribution = new java.util.HashMap<>();
 		for (Booking b : allBookings) {
@@ -93,7 +127,9 @@ public class AdminController {
 		}
 
 		DashboardResponse dashboard = new DashboardResponse(
-			totalUsers, newUsersToday, activeBookings, statusDistribution);
+			totalUsers, newUsersToday, activeBookings, openAfterSales,
+			pendingWorkerReceipts, heldWarrantyAmount, paidAmountToday,
+			statusDistribution);
 		return ResponseEntity.ok(ApiResponse.ok(dashboard, traceId()));
 	}
 
