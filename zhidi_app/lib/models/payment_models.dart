@@ -150,6 +150,68 @@ class SettlementModel {
   }
 }
 
+class WarrantyRetentionModel {
+  final String id;
+  final String workerUserId;
+  final String ownerUserId;
+  final String bookingId;
+  final String paymentOrderId;
+  final double amount;
+  final double releasedAmount;
+  final double deductedAmount;
+  final double remainingAmount;
+  final String status; // HELD/RELEASED/DEDUCTED
+  final String? deductionReason;
+  final String? releasedAt;
+  final String createdAt;
+  final String updatedAt;
+
+  const WarrantyRetentionModel({
+    required this.id,
+    required this.workerUserId,
+    required this.ownerUserId,
+    required this.bookingId,
+    required this.paymentOrderId,
+    required this.amount,
+    required this.releasedAmount,
+    required this.deductedAmount,
+    required this.remainingAmount,
+    required this.status,
+    this.deductionReason,
+    this.releasedAt,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory WarrantyRetentionModel.fromJson(Map<String, dynamic> json) {
+    return WarrantyRetentionModel(
+      id: json['id'] as String,
+      workerUserId: json['workerUserId'] as String,
+      ownerUserId: json['ownerUserId'] as String,
+      bookingId: json['bookingId'] as String,
+      paymentOrderId: json['paymentOrderId'] as String,
+      amount: (json['amount'] as num).toDouble(),
+      releasedAmount: (json['releasedAmount'] as num).toDouble(),
+      deductedAmount: (json['deductedAmount'] as num).toDouble(),
+      remainingAmount: (json['remainingAmount'] as num).toDouble(),
+      status: json['status'] as String,
+      deductionReason: json['deductionReason'] as String?,
+      releasedAt: json['releasedAt'] as String?,
+      createdAt: json['createdAt'] as String,
+      updatedAt: json['updatedAt'] as String,
+    );
+  }
+
+  String get statusLabel {
+    return switch (status) {
+      'HELD' => '质保冻结中',
+      'RELEASED' => '已释放',
+      'DEDUCTED' => '已扣减',
+      _ => status,
+    };
+  }
+}
+
 class AfterSaleModel {
   final String id;
   final String bookingId;

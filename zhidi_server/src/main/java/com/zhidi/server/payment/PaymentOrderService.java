@@ -28,16 +28,19 @@ public class PaymentOrderService {
 	private final QuoteRepository quotes;
 	private final InspectionNodeRepository inspectionNodes;
 	private final SettlementRepository settlements;
+	private final WarrantyRetentionRepository warrantyRetentions;
 
 	public PaymentOrderService(PaymentOrderRepository paymentOrders,
 			BookingRepository bookings, QuoteRepository quotes,
 			InspectionNodeRepository inspectionNodes,
-			SettlementRepository settlements) {
+			SettlementRepository settlements,
+			WarrantyRetentionRepository warrantyRetentions) {
 		this.paymentOrders = paymentOrders;
 		this.bookings = bookings;
 		this.quotes = quotes;
 		this.inspectionNodes = inspectionNodes;
 		this.settlements = settlements;
+		this.warrantyRetentions = warrantyRetentions;
 	}
 
 	@Transactional
@@ -183,6 +186,13 @@ public class PaymentOrderService {
 			settlement.markSettleable();
 			settlement.markSettled();
 			settlements.saveAndFlush(settlement);
+		}
+		if (saved.getWarrantyRetention().compareTo(BigDecimal.ZERO) > 0
+				&& !warrantyRetentions.existsByPaymentOrderId(orderId)) {
+			WarrantyRetention retention = WarrantyRetention.create(
+				saved.getWorkerUserId(), saved.getOwnerUserId(),
+				saved.getBookingId(), saved.getId(), saved.getWarrantyRetention());
+			warrantyRetentions.saveAndFlush(retention);
 		}
 		return PaymentOrderResponse.from(saved);
 	}

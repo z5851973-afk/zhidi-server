@@ -47,4 +47,29 @@ void main() {
 
     expect(order.warrantyRetention, 20);
   });
+
+  test('parses warranty retention balance and release status', () {
+    final retention = WarrantyRetentionModel.fromJson({
+      'id': 'retention-1',
+      'workerUserId': 'worker-1',
+      'ownerUserId': 'owner-1',
+      'bookingId': 'booking-1',
+      'paymentOrderId': 'order-1',
+      'amount': 100,
+      'releasedAmount': 70,
+      'deductedAmount': 30,
+      'remainingAmount': 0,
+      'status': 'RELEASED',
+      'deductionReason': '售后维修扣减',
+      'releasedAt': '2026-07-30T08:00:00Z',
+      'createdAt': '2026-07-29T08:00:00Z',
+      'updatedAt': '2026-07-30T08:00:00Z',
+    });
+
+    expect(retention.amount, 100);
+    expect(retention.deductedAmount, 30);
+    expect(retention.releasedAmount, 70);
+    expect(retention.remainingAmount, 0);
+    expect(retention.statusLabel, '已释放');
+  });
 }

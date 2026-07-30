@@ -33,12 +33,14 @@ class PaymentOrderServiceOfflineTest {
 	private final QuoteRepository quotes = mock(QuoteRepository.class);
 	private final InspectionNodeRepository inspectionNodes = mock(InspectionNodeRepository.class);
 	private final SettlementRepository settlements = mock(SettlementRepository.class);
+	private final WarrantyRetentionRepository warrantyRetentions = mock(WarrantyRetentionRepository.class);
 	private PaymentOrderService service;
 
 	@BeforeEach
 	void setUp() {
 		service = new PaymentOrderService(
-			paymentOrders, bookings, quotes, inspectionNodes, settlements);
+			paymentOrders, bookings, quotes, inspectionNodes, settlements,
+			warrantyRetentions);
 	}
 
 	@Test
@@ -114,6 +116,9 @@ class PaymentOrderServiceOfflineTest {
 		when(settlements.findByPaymentOrderId(orderId)).thenReturn(Optional.empty());
 		when(settlements.saveAndFlush(any(Settlement.class)))
 			.thenAnswer(invocation -> invocation.getArgument(0));
+		when(warrantyRetentions.existsByPaymentOrderId(orderId)).thenReturn(false);
+		when(warrantyRetentions.saveAndFlush(any(WarrantyRetention.class)))
+			.thenAnswer(invocation -> invocation.getArgument(0));
 
 		PaymentOrderResponse response = service.confirmOfflineReceipt(workerId, orderId);
 
@@ -124,6 +129,13 @@ class PaymentOrderServiceOfflineTest {
 		assertThat(captor.getValue().getAmount()).isEqualByComparingTo("324.00");
 		assertThat(response.workerSettlement()).isEqualByComparingTo("324.00");
 		assertThat(response.warrantyRetention()).isEqualByComparingTo("36.00");
+		ArgumentCaptor<WarrantyRetention> warrantyCaptor =
+			ArgumentCaptor.forClass(WarrantyRetention.class);
+		verify(warrantyRetentions).saveAndFlush(warrantyCaptor.capture());
+		assertThat(warrantyCaptor.getValue().getStatus())
+			.isEqualTo(WarrantyRetentionStatus.HELD);
+		assertThat(warrantyCaptor.getValue().getAmount())
+			.isEqualByComparingTo("36.00");
 	}
 
 	@Test

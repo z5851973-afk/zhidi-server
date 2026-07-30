@@ -25,6 +25,7 @@ class WorkerSettlementPage extends StatefulWidget {
 class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
   List<SettlementModel> _items = const [];
   List<PaymentOrderModel> _pendingReceipts = const [];
+  List<WarrantyRetentionModel> _warrantyRetentions = const [];
   bool _loading = true;
   String? _confirmingOrderId;
   String? _error;
@@ -46,11 +47,13 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
       final results = await Future.wait([
         api.listSettlements(token),
         api.listOrders(token),
+        api.listWarrantyRetentions(token),
       ]);
       _items = results[0] as List<SettlementModel>;
       _pendingReceipts = (results[1] as List<PaymentOrderModel>)
           .where((order) => order.isAwaitingWorkerReceipt)
           .toList();
+      _warrantyRetentions = results[2] as List<WarrantyRetentionModel>;
     } catch (e) {
       _error = e.toString();
     }
@@ -123,6 +126,7 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
               ),
             )
           : _items.isEmpty && _pendingReceipts.isEmpty
+                && _warrantyRetentions.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -176,6 +180,23 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
                       (item) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: _buildItem(item),
+                      ),
+                    ),
+                  ],
+                  if (_warrantyRetentions.isNotEmpty) ...[
+                    Text(
+                      '质保金',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: _textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    ..._warrantyRetentions.map(
+                      (item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: _buildWarrantyRetention(item),
                       ),
                     ),
                   ],
@@ -300,6 +321,98 @@ class _WorkerSettlementPageState extends State<WorkerSettlementPage> {
           if (item.settledAt != null) ...[
             const SizedBox(height: 8),
             _detailRow('结算时间', _formatTime(item.settledAt!)),
+          ],
+          const SizedBox(height: 4),
+          _detailRow('创建时间', _formatTime(item.createdAt)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWarrantyRetention(WarrantyRetentionModel item) {
+    final (color, icon) = switch (item.status) {
+      'HELD' => (_warning, Icons.lock_clock_outlined),
+      'RELEASED' => (_success, Icons.lock_open_outlined),
+      'DEDUCTED' => (_errorColor, Icons.remove_circle_outline),
+      _ => (_textLight, Icons.help_outline),
+    };
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '¥${item.amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                  color: _textDark,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 14, color: color),
+                    const SizedBox(width: 4),
+                    Text(
+                      item.statusLabel,
+                      style: TextStyle(color: color, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: _line),
+          const SizedBox(height: 12),
+          _detailRow('剩余冻结', '¥${item.remainingAmount.toStringAsFixed(2)}'),
+          _detailRow('已释放', '¥${item.releasedAmount.toStringAsFixed(2)}'),
+          _detailRow('已扣减', '¥${item.deductedAmount.toStringAsFixed(2)}'),
+          _detailRow('关联订单', item.paymentOrderId.substring(0, 8)),
+          if (item.deductionReason != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _errorColor.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: _errorColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.deductionReason!,
+                      style: TextStyle(color: _errorColor, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (item.releasedAt != null) ...[
+            const SizedBox(height: 8),
+            _detailRow('释放时间', _formatTime(item.releasedAt!)),
           ],
           const SizedBox(height: 4),
           _detailRow('创建时间', _formatTime(item.createdAt)),

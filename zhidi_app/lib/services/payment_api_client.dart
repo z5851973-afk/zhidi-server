@@ -124,6 +124,15 @@ class PaymentApiClient {
         .toList();
   }
 
+  Future<List<WarrantyRetentionModel>> listWarrantyRetentions(
+    String accessToken,
+  ) async {
+    final body = await _get('/api/v1/warranty-retentions', accessToken);
+    return (body['data'] as List)
+        .map((j) => WarrantyRetentionModel.fromJson(j))
+        .toList();
+  }
+
   // ── 售后 ──
 
   Future<AfterSaleModel> createAfterSale(

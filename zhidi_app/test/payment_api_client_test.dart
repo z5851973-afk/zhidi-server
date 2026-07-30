@@ -67,4 +67,40 @@ void main() {
 
     await client.confirmOfflineReceipt('token', 'order-1');
   });
+
+  test('lists warranty retentions for current user', () async {
+    final client = PaymentApiClient(
+      baseUrl: Uri.parse('https://example.test'),
+      httpClient: MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/v1/warranty-retentions');
+        return http.Response(
+          jsonEncode({
+            'data': [
+              {
+                'id': 'retention-1',
+                'workerUserId': 'worker-1',
+                'ownerUserId': 'owner-1',
+                'bookingId': 'booking-1',
+                'paymentOrderId': 'order-1',
+                'amount': 10,
+                'releasedAmount': 0,
+                'deductedAmount': 0,
+                'remainingAmount': 10,
+                'status': 'HELD',
+                'createdAt': '2026-07-30T00:00:00Z',
+                'updatedAt': '2026-07-30T00:00:00Z',
+              },
+            ],
+          }),
+          200,
+        );
+      }),
+    );
+
+    final retentions = await client.listWarrantyRetentions('token');
+
+    expect(retentions.single.statusLabel, '质保冻结中');
+    expect(retentions.single.remainingAmount, 10);
+  });
 }
