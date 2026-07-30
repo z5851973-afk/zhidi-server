@@ -212,6 +212,8 @@
     <div class="tabs">
       <button class="tab active" data-tab="afterSales">售后工单</button>
       <button class="tab" data-tab="retentions">质保金账本</button>
+      <button class="tab" data-tab="bookings">订单查询</button>
+      <button class="tab" data-tab="users">用户查询</button>
     </div>
 
     <section id="afterSalesView">
@@ -315,6 +317,70 @@
         </aside>
       </div>
     </section>
+
+    <section id="bookingsView" style="display:none">
+      <div class="panel toolbar">
+        <h2>订单查询</h2>
+        <div class="row">
+          <select id="bookingStatus" style="width:180px">
+            <option value="">全部状态</option>
+            <option value="PENDING">待接单</option>
+            <option value="ACCEPTED">已接单</option>
+            <option value="VISIT_SCHEDULED">已约上门</option>
+            <option value="ON_SITE">已到场</option>
+            <option value="HIRED">已选定</option>
+            <option value="CANCELLED">已取消</option>
+          </select>
+          <input id="bookingTrade" placeholder="工种，如 plumbing" style="width:180px" />
+          <button class="btn secondary" id="refreshBookings">查询订单</button>
+        </div>
+      </div>
+      <div class="panel table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>状态</th>
+              <th>工种/城市</th>
+              <th>业主</th>
+              <th>师傅</th>
+              <th>地址</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody id="bookingsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="usersView" style="display:none">
+      <div class="panel toolbar">
+        <h2>用户查询</h2>
+        <div class="row">
+          <input id="userPhone" placeholder="手机号关键字" style="width:180px" />
+          <select id="userRole" style="width:160px">
+            <option value="">全部角色</option>
+            <option value="OWNER">业主</option>
+            <option value="WORKER">工人</option>
+            <option value="ADMIN">管理员</option>
+          </select>
+          <button class="btn secondary" id="refreshUsers">查询用户</button>
+        </div>
+      </div>
+      <div class="panel table-card">
+        <table>
+          <thead>
+            <tr>
+              <th>手机号</th>
+              <th>角色</th>
+              <th>状态</th>
+              <th>用户 ID</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
   <div class="toast" id="toast"></div>
 
@@ -347,14 +413,22 @@
         button.classList.add('active');
         $('afterSalesView').style.display = state.tab === 'afterSales' ? '' : 'none';
         $('retentionsView').style.display = state.tab === 'retentions' ? '' : 'none';
+        $('bookingsView').style.display = state.tab === 'bookings' ? '' : 'none';
+        $('usersView').style.display = state.tab === 'users' ? '' : 'none';
         refreshAll();
       };
     });
 
     $('refreshAfterSales').onclick = loadAfterSales;
     $('refreshRetentions').onclick = loadRetentions;
+    $('refreshBookings').onclick = loadBookings;
+    $('refreshUsers').onclick = loadUsers;
     $('afterSaleStatus').onchange = loadAfterSales;
     $('retentionStatus').onchange = loadRetentions;
+    $('bookingStatus').onchange = loadBookings;
+    $('bookingTrade').onkeydown = event => { if (event.key === 'Enter') loadBookings(); };
+    $('userRole').onchange = loadUsers;
+    $('userPhone').onkeydown = event => { if (event.key === 'Enter') loadUsers(); };
     $('processAfterSale').onclick = processAfterSale;
     $('deductRetention').onclick = deductRetention;
     $('releaseRetention').onclick = releaseRetention;
@@ -513,6 +587,60 @@
       </tr>`;
     }
 
+    async function loadBookings() {
+      try {
+        const params = new URLSearchParams();
+        if ($('bookingStatus').value) params.set('status', $('bookingStatus').value);
+        if ($('bookingTrade').value.trim()) params.set('trade', $('bookingTrade').value.trim());
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const page = await api(`/api/v1/admin/bookings${query}`);
+        const rows = page.content || [];
+        $('bookingsBody').innerHTML = rows.length
+          ? rows.map(bookingRow).join('')
+          : `<tr><td colspan="6" class="empty">暂无订单</td></tr>`;
+      } catch (error) {
+        showTableError('bookingsBody', error, 6);
+      }
+    }
+
+    function bookingRow(item) {
+      return `<tr>
+        <td>${pill(item.status, bookingStatusText(item.status))}</td>
+        <td><strong>${tradeText(item.trade)}</strong><br><span class="hint">${escapeHtml(item.city || '—')}</span></td>
+        <td>${escapeHtml(item.ownerName || '—')}<br><span class="mono">${escapeHtml(item.ownerPhone || '')}</span></td>
+        <td><span class="mono">${shortId(item.workerUserId)}</span></td>
+        <td>${escapeHtml(item.address || '—')}</td>
+        <td><span class="mono">${dateTime(item.createdAt)}</span><br><span class="mono">${shortId(item.id)}</span></td>
+      </tr>`;
+    }
+
+    async function loadUsers() {
+      try {
+        const params = new URLSearchParams();
+        if ($('userPhone').value.trim()) params.set('phone', $('userPhone').value.trim());
+        if ($('userRole').value) params.set('role', $('userRole').value);
+        const query = params.toString() ? `?${params.toString()}` : '';
+        const page = await api(`/api/v1/admin/users${query}`);
+        const rows = page.content || [];
+        $('usersBody').innerHTML = rows.length
+          ? rows.map(userRow).join('')
+          : `<tr><td colspan="5" class="empty">暂无用户</td></tr>`;
+      } catch (error) {
+        showTableError('usersBody', error, 5);
+      }
+    }
+
+    function userRow(item) {
+      const roles = Array.isArray(item.roles) ? item.roles.map(roleText).join('、') : '—';
+      return `<tr>
+        <td><strong>${escapeHtml(item.phone || '—')}</strong></td>
+        <td>${roles}</td>
+        <td>${pill(item.status, userStatusText(item.status))}</td>
+        <td><span class="mono">${shortId(item.id)}</span></td>
+        <td><span class="mono">${dateTime(item.createdAt)}</span></td>
+      </tr>`;
+    }
+
     window.selectAfterSale = (id) => {
       state.selectedAfterSaleId = id;
       $('selectedAfterSale').value = id;
@@ -582,10 +710,13 @@
 
     async function refreshAll() {
       await loadDashboard();
-      return state.tab === 'afterSales' ? loadAfterSales() : loadRetentions();
+      if (state.tab === 'afterSales') return loadAfterSales();
+      if (state.tab === 'retentions') return loadRetentions();
+      if (state.tab === 'bookings') return loadBookings();
+      return loadUsers();
     }
-    function showTableError(id, error) {
-      $(id).innerHTML = `<tr><td colspan="5" class="empty danger-text">${escapeHtml(error.message)}</td></tr>`;
+    function showTableError(id, error, colspan = 5) {
+      $(id).innerHTML = `<tr><td colspan="${colspan}" class="empty danger-text">${escapeHtml(error.message)}</td></tr>`;
     }
     function pill(status, text) {
       const cls = String(status || '').toLowerCase().replace('_', '-');
@@ -599,8 +730,47 @@
     function retentionText(status) {
       return { HELD: '冻结中', RELEASED: '已释放', DEDUCTED: '已扣减' }[status] || status;
     }
+    function bookingStatusText(status) {
+      return {
+        PENDING: '待接单',
+        ACCEPTED: '已接单',
+        VISIT_PROPOSED: '待确认时间',
+        VISIT_SCHEDULED: '已约上门',
+        ARRIVAL_PENDING: '待确认到场',
+        ON_SITE: '已到场',
+        QUOTE_PENDING: '待报价',
+        HIRED: '已选定',
+        CANCELLED: '已取消',
+        REJECTED: '已拒绝',
+        NOT_SELECTED: '未选中',
+      }[status] || status;
+    }
+    function userStatusText(status) {
+      return { ACTIVE: '正常', DISABLED: '已禁用' }[status] || status;
+    }
+    function roleText(role) {
+      return { OWNER: '业主', WORKER: '工人', ADMIN: '管理员' }[role] || role;
+    }
+    function tradeText(trade) {
+      return {
+        demolition: '拆除',
+        plumbing: '水电',
+        waterproofing: '防水',
+        masonry: '泥瓦',
+        carpentry: '木工',
+        painting: '油漆',
+        installation: '安装',
+        cleaning: '保洁',
+      }[trade] || trade || '—';
+    }
     function typeText(type) {
       return { REFUND: '退款', COMPLAINT: '投诉', DISPUTE: '争议' }[type] || type;
+    }
+    function dateTime(value) {
+      if (!value) return '—';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return escapeHtml(value);
+      return date.toLocaleString('zh-CN', { hour12: false });
     }
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

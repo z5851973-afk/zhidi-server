@@ -83,6 +83,7 @@ zhidi/
 - 2026-07-30 已新增最小可视化管理后台页面 `/admin.html`：运营人员粘贴管理员 JWT 后，可查看售后工单、提交处理结果并扣减质保金，也可查看质保金账本、手动扣减或释放剩余质保金。页面随 Spring Boot jar 打包到 `BOOT-INF/classes/static/admin.html`，后端聚焦测试 `AdminStaticPageTest`、`AdminControllerTest` 通过，ECS 已部署新 jar 且健康检查 `UP`；当前仍是最小运营台，正式后台的登录、角色管理、审计检索、筛选导出和移动端适配还需后续完善。
 - 2026-07-30 已补齐管理后台最小登录入口：新增 `POST /api/v1/auth/admin/login`，管理员使用短信验证码登录后获得 ADMIN JWT；该接口只允许已有 ADMIN 角色账号登录，不会像业主/工人入口一样自动创建管理员账号。`/admin.html` 已支持管理员手机号发送验证码、验证码登录并自动保存 token，同时保留手动粘贴 JWT 兜底。回归 `AuthServiceTest` 与 `AdminStaticPageTest` 通过。
 - 2026-07-30 已扩展管理后台运营总览：`GET /api/v1/admin/dashboard` 现在返回总用户、今日新增、活跃预约、待处理售后、待工人确认收款、冻结质保金金额、今日付款金额和预约状态分布；`/admin.html` 顶部已显示关键运营卡片，登录、处理售后、扣减/释放质保金后会刷新总览。回归 `AdminControllerTest`、`AdminStaticPageTest` 通过，后端打包通过。
+- 2026-07-30 已在 `/admin.html` 增加订单查询和用户查询：订单页调用 `GET /api/v1/admin/bookings`，支持按状态和工种筛选并展示业主、师傅、地址、创建时间；用户页调用 `GET /api/v1/admin/users`，支持按手机号和角色筛选并展示角色、状态和用户 ID。当前这两页只读，避免后台误操作账号或订单；回归 `AdminControllerTest`、`AdminStaticPageTest` 通过，后端打包通过。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。

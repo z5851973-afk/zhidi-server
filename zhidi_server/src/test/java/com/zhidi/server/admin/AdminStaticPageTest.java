@@ -19,6 +19,10 @@ class AdminStaticPageTest {
 		assertThat(html).contains("/api/v1/admin/dashboard");
 		assertThat(html).contains("待处理售后");
 		assertThat(html).contains("冻结质保金");
+		assertThat(html).contains("/api/v1/admin/bookings");
+		assertThat(html).contains("/api/v1/admin/users");
+		assertThat(html).contains("订单查询");
+		assertThat(html).contains("用户查询");
 		assertThat(html).contains("/api/v1/admin/after-sales");
 		assertThat(html).contains("/api/v1/admin/warranty-retentions");
 		assertThat(html).contains("warrantyDeductionAmount");
