@@ -12,6 +12,17 @@ import com.zhidi.server.common.api.ApiResponse;
 import com.zhidi.server.common.api.TraceIdFilter;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.common.security.CurrentUserPrincipal;
+import com.zhidi.server.payment.AfterSaleResponse;
+import com.zhidi.server.payment.AfterSaleService;
+import com.zhidi.server.payment.AfterSaleStatus;
+import com.zhidi.server.payment.WarrantyRetentionResponse;
+import com.zhidi.server.payment.WarrantyRetentionService;
+import com.zhidi.server.payment.WarrantyRetentionStatus;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -47,13 +58,19 @@ public class AdminController {
 	private final UserRepository userRepository;
 	private final BookingRepository bookingRepository;
 	private final OperationLogRepository operationLogRepository;
+	private final AfterSaleService afterSaleService;
+	private final WarrantyRetentionService warrantyRetentionService;
 
 	public AdminController(UserRepository userRepository,
 			BookingRepository bookingRepository,
-			OperationLogRepository operationLogRepository) {
+			OperationLogRepository operationLogRepository,
+			AfterSaleService afterSaleService,
+			WarrantyRetentionService warrantyRetentionService) {
 		this.userRepository = userRepository;
 		this.bookingRepository = bookingRepository;
 		this.operationLogRepository = operationLogRepository;
+		this.afterSaleService = afterSaleService;
+		this.warrantyRetentionService = warrantyRetentionService;
 	}
 
 	@GetMapping("/dashboard")
@@ -182,6 +199,52 @@ public class AdminController {
 		return ResponseEntity.ok(ApiResponse.ok(booking, traceId()));
 	}
 
+	@GetMapping("/after-sales")
+	ResponseEntity<ApiResponse<Page<AfterSaleResponse>>> listAfterSales(
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) String status) {
+		AfterSaleStatus statusFilter = parseAfterSaleStatusFilter(status);
+		Page<AfterSaleResponse> result = afterSaleService.listForAdmin(
+			pageRequest(page, size), statusFilter);
+		return ResponseEntity.ok(ApiResponse.ok(result, traceId()));
+	}
+
+	@PutMapping("/after-sales/{id}/process")
+	@Transactional
+	ResponseEntity<ApiResponse<AfterSaleResponse>> processAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @org.springframework.web.bind.annotation.RequestBody
+				ProcessAfterSaleRequest request) {
+		AfterSaleResponse response = afterSaleService.process(
+			id, request.resolution(), request.warrantyDeductionAmount());
+		operationLogRepository.save(OperationLog.success(
+			principal.userId(), "ADMIN_AFTER_SALE_PROCESS", "AFTER_SALE",
+			id.toString(), traceId(),
+			"{\"warrantyDeductionAmount\":\""
+				+ (request.warrantyDeductionAmount() == null
+					? "0.00"
+					: request.warrantyDeductionAmount()
+						.setScale(2, RoundingMode.HALF_UP).toPlainString())
+				+ "\"}"));
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@GetMapping("/warranty-retentions")
+	ResponseEntity<ApiResponse<Page<WarrantyRetentionResponse>>>
+			listWarrantyRetentions(
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) String status) {
+		WarrantyRetentionStatus statusFilter =
+			parseWarrantyRetentionStatusFilter(status);
+		Page<WarrantyRetentionResponse> result =
+			warrantyRetentionService.listForAdmin(
+				pageRequest(page, size), statusFilter);
+		return ResponseEntity.ok(ApiResponse.ok(result, traceId()));
+	}
+
 	private PageRequest pageRequest(int page, int size) {
 		if (page < 0 || size < 1 || size > 100) {
 			throw new BusinessException(HttpStatus.BAD_REQUEST,
@@ -214,6 +277,33 @@ public class AdminController {
 		}
 	}
 
+	private AfterSaleStatus parseAfterSaleStatusFilter(String status) {
+		if (!StringUtils.hasText(status)) {
+			return null;
+		}
+		try {
+			return AfterSaleStatus.valueOf(status.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_AFTER_SALE_STATUS_FILTER",
+				"invalid after-sale status: " + status);
+		}
+	}
+
+	private WarrantyRetentionStatus parseWarrantyRetentionStatusFilter(
+			String status) {
+		if (!StringUtils.hasText(status)) {
+			return null;
+		}
+		try {
+			return WarrantyRetentionStatus.valueOf(status.trim().toUpperCase());
+		} catch (IllegalArgumentException e) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_WARRANTY_RETENTION_STATUS_FILTER",
+				"invalid warranty retention status: " + status);
+		}
+	}
+
 	private static boolean isTerminal(BookingStatus status) {
 		return switch (status) {
 			case CANCELLED, NOT_SELECTED, REJECTED -> true;
@@ -224,4 +314,9 @@ public class AdminController {
 	private String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
+
+	public record ProcessAfterSaleRequest(
+		@NotBlank String resolution,
+		@DecimalMin(value = "0.01") BigDecimal warrantyDeductionAmount
+	) {}
 }

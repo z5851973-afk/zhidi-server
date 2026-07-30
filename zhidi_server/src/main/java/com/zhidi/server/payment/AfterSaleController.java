@@ -7,9 +7,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.MDC;
@@ -18,7 +16,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -63,17 +60,6 @@ public class AfterSaleController {
 			afterSaleService.listForUser(principal.userId()), traceId());
 	}
 
-	@PutMapping("/api/v1/admin/after-sales/{id}/process")
-	@PreAuthorize("hasRole('ADMIN')")
-	@Operation(summary = "管理员处理售后工单")
-	public ApiResponse<AfterSaleResponse> process(
-			@PathVariable UUID id,
-			@Valid @RequestBody ProcessAfterSaleRequest request) {
-		return ApiResponse.ok(
-			afterSaleService.process(id, request.resolution(),
-				request.warrantyDeductionAmount()), traceId());
-	}
-
 	private static String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
@@ -86,8 +72,4 @@ public class AfterSaleController {
 		@NotBlank String reason,
 		String evidence) {}
 
-	public record ProcessAfterSaleRequest(
-		@NotBlank String resolution,
-		@DecimalMin(value = "0.01") BigDecimal warrantyDeductionAmount
-	) {}
 }

@@ -3,6 +3,8 @@ package com.zhidi.server.payment;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface WarrantyRetentionRepository
@@ -18,4 +20,7 @@ public interface WarrantyRetentionRepository
 	List<WarrantyRetention> findByWorkerUserIdOrderByCreatedAtDesc(UUID workerUserId);
 
 	List<WarrantyRetention> findByOwnerUserIdOrderByCreatedAtDesc(UUID ownerUserId);
+
+	Page<WarrantyRetention> findByStatus(WarrantyRetentionStatus status,
+		Pageable pageable);
 }
