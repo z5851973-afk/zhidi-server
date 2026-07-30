@@ -80,6 +80,7 @@ zhidi/
 - 2026-07-30 已继续补齐 10% 质保金账本：新增 `warranty_retentions` 表和 `GET /api/v1/warranty-retentions`、`POST /api/v1/admin/warranty-retentions/{id}/release`、`POST /api/v1/admin/warranty-retentions/{id}/deduct`；工人确认实际收款时会自动生成 `HELD` 质保金冻结记录，管理员可按售后处理扣减，质保结束后可释放剩余金额，记录会显示原始金额、已扣减、已释放和剩余冻结。工人端“结算”页已读取并展示质保金状态。后端回归 `PaymentOrderServiceOfflineTest`、`WarrantyRetentionServiceTest`，Flutter 回归 `payment_models_test`、`payment_api_client_test`、`owner_payment_page_test` 与 `flutter analyze` 通过；ECS 已部署并确认 Swagger 暴露 `/api/v1/warranty-retentions`，健康检查 `UP`，最新双端公网 debug APK 已安装到 `emulator-5554`/`emulator-5556`。
 - 2026-07-30 已把售后处理与质保金扣减串联：`after_sales` 新增 `warranty_retention_id` 与 `warranty_deduction_amount`，管理员处理售后 `PUT /api/v1/admin/after-sales/{id}/process` 可选传 `warrantyDeductionAmount`；传入正数时，后端会找到该预约最新质保金记录并扣减，同时把扣减金额和关联质保金记录写回售后单。Flutter `AfterSaleModel` 已解析扣减结果。后端回归 `AfterSaleServiceTest`、`WarrantyRetentionServiceTest`、`PaymentOrderServiceOfflineTest`，Flutter 支付/售后模型测试与 `flutter analyze` 通过；ECS 已部署，健康检查 `UP`，Swagger 已确认暴露 `warrantyDeductionAmount`。
 - 2026-07-30 已补齐最小管理端运营 API：`GET /api/v1/admin/after-sales` 支持按售后状态分页查看工单，`PUT /api/v1/admin/after-sales/{id}/process` 统一管理员处理售后并写入 `ADMIN_AFTER_SALE_PROCESS` 操作审计，`GET /api/v1/admin/warranty-retentions` 支持按质保金状态分页查看冻结/释放/扣减账本。原普通售后 Controller 只保留业主/工人创建与查询，避免管理路由分散。后端回归 `AdminControllerTest`、`AfterSaleServiceTest`、`WarrantyRetentionServiceTest` 通过，后端打包通过；ECS 已部署，健康检查 `UP`，Swagger 已确认暴露 `/api/v1/admin/after-sales` 与 `/api/v1/admin/warranty-retentions`。
+- 2026-07-30 已新增最小可视化管理后台页面 `/admin.html`：运营人员粘贴管理员 JWT 后，可查看售后工单、提交处理结果并扣减质保金，也可查看质保金账本、手动扣减或释放剩余质保金。页面随 Spring Boot jar 打包到 `BOOT-INF/classes/static/admin.html`，后端聚焦测试 `AdminStaticPageTest`、`AdminControllerTest` 通过，ECS 已部署新 jar 且健康检查 `UP`；当前仍是最小运营台，正式后台的登录、角色管理、审计检索、筛选导出和移动端适配还需后续完善。
 - 大量业务状态已能在本地持久化，并带有 Mock 示例数据。
 - 部分业主/工匠订单和工匠资料使用 Firestore 桥接；这不是完整正式后端。
 - 已存在 Flutter 单元/Widget 测试，覆盖认证、启动、引导、退出以及若干重点页面。
@@ -186,7 +187,7 @@ GET /api/v1/after-sales
 - 通用文件上传已使用 ECS 本地持久目录，工人案例、日报和聊天图片可走真实上传；仍缺正式对象存储、CDN 和图片审核。
 - 收藏、评价、动态、举报、售后与反馈。
 - 支付当前为线下付款上报与工人确认收款的诚实闭环；真实支付、退款、结算/对账和资金托管仍未接入支付机构，不会假成功。
-- 已有受保护管理 API、管理员操作审计和分页/筛选校验；仍缺可视化管理后台。
+- 已有受保护管理 API、管理员操作审计、分页/筛选校验和最小 `/admin.html` 可视化运营台；仍缺正式后台登录、角色管理、审计检索、筛选导出、指标看板和更完整的移动端适配。
 - 生产仍为公网 HTTP 直连 IP；缺域名、HTTPS、Nginx/反代、正式短信、推送、监控告警和自动化备份。
 
 ### Flutter 集成缺口

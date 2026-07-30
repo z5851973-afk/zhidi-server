@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>知底管理台 · 售后与质保金</title>
+  <style>
+    :root {
+      --orange: #ff6a00;
+      --orange-soft: #fff1e7;
+      --green: #08bf63;
+      --red: #e5484d;
+      --ink: #201a17;
+      --muted: #7f7169;
+      --line: #eadfd7;
+      --bg: #f8f3ef;
+      --card: #fffaf7;
+      --shadow: 0 18px 50px rgba(64, 37, 18, .10);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 15% -10%, #ffe3cb 0 24rem, transparent 25rem),
+        linear-gradient(180deg, #fffaf7, var(--bg));
+      min-height: 100vh;
+    }
+    .shell { max-width: 1220px; margin: 0 auto; padding: 28px 22px 48px; }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.4fr .9fr;
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+    .panel {
+      background: rgba(255, 250, 247, .88);
+      border: 1px solid rgba(234, 223, 215, .9);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+    .headline { padding: 26px; }
+    .eyebrow { color: var(--orange); font-weight: 800; letter-spacing: .12em; font-size: 13px; }
+    h1 { margin: 10px 0 8px; font-size: 34px; line-height: 1.1; }
+    .sub { color: var(--muted); line-height: 1.75; margin: 0; }
+    .auth { padding: 20px; }
+    label { display: block; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
+    textarea, input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: white;
+      color: var(--ink);
+      padding: 12px 13px;
+      font: inherit;
+      outline: none;
+    }
+    textarea:focus, input:focus, select:focus { border-color: var(--orange); box-shadow: 0 0 0 4px var(--orange-soft); }
+    textarea { min-height: 92px; resize: vertical; }
+    .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 11px 18px;
+      background: var(--orange);
+      color: white;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(255, 106, 0, .24);
+    }
+    .btn.secondary { background: white; color: var(--orange); border: 1px solid #ffd2af; box-shadow: none; }
+    .btn.green { background: var(--green); box-shadow: 0 8px 18px rgba(8, 191, 99, .18); }
+    .btn.red { background: var(--red); box-shadow: 0 8px 18px rgba(229, 72, 77, .18); }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }
+    .tabs { display: flex; gap: 10px; margin: 18px 0; }
+    .tab {
+      padding: 12px 18px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.7);
+      color: var(--muted);
+      cursor: pointer;
+      font-weight: 800;
+    }
+    .tab.active { background: var(--orange); color: white; border-color: var(--orange); }
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      align-items: center;
+    }
+    .toolbar h2 { margin: 0; font-size: 22px; }
+    .content { display: grid; grid-template-columns: 1fr 360px; gap: 16px; align-items: start; }
+    .table-card { overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; background: rgba(255,255,255,.72); }
+    th, td { padding: 14px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; background: #fff6ef; }
+    td { font-size: 14px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #6c5b53; }
+    .pill { display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #f1ebe7; color: #705f56; }
+    .pill.open, .pill.held { background: #fff1d8; color: #a56200; }
+    .pill.resolved, .pill.released { background: #dff8ea; color: #087842; }
+    .pill.deducted { background: #ffe2e2; color: #b42328; }
+    .side { padding: 18px; position: sticky; top: 16px; }
+    .side h3 { margin: 0 0 6px; }
+    .hint { color: var(--muted); font-size: 13px; line-height: 1.65; }
+    .field { margin-top: 14px; }
+    .empty { padding: 36px; text-align: center; color: var(--muted); }
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      max-width: 420px;
+      background: #211916;
+      color: white;
+      padding: 14px 16px;
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      display: none;
+      white-space: pre-wrap;
+      z-index: 10;
+    }
+    .toast.show { display: block; }
+    .danger-text { color: var(--red); }
+    @media (max-width: 920px) {
+      .hero, .content { grid-template-columns: 1fr; }
+      .side { position: static; }
+      table { min-width: 760px; }
+      .table-card { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="panel headline">
+        <div class="eyebrow">ZHIDI ADMIN</div>
+        <h1>售后与质保金管理台</h1>
+        <p class="sub">用于处理业主售后、扣减或释放 10% 质保金。页面只负责运营操作，所有权限仍由后端管理员 JWT 校验。</p>
+      </div>
+      <div class="panel auth">
+        <label for="token">管理员 JWT</label>
+        <textarea id="token" placeholder="从管理员登录接口获取 token 后粘贴到这里"></textarea>
+        <div class="row" style="margin-top:12px">
+          <button class="btn" id="saveToken">保存并刷新</button>
+          <button class="btn secondary" id="clearToken">清除</button>
+        </div>
+        <p class="hint">提示：当前后端仍是无状态 JWT。页面不会存密码，只把 token 保存在本机浏览器 localStorage。</p>
+      </div>
+    </section>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="afterSales">售后工单</button>
+      <button class="tab" data-tab="retentions">质保金账本</button>
+    </div>
+
+    <section id="afterSalesView">
+      <div class="panel toolbar">
+        <h2>售后工单</h2>
+        <div class="row">
+          <select id="afterSaleStatus" style="width:180px">
+            <option value="">全部状态</option>
+            <option value="OPEN">待处理</option>
+            <option value="PLATFORM_PROCESSING">平台处理中</option>
+            <option value="RESOLVED">已解决</option>
+            <option value="CLOSED">已关闭</option>
+          </select>
+          <button class="btn secondary" id="refreshAfterSales">刷新</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="panel table-card">
+          <table>
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>类型/原因</th>
+                <th>预约</th>
+                <th>质保扣减</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="afterSalesBody"></tbody>
+          </table>
+        </div>
+        <aside class="panel side">
+          <h3>处理售后</h3>
+          <p class="hint">选择左侧工单后填写处理结果。扣减金额可留空；填写后会从该预约对应质保金中扣减并写回售后单。</p>
+          <div class="field">
+            <label>当前工单</label>
+            <input id="selectedAfterSale" disabled placeholder="未选择" />
+          </div>
+          <div class="field">
+            <label>处理结果</label>
+            <textarea id="resolution" placeholder="例如：平台判定由师傅返修，扣减质保金 30 元"></textarea>
+          </div>
+          <div class="field">
+            <label>扣减质保金金额（可选）</label>
+            <input id="deduction" type="number" min="0.01" step="0.01" placeholder="例如 30.00" />
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn" id="processAfterSale">提交处理</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section id="retentionsView" style="display:none">
+      <div class="panel toolbar">
+        <h2>质保金账本</h2>
+        <div class="row">
+          <select id="retentionStatus" style="width:180px">
+            <option value="">全部状态</option>
+            <option value="HELD">冻结中</option>
+            <option value="RELEASED">已释放</option>
+            <option value="DEDUCTED">已扣减</option>
+          </select>
+          <button class="btn secondary" id="refreshRetentions">刷新</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="panel table-card">
+          <table>
+            <thead>
+              <tr>
+                <th>状态</th>
+                <th>金额</th>
+                <th>预约/订单</th>
+                <th>原因</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="retentionsBody"></tbody>
+          </table>
+        </div>
+        <aside class="panel side">
+          <h3>手动处理质保金</h3>
+          <p class="hint">通常应优先通过“售后工单”扣减；这里保留运营兜底能力：释放剩余质保金或手动扣减。</p>
+          <div class="field">
+            <label>当前质保金</label>
+            <input id="selectedRetention" disabled placeholder="未选择" />
+          </div>
+          <div class="field">
+            <label>扣减金额</label>
+            <input id="manualDeduction" type="number" min="0.01" step="0.01" placeholder="例如 20.00" />
+          </div>
+          <div class="field">
+            <label>扣减原因</label>
+            <textarea id="manualReason" placeholder="例如：售后补偿扣减"></textarea>
+          </div>
+          <div class="row" style="margin-top:16px">
+            <button class="btn red" id="deductRetention">扣减</button>
+            <button class="btn green" id="releaseRetention">释放剩余</button>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const state = {
+      tab: 'afterSales',
+      selectedAfterSaleId: '',
+      selectedRetentionId: '',
+    };
+
+    $('token').value = localStorage.getItem('zhidiAdminToken') || '';
+    $('saveToken').onclick = () => {
+      localStorage.setItem('zhidiAdminToken', $('token').value.trim());
+      toast('已保存 token，正在刷新数据');
+      refreshCurrent();
+    };
+    $('clearToken').onclick = () => {
+      localStorage.removeItem('zhidiAdminToken');
+      $('token').value = '';
+      toast('已清除 token');
+    };
+
+    document.querySelectorAll('.tab').forEach(button => {
+      button.onclick = () => {
+        state.tab = button.dataset.tab;
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        button.classList.add('active');
+        $('afterSalesView').style.display = state.tab === 'afterSales' ? '' : 'none';
+        $('retentionsView').style.display = state.tab === 'retentions' ? '' : 'none';
+        refreshCurrent();
+      };
+    });
+
+    $('refreshAfterSales').onclick = loadAfterSales;
+    $('refreshRetentions').onclick = loadRetentions;
+    $('afterSaleStatus').onchange = loadAfterSales;
+    $('retentionStatus').onchange = loadRetentions;
+    $('processAfterSale').onclick = processAfterSale;
+    $('deductRetention').onclick = deductRetention;
+    $('releaseRetention').onclick = releaseRetention;
+
+    function token() {
+      const value = $('token').value.trim() || localStorage.getItem('zhidiAdminToken') || '';
+      if (!value) throw new Error('请先粘贴管理员 JWT');
+      return value;
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token()}`,
+          ...(options.headers || {}),
+        },
+      });
+      const text = await response.text();
+      const body = text ? JSON.parse(text) : {};
+      if (!response.ok || body.code && body.code !== 'OK') {
+        throw new Error(body.message || body.code || `HTTP ${response.status}`);
+      }
+      return body.data;
+    }
+
+    async function loadAfterSales() {
+      try {
+        const status = $('afterSaleStatus').value;
+        const query = status ? `?status=${encodeURIComponent(status)}` : '';
+        const page = await api(`/api/v1/admin/after-sales${query}`);
+        const rows = page.content || [];
+        $('afterSalesBody').innerHTML = rows.length
+          ? rows.map(afterSaleRow).join('')
+          : `<tr><td colspan="5" class="empty">暂无售后工单</td></tr>`;
+      } catch (error) {
+        showTableError('afterSalesBody', error);
+      }
+    }
+
+    function afterSaleRow(item) {
+      const deduction = item.warrantyDeductionAmount
+        ? `¥${money(item.warrantyDeductionAmount)}`
+        : '未扣减';
+      return `<tr>
+        <td>${pill(item.status, statusText(item.status))}</td>
+        <td><strong>${typeText(item.type)}</strong><br><span class="hint">${escapeHtml(item.reason || '')}</span></td>
+        <td><span class="mono">${shortId(item.bookingId)}</span></td>
+        <td>${deduction}<br><span class="mono">${shortId(item.warrantyRetentionId)}</span></td>
+        <td><button class="btn secondary" onclick="selectAfterSale('${item.id}')">处理</button></td>
+      </tr>`;
+    }
+
+    async function loadRetentions() {
+      try {
+        const status = $('retentionStatus').value;
+        const query = status ? `?status=${encodeURIComponent(status)}` : '';
+        const page = await api(`/api/v1/admin/warranty-retentions${query}`);
+        const rows = page.content || [];
+        $('retentionsBody').innerHTML = rows.length
+          ? rows.map(retentionRow).join('')
+          : `<tr><td colspan="5" class="empty">暂无质保金记录</td></tr>`;
+      } catch (error) {
+        showTableError('retentionsBody', error);
+      }
+    }
+
+    function retentionRow(item) {
+      return `<tr>
+        <td>${pill(item.status, retentionText(item.status))}</td>
+        <td>
+          原始 ¥${money(item.amount)}<br>
+          <span class="hint">剩余 ¥${money(item.remainingAmount)} / 扣减 ¥${money(item.deductedAmount)} / 释放 ¥${money(item.releasedAmount)}</span>
+        </td>
+        <td>
+          <span class="mono">预约 ${shortId(item.bookingId)}</span><br>
+          <span class="mono">订单 ${shortId(item.paymentOrderId)}</span>
+        </td>
+        <td><span class="hint">${escapeHtml(item.deductionReason || '—')}</span></td>
+        <td><button class="btn secondary" onclick="selectRetention('${item.id}')">选择</button></td>
+      </tr>`;
+    }
+
+    window.selectAfterSale = (id) => {
+      state.selectedAfterSaleId = id;
+      $('selectedAfterSale').value = id;
+      $('resolution').focus();
+    };
+
+    window.selectRetention = (id) => {
+      state.selectedRetentionId = id;
+      $('selectedRetention').value = id;
+      $('manualDeduction').focus();
+    };
+
+    async function processAfterSale() {
+      if (!state.selectedAfterSaleId) return toast('请先选择售后工单');
+      const resolution = $('resolution').value.trim();
+      if (!resolution) return toast('请填写处理结果');
+      const amount = $('deduction').value.trim();
+      try {
+        await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/process`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            resolution,
+            warrantyDeductionAmount: amount ? Number(amount) : null,
+          }),
+        });
+        toast('售后已处理');
+        $('resolution').value = '';
+        $('deduction').value = '';
+        await Promise.all([loadAfterSales(), loadRetentions()]);
+      } catch (error) {
+        toast(`处理失败：${error.message}`);
+      }
+    }
+
+    async function deductRetention() {
+      if (!state.selectedRetentionId) return toast('请先选择质保金记录');
+      const amount = $('manualDeduction').value.trim();
+      const reason = $('manualReason').value.trim();
+      if (!amount || !reason) return toast('请填写扣减金额和原因');
+      try {
+        await api(`/api/v1/admin/warranty-retentions/${state.selectedRetentionId}/deduct`, {
+          method: 'POST',
+          body: JSON.stringify({ amount: Number(amount), reason }),
+        });
+        toast('质保金已扣减');
+        $('manualDeduction').value = '';
+        $('manualReason').value = '';
+        await loadRetentions();
+      } catch (error) {
+        toast(`扣减失败：${error.message}`);
+      }
+    }
+
+    async function releaseRetention() {
+      if (!state.selectedRetentionId) return toast('请先选择质保金记录');
+      if (!confirm('确认释放该记录剩余质保金？')) return;
+      try {
+        await api(`/api/v1/admin/warranty-retentions/${state.selectedRetentionId}/release`, {
+          method: 'POST',
+        });
+        toast('剩余质保金已释放');
+        await loadRetentions();
+      } catch (error) {
+        toast(`释放失败：${error.message}`);
+      }
+    }
+
+    function refreshCurrent() {
+      return state.tab === 'afterSales' ? loadAfterSales() : loadRetentions();
+    }
+    function showTableError(id, error) {
+      $(id).innerHTML = `<tr><td colspan="5" class="empty danger-text">${escapeHtml(error.message)}</td></tr>`;
+    }
+    function pill(status, text) {
+      const cls = String(status || '').toLowerCase().replace('_', '-');
+      return `<span class="pill ${cls}">${text}</span>`;
+    }
+    function shortId(id) { return id ? String(id).slice(0, 8) : '—'; }
+    function money(value) { return Number(value || 0).toFixed(2); }
+    function statusText(status) {
+      return { OPEN: '待处理', PLATFORM_PROCESSING: '平台处理中', RESOLVED: '已解决', CLOSED: '已关闭' }[status] || status;
+    }
+    function retentionText(status) {
+      return { HELD: '冻结中', RELEASED: '已释放', DEDUCTED: '已扣减' }[status] || status;
+    }
+    function typeText(type) {
+      return { REFUND: '退款', COMPLAINT: '投诉', DISPUTE: '争议' }[type] || type;
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+    function toast(message) {
+      const el = $('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 3200);
+    }
+
+    if ($('token').value.trim()) loadAfterSales();
+  </script>
+</body>
+</html>
