@@ -53,6 +53,7 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   List<RemoteWorkerDirectoryProfile> _workers = const [];
   Set<String> _candidateIds = {}; // workerUserId of already-added candidates
   Set<String> _addingIds = {}; // in-flight add calls
+  _CandidateSort _sort = _CandidateSort.comprehensive;
   String? _error;
   bool _loadingWorkers = true;
 
@@ -108,6 +109,42 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   bool _isCandidate(String userId) => _candidateIds.contains(userId);
 
   bool _isAdding(String userId) => _addingIds.contains(userId);
+
+  List<RemoteWorkerDirectoryProfile> get _visibleWorkers {
+    final sorted = [..._workers];
+    switch (_sort) {
+      case _CandidateSort.comprehensive:
+        sorted.sort((a, b) {
+          final city = _sameCityScore(b).compareTo(_sameCityScore(a));
+          if (city != 0) return city;
+          return b.experienceYears.compareTo(a.experienceYears);
+        });
+      case _CandidateSort.experience:
+        sorted.sort((a, b) => b.experienceYears.compareTo(a.experienceYears));
+      case _CandidateSort.profile:
+        sorted.sort((a, b) {
+          final complete = _profileScore(b).compareTo(_profileScore(a));
+          if (complete != 0) return complete;
+          return b.experienceYears.compareTo(a.experienceYears);
+        });
+    }
+    return sorted;
+  }
+
+  int _sameCityScore(RemoteWorkerDirectoryProfile worker) {
+    return worker.serviceCity == widget.serviceCity ? 1 : 0;
+  }
+
+  int _profileScore(RemoteWorkerDirectoryProfile worker) {
+    var score = 0;
+    if (worker.name.trim().isNotEmpty) score++;
+    if ((worker.serviceCity ?? '').trim().isNotEmpty) score++;
+    if (worker.primaryTrade.trim().isNotEmpty) score++;
+    if (worker.experienceYears > 0) score++;
+    if (worker.dailyRate > 0) score++;
+    if ((worker.bio ?? '').trim().isNotEmpty) score++;
+    return score;
+  }
 
   Future<bool> _addCandidate(RemoteWorkerDirectoryProfile worker) async {
     final uid = worker.userId;
@@ -255,6 +292,9 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
           trade: widget.trade,
           cityName: widget.serviceCity,
           candidateCount: _candidateIds.length,
+          matchedCount: _workers.length,
+          selectedSort: _sort,
+          onSortChanged: (sort) => setState(() => _sort = sort),
         ),
         Expanded(
           child: _workers.isEmpty
@@ -262,9 +302,9 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemCount: _workers.length,
+                  itemCount: _visibleWorkers.length,
                   itemBuilder: (_, i) {
-                    final worker = _workers[i];
+                    final worker = _visibleWorkers[i];
                     return _CandidateItem(
                       worker: worker,
                       isCandidate: _isCandidate(worker.userId),
@@ -281,82 +321,188 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   }
 }
 
+enum _CandidateSort { comprehensive, experience, profile }
+
 /// 需求摘要卡片
 class _RequestHeader extends StatelessWidget {
   const _RequestHeader({
     required this.trade,
     required this.cityName,
     required this.candidateCount,
+    required this.matchedCount,
+    required this.selectedSort,
+    required this.onSortChanged,
   });
 
   final String trade;
   final String cityName;
   final int candidateCount;
+  final int matchedCount;
+  final _CandidateSort selectedSort;
+  final ValueChanged<_CandidateSort> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      padding: const EdgeInsets.all(14),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
         color: ZdColors.surfaceWarm,
-        borderRadius: BorderRadius.circular(ZdRadius.card),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: ZdColors.primary.withAlpha(30)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF0E5),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.engineering_rounded,
-              color: ZdColors.primary,
-              size: 20,
-            ),
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF0E5),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.engineering_rounded,
+                  color: ZdColors.primary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_tradeLabel(trade)}师傅 · $cityName',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                        color: ZdColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      candidateCount > 0
+                          ? '已选 $candidateCount 位候选人'
+                          : '已找到 $matchedCount 位可接单师傅，最多可选 3 位候选',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: ZdColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (candidateCount > 0)
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: ZdColors.successSoft,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: ZdColors.success,
+                  ),
+                ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
               children: [
-                Text(
-                  '${_tradeLabel(trade)} · $cityName',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: ZdColors.textPrimary,
-                  ),
+                _SortChip(
+                  label: '综合排序',
+                  selected: selectedSort == _CandidateSort.comprehensive,
+                  onTap: () => onSortChanged(_CandidateSort.comprehensive),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  candidateCount > 0 ? '已选 $candidateCount 位候选人' : '请为需求挑选候选师傅',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: ZdColors.textSecondary,
-                  ),
+                const SizedBox(width: 8),
+                _SortChip(
+                  label: '经验优先',
+                  selected: selectedSort == _CandidateSort.experience,
+                  onTap: () => onSortChanged(_CandidateSort.experience),
                 ),
+                const SizedBox(width: 8),
+                _SortChip(
+                  label: '资料完整',
+                  selected: selectedSort == _CandidateSort.profile,
+                  onTap: () => onSortChanged(_CandidateSort.profile),
+                ),
+                const SizedBox(width: 8),
+                const _FilterPill(label: '同城服务'),
+                const SizedBox(width: 8),
+                const _FilterPill(label: '可预约'),
               ],
             ),
           ),
-          if (candidateCount > 0)
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: ZdColors.successSoft,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.check_rounded,
-                size: 18,
-                color: ZdColors.success,
-              ),
-            ),
         ],
+      ),
+    );
+  }
+}
+
+class _SortChip extends StatelessWidget {
+  const _SortChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      showCheckmark: false,
+      selectedColor: ZdColors.primary,
+      backgroundColor: Colors.white,
+      side: BorderSide(
+        color: selected ? ZdColors.primary : const Color(0xFFEDE3DA),
+      ),
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : ZdColors.textSecondary,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
+      visualDensity: VisualDensity.compact,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(ZdRadius.pill),
+      ),
+    );
+  }
+}
+
+class _FilterPill extends StatelessWidget {
+  const _FilterPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(ZdRadius.pill),
+        border: Border.all(color: const Color(0xFFEDE3DA)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: ZdColors.textSecondary,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }
@@ -382,127 +528,228 @@ class _CandidateItem extends StatelessWidget {
 
   String get _avatarLabel => worker.name.isNotEmpty ? worker.name[0] : '工';
 
+  String get _tradeTitle => '${_tradeLabel(worker.primaryTrade)}师傅';
+
+  String get _cityLabel {
+    final city = worker.serviceCity?.trim();
+    return city == null || city.isEmpty ? '服务区域待完善' : '$city服务';
+  }
+
+  String get _bioSummary {
+    final bio = worker.bio?.trim();
+    if (bio == null || bio.isEmpty) return '师傅暂未填写自我介绍，可进入详情查看完整资料。';
+    return bio.length > 18 ? '${bio.substring(0, 18)}…' : bio;
+  }
+
   @override
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onView,
-      borderRadius: BorderRadius.circular(ZdRadius.card),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         decoration: BoxDecoration(
-          color: isCandidate ? const Color(0xFFFAF8F5) : Colors.white,
-          borderRadius: BorderRadius.circular(ZdRadius.card),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
           border: isCandidate
-              ? Border.all(color: ZdColors.success.withAlpha(80))
-              : null,
-          boxShadow: ZdShadow.card,
+              ? Border.all(color: ZdColors.success.withAlpha(120), width: 1.2)
+              : Border.all(color: const Color(0xFFF1E8DF)),
+          boxShadow: ZdShadow.cardSoft,
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // 头像
             Container(
-              width: 44,
-              height: 44,
+              width: 56,
+              height: 68,
               decoration: BoxDecoration(
-                color: const Color(0xFFF5F0EB),
-                borderRadius: BorderRadius.circular(ZdRadius.md),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFFFFEEE3), Color(0xFFF3ECE6)],
+                ),
+                borderRadius: BorderRadius.circular(15),
               ),
               alignment: Alignment.center,
               child: Text(
                 _avatarLabel,
                 style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
                   color: ZdColors.primaryDark,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
-            // 信息
+            const SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     children: [
-                      Text(
-                        worker.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                          color: ZdColors.textPrimary,
+                      Flexible(
+                        child: Text(
+                          worker.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                            color: ZdColors.textPrimary,
+                          ),
                         ),
                       ),
-                      if (isCandidate) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: ZdColors.successSoft,
-                            borderRadius: BorderRadius.circular(ZdRadius.pill),
-                          ),
-                          child: const Text(
-                            '已选',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: ZdColors.success,
-                            ),
-                          ),
-                        ),
-                      ],
+                      const SizedBox(width: 6),
+                      _TinyBadge(
+                        text: isCandidate ? '已选' : '资料完整',
+                        color: isCandidate
+                            ? ZdColors.success
+                            : ZdColors.primaryDark,
+                        background: isCandidate
+                            ? ZdColors.successSoft
+                            : const Color(0xFFFFF0E5),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _tradeLabel(worker.primaryTrade),
+                    '$_tradeTitle · ${worker.experienceYears}年经验 · $_cityLabel',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 13,
                       color: ZdColors.textSecondary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    '已认证 · 可预约 · 详情看案例',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: ZdColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _bioSummary,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: ZdColors.textHint,
+                      fontSize: 12,
+                      height: 1.25,
                     ),
                   ),
                 ],
               ),
             ),
-            // 操作按钮
-            if (isCandidate)
-              const Icon(
-                Icons.check_circle_rounded,
-                size: 28,
-                color: ZdColors.success,
-              )
-            else if (isAdding)
-              const SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            else
-              GestureDetector(
-                onTap: canAdd ? onAdd : null,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: canAdd ? ZdColors.primary : ZdColors.textHint,
-                    borderRadius: BorderRadius.circular(ZdRadius.pill),
-                  ),
-                  child: Text(
-                    canAdd ? '添加' : '已满',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+            const SizedBox(width: 9),
+            SizedBox(
+              width: 88,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton(
+                    onPressed: onView,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: ZdColors.primary,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      minimumSize: const Size(0, 34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(ZdRadius.pill),
+                      ),
                     ),
+                    child: const Text('查看详情'),
                   ),
-                ),
+                  const SizedBox(height: 8),
+                  OutlinedButton(
+                    onPressed: isCandidate || !canAdd || isAdding
+                        ? null
+                        : onAdd,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: isCandidate
+                          ? ZdColors.success
+                          : ZdColors.primaryDark,
+                      disabledForegroundColor: isCandidate
+                          ? ZdColors.success
+                          : ZdColors.textHint,
+                      side: BorderSide(
+                        color: isCandidate
+                            ? ZdColors.success.withAlpha(120)
+                            : const Color(0xFFFFC7A3),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      minimumSize: const Size(0, 34),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(ZdRadius.pill),
+                      ),
+                    ),
+                    child: isAdding
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(
+                            isCandidate
+                                ? '已选'
+                                : canAdd
+                                ? '加入候选'
+                                : '已满',
+                          ),
+                  ),
+                ],
               ),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({
+    required this.text,
+    required this.color,
+    required this.background,
+  });
+
+  final String text;
+  final Color color;
+  final Color background;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(ZdRadius.pill),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
         ),
       ),
     );

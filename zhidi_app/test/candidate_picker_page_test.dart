@@ -63,7 +63,7 @@ void main() {
       if (request.method == 'POST' &&
           url.contains(
             '/api/v1/owners/me/service-requests/request-1/candidates',
-      )) {
+          )) {
         final body = jsonDecode(request.body) as Map<String, dynamic>;
         final workerUserId = body['workerUserId'] as String;
         if (workerUserId == conflictWorkerId) {
@@ -154,8 +154,11 @@ void main() {
     await tester.pumpWidget(buildPage());
     await tester.pumpAndSettle();
 
-    expect(find.text('水电 · 成都'), findsOneWidget);
-    expect(find.text('请为需求挑选候选师傅'), findsOneWidget);
+    expect(find.text('水电师傅 · 成都'), findsOneWidget);
+    expect(find.textContaining('最多可选 3 位'), findsOneWidget);
+    expect(find.text('综合排序'), findsOneWidget);
+    expect(find.text('经验优先'), findsOneWidget);
+    expect(find.text('资料完整'), findsWidgets);
   });
 
   testWidgets('shows Chinese label for API trade in request header', (
@@ -181,8 +184,33 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('水电 · 成都'), findsOneWidget);
+    expect(find.text('水电师傅 · 成都'), findsOneWidget);
     expect(find.text('plumbing · 成都'), findsNothing);
+  });
+
+  testWidgets('worker cards show comparable trust information', (tester) async {
+    await tester.pumpWidget(buildPage());
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('8年经验'), findsOneWidget);
+    expect(find.textContaining('成都服务'), findsWidgets);
+    expect(find.text('资料完整'), findsWidgets);
+    expect(find.textContaining('十年水电经验'), findsOneWidget);
+    expect(find.text('查看详情'), findsWidgets);
+    expect(find.text('加入候选'), findsWidgets);
+    expect(find.text('已认证 · 可预约 · 详情看案例'), findsWidgets);
+  });
+
+  testWidgets('experience sort places senior workers first', (tester) async {
+    await tester.pumpWidget(buildPage());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('经验优先'));
+    await tester.pumpAndSettle();
+
+    final zhangTop = tester.getTopLeft(find.text('张师傅'));
+    final liTop = tester.getTopLeft(find.text('李师傅'));
+    expect(zhangTop.dy, lessThan(liTop.dy));
   });
 
   testWidgets('filters workers by trade', (tester) async {
@@ -200,12 +228,12 @@ void main() {
     await tester.pumpWidget(buildPage());
     await tester.pumpAndSettle();
 
-    // first '添加' button — tap it
-    await tester.tap(find.text('添加').first);
+    // first add button — tap it
+    await tester.tap(find.text('加入候选').first);
     await tester.pumpAndSettle();
 
     // should show '已选' badge for that worker
-    expect(find.text('已选'), findsOneWidget);
+    expect(find.text('已选'), findsWidgets);
     // header should update count
     expect(find.text('已选 1 位候选人'), findsOneWidget);
     expect(find.text('完成选择（已选 1/3）'), findsOneWidget);
@@ -237,7 +265,7 @@ void main() {
           .onPressed,
       isNull,
     );
-    await tester.tap(find.text('添加').first);
+    await tester.tap(find.text('加入候选').first);
     await tester.pumpAndSettle();
     expect(
       tester
@@ -247,28 +275,27 @@ void main() {
     );
   });
 
-  testWidgets(
-    'already-candidate server conflict marks worker as selected',
-    (tester) async {
-      await tester.pumpWidget(
-        buildPage(workers: [sampleWorkers[0]], conflictWorkerId: 'worker-a'),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('already-candidate server conflict marks worker as selected', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      buildPage(workers: [sampleWorkers[0]], conflictWorkerId: 'worker-a'),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.text('添加'));
-      await tester.pumpAndSettle();
+    await tester.tap(find.text('加入候选'));
+    await tester.pumpAndSettle();
 
-      expect(find.text('已选'), findsOneWidget);
-      expect(find.text('已选 1 位候选人'), findsOneWidget);
-      expect(find.text('添加失败: 该工匠已经是候选'), findsNothing);
-      expect(
-        tester
-            .widget<FilledButton>(find.byKey(const Key('candidate-complete')))
-            .onPressed,
-        isNotNull,
-      );
-    },
-  );
+    expect(find.text('已选'), findsWidgets);
+    expect(find.text('已选 1 位候选人'), findsOneWidget);
+    expect(find.text('添加失败: 该工匠已经是候选'), findsNothing);
+    expect(
+      tester
+          .widget<FilledButton>(find.byKey(const Key('candidate-complete')))
+          .onPressed,
+      isNotNull,
+    );
+  });
 
   testWidgets(
     'already added candidate shows check icon',
@@ -278,8 +305,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // '添加' button should not appear
-      expect(find.text('添加'), findsNothing);
+      // add button should not appear
+      expect(find.text('加入候选'), findsNothing);
       // should show check icon and 已选 badge
       expect(find.text('已选'), findsOneWidget);
     },
