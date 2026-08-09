@@ -1,6 +1,6 @@
 # 知底项目状态
 
-> Codex 快速上下文。最近核对：2026-08-08（P0 真实用户就绪整改已在本地完成并通过双端与后端全量测试；本批改动尚未部署 ECS、未生成或安装新的交付 APK）。开始任务时先读本文件；只有任务涉及的部分才继续读取源码或 `docs/superpowers/` 下的设计与计划。
+> Codex 快速上下文。最近核对：2026-08-09（P0/P1 单工种交易闭环已合并到 `main` 并部署 ECS，生产 Flyway 到 V33；双端生产 API debug APK 已生成但未自动安装到真机/模拟器）。开始任务时先读本文件；只有任务涉及的部分才继续读取源码或 `docs/superpowers/` 下的设计与计划。
 
 ## 1. 产品是什么
 
@@ -83,7 +83,8 @@ zhidi/
 - 2026-08-07 已修复业主端木工完工后仍停在“施工中”及验收记录无限转圈：生产库该木工预约已为 `COMPLETED`、验收节点为 `PASSED`、记录为 `PASS`，问题来自业主模拟器旧 APK 以及从验收页返回后未刷新服务请求；现在返回“我的家”会重新读取服务器状态，项目卡显示“已完成”并激活最后进度节点。验收记录子页改在依赖可用后加载，不再于 `initState` 读取 `OwnerAppScope`，失败时显示原因和重试入口，结果标签改为中文“已通过/未通过”。相关 21 项 Widget 回归与 `flutter analyze` 均通过；公网 owner debug APK（SHA-256 `6f7cfbfa50d4bcc63e45ad02541a9f627f8bbb9b8bf3aa08e759ae758a22987c`）已保留数据覆盖安装到 `Zhidi_API35`，现场确认木工项目为“已完成”、验收记录显示“第 1 次验收 / 已通过”，且日志无原生命周期异常。证据为 `zhidi_app/output/evidence/owner-my-home-completed-final-verified-20260807.png`、`zhidi_app/output/evidence/owner-inspection-records-final-verified-20260807.png`。本次只更新 Flutter 业主端，未改动或部署后端，尚未提交。
 - 2026-08-07 已修复工人拒单后业主端仍强制进入候选工作台的状态串线：Flutter 现与后端统一将 `REJECTED / CANCELLED / NOT_SELECTED` 视为已结束候选，不再进入顶部当前项目、不计入候选人数，详情中归入“已结束”并禁止取消操作；同工种有新需求时优先展示新建需求，因此木工师傅拒单后业主会看到“待匹配 / 0 位候选 / 1 次邀请”，可继续选择其他师傅。同时“我的装修需求”已按候选 `COMPLETED` 显示绿色“已完成”。`test/my_home_minimal_page_test.dart` 17 项全部通过，`flutter analyze` 无问题；公网 owner debug APK（SHA-256 `70985cc670826cc7858ad95d76a42590d95f991c6d8453d3590a9365e1a68cf6`）已保留数据覆盖安装到 `emulator-5556`，用服务器真实已拒绝订单现场复验通过，运行日志无 Flutter 异常或布局溢出。证据为 `zhidi_app/output/evidence/owner-rejected-worker-returned-to-matching-20260807.png`、`zhidi_app/output/evidence/owner-rejected-worker-ended-history-20260807.png`。本次仅更新 Flutter 业主端，未改动或部署后端，尚未提交。
 - 2026-08-07 业主端候选师傅页已增加当前业主专属的真实“已合作”标识：页面并行读取该业主历史需求，只把非当前需求中同一 `workerUserId` 且候选状态为 `READY_TO_START / HIRED / COMPLETED` 的师傅标为绿色“已合作”；不再用全平台 `hiredCount` 冒充合作关系，待接单/拒绝等状态和当前需求也不会误标。历史接口失败时保留原信任信息且不阻塞找师傅，已合作师傅仍可再次“加入候选”。候选页及目录相邻回归 23 项通过、1 项按既有条件跳过；Flutter 全量测试 276 项通过、3 项按既有条件跳过，`flutter analyze` 无问题；公网 owner debug APK（211056345 bytes，SHA-256 `8e905b3641420c694906fb7422c7a90886cd28f25c67b5a12e94bded3212e6ab`）已保留数据覆盖安装到 `emulator-5556`，并以服务器真实已完成木工合作现场确认“已合作”和可用“加入候选”同时显示，运行日志无 Flutter 异常或布局溢出。证据为 `zhidi_app/output/evidence/owner-candidate-cooperation-badge-20260807.png`。本次仅更新 Flutter 业主端，未改动或部署后端，尚未提交。
-- 2026-08-08 已完成 P0 真实用户就绪整改：业主/师傅端以完整 `serviceRequestId + bookingId` 隔离需求、候选、报价、验收和付款；旧完工项目不再覆盖新需求，拒单/取消/未选中不再算活跃候选，报价刷新不再复用旧金额；订单消失不再回退到列表第一单，切号、退出和过期会话会清除并隔离上个账号业务数据。生产入口只使用服务端真实师傅资料、案例、预约和聊天室，移除本地预约/聊天假成功以及未经支持的认证、在线、托管、自动退款等承诺；价格页明确本地参考价与服务器报价边界。双端新增基于真实 REST 状态变化的前台应用内通知和精确深链，并对目标失效与临时网络故障分开处理；该能力不是系统推送，工人售后仍因后端缺少可发现列表而未伪造。完整整改记录见 `docs/superpowers/plans/2026-08-08-p0-real-user-readiness.md` 和 `.superpowers/sdd/2026-08-08-p0-real-user-readiness/`。本地最终验证为后端 249 项全通过、Flutter 333 项通过/3 项跳过、`flutter analyze` 无问题；本批尚未部署 ECS、未安装新 APK。
+- 2026-08-08 已完成 P0 真实用户就绪整改：业主/师傅端以完整 `serviceRequestId + bookingId` 隔离需求、候选、报价、验收和付款；旧完工项目不再覆盖新需求，拒单/取消/未选中不再算活跃候选，报价刷新不再复用旧金额；订单消失不再回退到列表第一单，切号、退出和过期会话会清除并隔离上个账号业务数据。生产入口只使用服务端真实师傅资料、案例、预约和聊天室，移除本地预约/聊天假成功以及未经支持的认证、在线、托管、自动退款等承诺；价格页明确本地参考价与服务器报价边界。双端新增基于真实 REST 状态变化的前台应用内通知和精确深链，并对目标失效与临时网络故障分开处理；该能力不是系统推送，工人售后仍因后端缺少可发现列表而未伪造。完整整改记录见 `docs/superpowers/plans/2026-08-08-p0-real-user-readiness.md` 和 `.superpowers/sdd/2026-08-08-p0-real-user-readiness/`。本地最终验证为后端 249 项全通过、Flutter 333 项通过/3 项跳过、`flutter analyze` 无问题；部署状态见 2026-08-09 条目。
+- 2026-08-09 已把 P0/P1 单工种交易闭环合并并部署到 ECS：`main` 当前提交为 `2bc660da18fd1c793c51748ad99d220e6e875988`，生产 JAR SHA-256 为 `a8b836e6b7454a2c724883908a2bdd85eefc3cbceb3d41cb946c9732410e8572`，`zhidi.service` 已重启且公网健康检查 `UP`；Flyway 生产迁移已到 V33 `payment reference claims`。发布前备份位于 `/opt/zhidi/backups/20260809155342-pre-p1-task8/`，包含旧 JAR、systemd、`.env` 和数据库 dump。本轮也已用 `API_BASE_URL=http://47.109.0.191:8080` 构建双端 debug APK：`zhidi_app/output/apks/zhidi-owner-debug-20260809-p1-task8.apk`（SHA-256 `ea76c1bdcaf3a3bb333523c76fe736795df825449b433ebb3add8f57ece323fa`）与 `zhidi_app/output/apks/zhidi-worker-debug-20260809-p1-task8.apk`（SHA-256 `cbefe38b71b38bd64a7491d0d426261620b49640b78af5d7ad0761897b7cda3e`）；尚未自动安装到真机/模拟器。
 - 2026-08-01 已修复工人端待接单卡片需求文案和业主端互动消息同步：工人端订单卡片不再显示“油漆师傅（）”，会按业主需求显示“需要油漆师傅”，面积为空时去掉空括号；业主端消息页现在会调用真实 `GET /api/v1/chat/rooms` 拉取聊天室预览，互动消息 Tab 显示工人发送的最新消息和未读数，点击进入真实 `ChatDetailPage` 并在返回后刷新，不再只读本地旧 `chatMessages`。新增 `pending order card describes needed trade without empty area` 与 `owner interaction messages show remote chat room previews` 回归测试，`flutter analyze` 通过；业主端和工人端公网 debug APK 已重新构建并安装到 `emulator-5554`/`emulator-5556`。
 - 2026-08-01 已修复工人端订单详情顶部右侧溢出：小屏幕下“等待业主确认上门时间”等长状态与 UUID 订单号同排展示时，订单号现在会在右侧单行省略，不再触发 Flutter `RIGHT OVERFLOWED`。新增 `order detail header handles long status and order id` 回归测试，`test/worker_order_detail_refresh_test.dart`、`flutter analyze` 和工人端公网 debug APK 构建安装通过。
 - 2026-08-01 已补齐业主端“师傅预约上门”订单通知：业主端同步远程预约时，除 `PENDING/ACCEPTED` 外，现在会对 `VISIT_PROPOSED` 生成去重的“待确认上门时间”预约通知，提示业主前往订单确认上门时间；消息页的“订单通知”分类可同步显示。新增 `fetchRemoteBookings adds owner message when worker proposes visit time` 回归测试，`test/owner_booking_state_sync_test.dart`、`flutter analyze` 和业主端公网 debug APK 构建安装通过。
@@ -119,7 +120,7 @@ zhidi/
 - 2026-08-04 已校正验收角色边界：只有当前订单师傅能发起或重新发起验收，业主端施工中主操作由“申请验收”改为只读的“验收进度”；师傅未发起时业主显示“师傅尚未发起验收”，只有 `INSPECTING` 状态允许业主去验收，驳回后等待师傅整改重新发起。后端全量 226 项测试通过（含 `InspectionIntegrationTest` 11 项角色回归），Flutter 全量 245 项通过且 3 项按既有条件跳过，`flutter analyze` 无问题。业主端公网调试 APK 为 `zhidi_app/output/apks/zhidi-owner-debug-20260804-inspection-role.apk`（SHA-256 `10a61382577d6aabc3f17c04bef1a87b73482c5117f5156656d5862d767bae73`），已安装冷启动到 `Zhidi_API35`，实机界面证据为 `output/evidence/owner-inspection-role-my-home-20260804.png` 与 `owner-inspection-role-status-20260804.png`，未发现 Flutter 异常或布局溢出。本次未改生产后端逻辑，不需要重新部署 ECS。
 - 核心闭环的本地持久化只作为当前登录账号缓存，服务端仍是需求、预约、报价、验收、付款和聊天的事实源；退出、会话过期和切换账号会清除用户域缓存。
 - 生产可达的核心找师傅、预约、订单、报价和聊天入口不再回退到旧本地 Mock/Firestore 假成功；尚未接通的非核心能力显示“暂未开放”或明确说明数据来源。
-- Flutter 单元/Widget 测试覆盖认证、会话隔离、资料、候选、预约、报价、验收、付款、消息深链和重点页面；2026-08-08 全量为 333 项通过、3 项按既有条件跳过。
+- Flutter 单元/Widget 测试覆盖认证、会话隔离、资料、候选、预约、报价、验收、付款、消息深链和重点页面；2026-08-09 合并前全量为 508 项通过、2 项按既有条件跳过。
 
 ### Spring Boot 后端
 
@@ -135,7 +136,7 @@ zhidi/
 - 工匠资料 MySQL 持久化、`GET /api/v1/workers/me`、`PUT /api/v1/workers/me` 已同步到主工作区，并通过对应后端测试。
 - 工匠公开列表和详情 `GET /api/v1/workers`、`GET /api/v1/workers/{userId}` 已同步到主工作区，仅展示资料完整工匠。
 - 预约最小后端闭环已同步到主工作区：业主可为资料完整工匠创建预约，业主/工匠可分别查看自己的预约，工匠可接单或拒单；已通过后端全量测试。
-- 2026-08-08 已在本地修复服务需求与候选生命周期串单：legacy `POST /api/v1/bookings` 每次创建独立服务需求，不再按业主、工种和城市复用旧需求；显式多人候选仍使用服务需求候选 API。只有 `OPEN/COMPARING` 需求可继续加候选，`REJECTED/CANCELLED/NOT_SELECTED/HIRED/COMPLETED` 统一不计入活跃候选，已分配或完成需求不会被新候选降回比较状态。相关集成、服务、报价相邻回归包含在本地后端 249 项全量测试中；本批后端尚未部署 ECS。
+- 2026-08-08 已修复服务需求与候选生命周期串单：legacy `POST /api/v1/bookings` 每次创建独立服务需求，不再按业主、工种和城市复用旧需求；显式多人候选仍使用服务需求候选 API。只有 `OPEN/COMPARING` 需求可继续加候选，`REJECTED/CANCELLED/NOT_SELECTED/HIRED/COMPLETED` 统一不计入活跃候选，已分配或完成需求不会被新候选降回比较状态。相关能力已随 2026-08-09 P1 单工种交易闭环部署到 ECS。
 - 2026-07-18 后端 V10-V16 整改已通过全量测试并部署到 ECS：服务请求多候选、双方取消、上门时间协商、到场确认、服务端固定价报价、拒绝重报、多人比价、最终选人、施工日报、节点验收/整改、聊天房间参与人校验、支付/结算/售后占位接口均保持真实鉴权边界。生产 Flyway 已到 V16，`zhidi.service` 运行在 `http://47.109.0.191:8080` 且健康检查 `UP`。
 - 腾讯短信、腾讯 COS、支付回调和退款默认显式关闭；未配置并验证真实供应商时，接口不会假装成功。
 - 生产 ECS 的 systemd `zhidi.service` 健康检查为 `UP`，Hibernate 生产配置为 `ddl-auto=validate`。此前 V8 已补齐预约业主快照字段、删除生产库遗留的 `worker_profiles(name, primary_trade)` 唯一索引，并验证两个同名同工种工人资料可同时保存；对应备份位于 `/opt/zhidi/backups/20260716151927/` 与 `/opt/zhidi/backups/20260716153533/`。
@@ -244,7 +245,7 @@ GET /api/v1/after-sales
 - 通用文件上传已使用 ECS 本地持久目录，工人案例、日报和聊天图片可走真实上传；仍缺正式对象存储、CDN 和图片审核。
 - 师傅收藏在服务端化前已明确标记不可用；评价、动态、举报和反馈仍未完成。业主售后有真实订单绑定入口，工人售后发现列表、双方追加证据/回复和完整状态时间线仍缺失。
 - “全屋翻新”目前没有跨工种总项目、阶段依赖、总预算、工期和项目负责人编排；未接通的整屋服务入口已显示“暂未开放”，不能视为已形成闭环。
-- 生产支付当前仍为旧版线下付款上报与工人确认收款；新版“工程款付工人 + 平台服务费付公司 + 工人独立履约质保账户”已本地完成但尚未部署。真实微信支付、退款、自动结算/对账仍未接入支付机构，未配置时明确失败，不会假成功。
+- 生产支付已切换为 `OFFLINE_SPLIT_V2` 线下拆分上报：工程款付工人、平台服务费付公司，工人独立履约质保账户按规则补缴；历史订单继续兼容旧质保口径。真实微信支付、退款、自动结算/对账仍未接入支付机构，未配置时明确失败，不会假成功。
 - 已有受保护管理 API、管理员操作审计、分页/筛选校验和最小 `/admin.html` 可视化运营台；仍缺正式后台登录、角色管理、审计检索、筛选导出、指标看板和更完整的移动端适配。
 - 生产仍为公网 HTTP 直连 IP；缺域名、HTTPS、Nginx/反代、正式短信、推送、监控告警和自动化备份。
 
@@ -333,15 +334,15 @@ MAVEN_USER_HOME=/Users/liupei/Documents/zhidi/.m2 ./mvnw test \
 
 2026-07-18 已按 `docs/superpowers/plans/2026-07-18-production-roadmap-remediation.md` 修正 Android 正式上线路线实现中的阻断问题，并将后端部署到 ECS `47.109.0.191`。未执行 git commit、push。
 
-最新本地验证结果（2026-08-08 P0 真实用户就绪整改）：
+最新合并与部署验证结果（2026-08-09 P0/P1 单工种交易闭环）：
 
 | 项目 | 结果 |
 |------|------|
-| 后端全量测试 | `./mvnw test`：249 tests, 0 failures, 0 errors, 0 skipped |
+| 后端全量测试 | 合并前 `./mvnw test`：383 tests, 0 failures, 0 errors, 0 skipped |
 | Flutter analyze | `flutter analyze`：No issues found |
-| Flutter 全量测试 | `flutter test --reporter compact`：333 passed, 3 skipped，All other tests passed |
+| Flutter 全量测试 | 合并前 `flutter test --reporter compact`：508 passed, 2 skipped，All other tests passed |
 | 改动格式检查 | `git diff --check`：无输出 |
-| 本批交付状态 | 仅完成本地源码与自动化验证；尚未部署 ECS、尚未构建或安装本批新的双端 APK、尚未执行公网双设备完整闭环 |
+| 本批交付状态 | 已合并到 `main` 并部署 ECS；生产健康检查 `UP`，Flyway 到 V33；双端生产 API debug APK 已生成，尚未安装到真机/模拟器 |
 
 ECS 发布备份位于 `/opt/zhidi/backups/20260718150120/`，包含旧 jar、`.env` 备份和迁移修复前数据库 dump。发布期间生产 V14/V15 迁移分别遇到 MySQL 非事务 DDL 半成品表和默认管理员账号已有手机号但 UUID 不同的问题；已修正 V15 并用回归测试覆盖，生产最终无失败迁移记录。
 
