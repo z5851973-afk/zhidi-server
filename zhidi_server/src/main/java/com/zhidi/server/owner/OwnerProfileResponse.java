@@ -11,6 +11,14 @@ public record OwnerProfileResponse(
 	String decorationType,
 	String address,
 	BigDecimal area,
+	String avatarUrl,
+	String gender,
 	boolean profileComplete
 ) {
+	public OwnerProfileResponse(UUID userId, String phone, String name, String city,
+			String decorationType, String address, BigDecimal area,
+			boolean profileComplete) {
+		this(userId, phone, name, city, decorationType, address, area, null, null,
+			profileComplete);
+	}
 }

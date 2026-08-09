@@ -5,7 +5,7 @@ import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/pages/home/worker/worker_detail_page.dart';
 
 void main() {
-  testWidgets('worker detail opens quote page and can save quote', (
+  testWidgets('worker detail exposes current trade pricing details', (
     tester,
   ) async {
     final state = await OwnerAppState.memory();
@@ -24,16 +24,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('看报价'));
+    await tester.scrollUntilVisible(find.text('工价详情'), 500);
+    await tester.tap(find.text('工价详情'));
     await tester.pumpAndSettle();
 
-    expect(find.text('李师傅的报价清单'), findsOneWidget);
-
-    await tester.tap(find.text('价高再考虑'));
-    await tester.pumpAndSettle();
-
-    expect(state.savedQuotes, hasLength(1));
-    expect(state.savedQuotes.single.workerName, '李师傅');
-    expect(state.savedQuotes.single.tradeName, '拆除');
+    expect(find.text('拆墙'), findsOneWidget);
+    expect(find.text('¥35-50/㎡'), findsOneWidget);
+    expect(state.savedQuotes, isEmpty);
   });
 }

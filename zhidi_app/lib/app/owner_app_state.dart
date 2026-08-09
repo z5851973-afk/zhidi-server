@@ -11,9 +11,16 @@ import 'owner_models.dart';
 import 'owner_appointment.dart';
 import '../services/auth_api_client.dart';
 import '../services/auth_session_store.dart';
+import '../services/business_event_api_client.dart';
 import '../services/daily_report_api_client.dart';
+import '../services/owner_address_api_client.dart';
 import '../services/owner_booking_api_client.dart';
 import '../services/owner_profile_api_client.dart';
+import '../services/inspection_api_client.dart';
+import '../services/payment_api_client.dart';
+import '../services/service_request_api_client.dart';
+import '../models/payment_models.dart';
+import '../models/house_info.dart';
 
 List<OwnerAddress> _normalizeAddresses(
   Iterable<OwnerAddress> addresses, {
@@ -32,12 +39,31 @@ List<OwnerAddress> _normalizeAddresses(
       .toList();
 }
 
+String _ownerVisitTimeLabel(DateTime? value) {
+  if (value == null) return '';
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
+
+bool _sameRemoteServiceRequests(
+  List<RemoteServiceRequest> left,
+  List<RemoteServiceRequest> right,
+) => listEquals(
+  left.map((request) => jsonEncode(request.toJson())).toList(),
+  right.map((request) => jsonEncode(request.toJson())).toList(),
+);
+
 /// App-wide owner data, serialized as one document after every mutation.
 class OwnerAppState extends ChangeNotifier {
   OwnerAppState._({
     required OwnerKeyValueStore store,
     required this._sessionStore,
     required this._profileApi,
+    required this._addressApi,
     required this._bookingApi,
     required this.ready,
     required OwnerProfile profile,
@@ -60,7 +86,12 @@ class OwnerAppState extends ChangeNotifier {
     required List<MaterialEstimate> materialEstimates,
     required Map<String, List<ChatMessage>> chatMessages,
     required List<SavedQuote> savedQuotes,
+    required Map<String, String> notificationFacts,
+    required int businessEventCursor,
+    required Set<String> remoteServiceRequestIds,
+    required List<RemoteServiceRequest> remoteServiceRequests,
     required this._isLoggedIn,
+    required this._sessionUserId,
     // Named public-looking parameters keep seeded-data construction readable.
     // ignore: prefer_initializing_formals
   }) : _store = store,
@@ -97,14 +128,24 @@ class OwnerAppState extends ChangeNotifier {
        // ignore: prefer_initializing_formals
        _chatMessages = chatMessages,
        // ignore: prefer_initializing_formals
-       _savedQuotes = savedQuotes;
+       _savedQuotes = savedQuotes,
+       // ignore: prefer_initializing_formals
+       _notificationFacts = notificationFacts,
+       // ignore: prefer_initializing_formals
+       _businessEventCursor = businessEventCursor,
+       // ignore: prefer_initializing_formals
+       _remoteServiceRequestIds = remoteServiceRequestIds,
+       // ignore: prefer_initializing_formals
+       _remoteServiceRequests = remoteServiceRequests;
 
   static const String documentKey = 'owner.appState';
   final OwnerKeyValueStore _store;
   final AuthSessionStore _sessionStore;
   final OwnerProfileApi _profileApi;
+  final OwnerAddressApi _addressApi;
   final OwnerBookingApi _bookingApi;
   DailyReportApiClient? _reportApi;
+  BusinessEventApi _businessEventApi = BusinessEventApiClient();
   final bool ready;
 
   OwnerProfile _profile;
@@ -127,12 +168,25 @@ class OwnerAppState extends ChangeNotifier {
   List<MaterialEstimate> _materialEstimates;
   Map<String, List<ChatMessage>> _chatMessages = {};
   List<SavedQuote> _savedQuotes = [];
+  Map<String, String> _notificationFacts;
+  int _businessEventCursor;
+  Set<String> _remoteServiceRequestIds;
+  List<RemoteServiceRequest> _remoteServiceRequests;
   bool _isLoggedIn;
+  String? _sessionUserId;
   Future<void> _mutationQueue = Future<void>.value();
 
   OwnerProfile get profile => _profile;
   String get profileName => _profile.name;
   List<OwnerAddress> get addresses => List.unmodifiable(_addresses);
+  OwnerAddress? get defaultAddress {
+    if (_addresses.isEmpty) return null;
+    return _addresses.firstWhere(
+      (address) => address.isDefault,
+      orElse: () => _addresses.first,
+    );
+  }
+
   List<OwnerProject> get projects => List.unmodifiable(_projects);
   String? get selectedProjectId => _selectedProjectId;
   OwnerProject? get selectedProject {
@@ -149,6 +203,11 @@ class OwnerAppState extends ChangeNotifier {
       List.unmodifiable(_favoriteWorkers);
   List<SavedQuote> get savedQuotes => List.unmodifiable(_savedQuotes);
   List<OrderItem> get appointments => List.unmodifiable(_appointments);
+  List<RemoteServiceRequest> get remoteServiceRequests =>
+      List.unmodifiable(_remoteServiceRequests);
+  int get remoteProjectCount => _remoteServiceRequests.isNotEmpty
+      ? _remoteServiceRequests.map((request) => request.id).toSet().length
+      : _remoteServiceRequestIds.length;
   OwnerSettings get settings => _settings;
   List<AfterSalesRequest> get afterSalesRequests =>
       List.unmodifiable(_afterSalesRequests);
@@ -166,17 +225,30 @@ class OwnerAppState extends ChangeNotifier {
   Map<String, List<ChatMessage>> get chatMessages =>
       Map.unmodifiable(_chatMessages);
   bool get isLoggedIn => _isLoggedIn;
+  String? get sessionUserId => _sessionUserId;
   bool _isFetchingRemoteBookings = false;
   String? _remoteBookingError;
+  int _sessionGeneration = 0;
+  Future<void>? _remoteBookingFetchInFlight;
+  Future<void>? _remoteBusinessFetchInFlight;
+  Future<void>? _remoteBusinessEventFetchInFlight;
+  Future<void>? _remoteServiceRequestFetchInFlight;
+  int _remoteServiceRequestSnapshotVersion = 0;
+  bool _isFetchingRemoteServiceRequests = false;
+  String? _remoteServiceRequestError;
   bool get isFetchingRemoteBookings => _isFetchingRemoteBookings;
   String? get remoteBookingError => _remoteBookingError;
+  bool get isFetchingRemoteServiceRequests => _isFetchingRemoteServiceRequests;
+  String? get remoteServiceRequestError => _remoteServiceRequestError;
   int get unreadMessageCount =>
       _messages.where((message) => !message.isRead).length;
+  int get businessEventCursor => _businessEventCursor;
 
   static Future<OwnerAppState> memory({
     OwnerKeyValueStore? store,
     AuthSessionStore? sessionStore,
     OwnerProfileApi? profileApi,
+    OwnerAddressApi? addressApi,
     OwnerBookingApi? bookingApi,
   }) async {
     final targetStore = store ?? MemoryOwnerStore();
@@ -184,6 +256,7 @@ class OwnerAppState extends ChangeNotifier {
       targetStore,
       sessionStore ?? MemoryAuthSessionStore(),
       profileApi ?? OwnerProfileApiClient(),
+      addressApi ?? const _EmptyOwnerAddressApi(),
       bookingApi ?? OwnerBookingApiClient(),
     );
   }
@@ -191,6 +264,7 @@ class OwnerAppState extends ChangeNotifier {
   static Future<OwnerAppState> load({
     AuthSessionStore? sessionStore,
     OwnerProfileApi? profileApi,
+    OwnerAddressApi? addressApi,
     OwnerBookingApi? bookingApi,
   }) async {
     final preferences = await SharedPreferences.getInstance();
@@ -198,6 +272,7 @@ class OwnerAppState extends ChangeNotifier {
       SharedPreferencesOwnerStore(preferences),
       sessionStore ?? SecureAuthSessionStore(),
       profileApi ?? OwnerProfileApiClient(),
+      addressApi ?? OwnerAddressApiClient(),
       bookingApi ?? OwnerBookingApiClient(),
     );
   }
@@ -207,6 +282,7 @@ class OwnerAppState extends ChangeNotifier {
     MemoryOwnerStore(),
     MemoryAuthSessionStore(),
     OwnerProfileApiClient(),
+    const _EmptyOwnerAddressApi(),
     OwnerBookingApiClient(),
   );
 
@@ -214,23 +290,41 @@ class OwnerAppState extends ChangeNotifier {
     OwnerKeyValueStore store,
     AuthSessionStore sessionStore,
     OwnerProfileApi profileApi,
+    OwnerAddressApi addressApi,
     OwnerBookingApi bookingApi,
   ) async {
     final encoded = store.getString(documentKey);
     final state = encoded != null
-        ? _tryDecode(encoded, store, sessionStore, profileApi, bookingApi)
-        : _seeded(store, sessionStore, profileApi, bookingApi);
+        ? _tryDecode(
+            encoded,
+            store,
+            sessionStore,
+            profileApi,
+            addressApi,
+            bookingApi,
+          )
+        : _seeded(store, sessionStore, profileApi, addressApi, bookingApi);
     final session = await sessionStore.read();
     if (session == null || session.isExpiredAt(DateTime.now())) {
-      state._isLoggedIn = false;
-      if (session != null) await sessionStore.clear();
+      await state._clearAuthenticatedState();
     } else {
-      state._isLoggedIn = true;
-      state._profile = state._profile.copyWith(phone: session.phone);
+      if (!state._belongsToSession(session)) {
+        await state._mutate(() => state._emptyUserDocument(session: session));
+      } else if (state._sessionUserId != session.userId || !state._isLoggedIn) {
+        await state._mutate(
+          () => {
+            ...state.toJson(),
+            'profile': state._profile.copyWith(phone: session.phone).toJson(),
+            'isLoggedIn': true,
+            'sessionUserId': session.userId,
+          },
+        );
+      }
     }
     if (state._isLoggedIn) {
       try {
         await state.refreshOwnerProfile();
+        await state.refreshOwnerAddresses();
         await state.fetchRemoteBookings();
       } on AuthApiException {
         // Restoring local state must remain usable while profile sync is
@@ -240,11 +334,43 @@ class OwnerAppState extends ChangeNotifier {
     return state;
   }
 
+  OwnerSettings _deviceSettings() =>
+      OwnerSettings(darkMode: _settings.darkMode);
+
+  Map<String, dynamic> _emptyUserDocument({AuthSession? session}) {
+    final next =
+        _seeded(
+            _store,
+            _sessionStore,
+            _profileApi,
+            _addressApi,
+            _bookingApi,
+          ).toJson()
+          ..['settings'] = _deviceSettings().toJson()
+          ..['isLoggedIn'] = session != null
+          ..['sessionUserId'] = session?.userId;
+    if (session != null) {
+      next['profile'] = const OwnerProfile(
+        name: '',
+        city: '',
+        phone: '',
+      ).copyWith(phone: session.phone).toJson();
+    }
+    return next;
+  }
+
+  bool _belongsToSession(AuthSession session) =>
+      _sessionUserId == session.userId ||
+      (_sessionUserId == null &&
+          _isLoggedIn &&
+          _profile.phone == session.phone);
+
   static OwnerAppState _tryDecode(
     String encoded,
     OwnerKeyValueStore store,
     AuthSessionStore sessionStore,
     OwnerProfileApi profileApi,
+    OwnerAddressApi addressApi,
     OwnerBookingApi bookingApi,
   ) {
     try {
@@ -253,12 +379,13 @@ class OwnerAppState extends ChangeNotifier {
         store,
         sessionStore,
         profileApi,
+        addressApi,
         bookingApi,
       );
     } on FormatException {
-      return _seeded(store, sessionStore, profileApi, bookingApi);
+      return _seeded(store, sessionStore, profileApi, addressApi, bookingApi);
     } on TypeError {
-      return _seeded(store, sessionStore, profileApi, bookingApi);
+      return _seeded(store, sessionStore, profileApi, addressApi, bookingApi);
     }
   }
 
@@ -267,6 +394,7 @@ class OwnerAppState extends ChangeNotifier {
     OwnerKeyValueStore store,
     AuthSessionStore sessionStore,
     OwnerProfileApi profileApi,
+    OwnerAddressApi addressApi,
     OwnerBookingApi bookingApi,
   ) {
     List<T> read<T>(String key, T Function(Map<String, dynamic>) decode) =>
@@ -279,6 +407,7 @@ class OwnerAppState extends ChangeNotifier {
       store: store,
       sessionStore: sessionStore,
       profileApi: profileApi,
+      addressApi: addressApi,
       bookingApi: bookingApi,
       ready: true,
       profile: OwnerProfile.fromJson(
@@ -304,7 +433,13 @@ class OwnerAppState extends ChangeNotifier {
       feedbackEntries: read('feedbackEntries', FeedbackEntry.fromJson),
       bookedWorkers: json.containsKey('bookedWorkers')
           ? read('bookedWorkers', BookedWorker.fromJson)
-          : _seeded(store, sessionStore, profileApi, bookingApi).bookedWorkers,
+          : _seeded(
+              store,
+              sessionStore,
+              profileApi,
+              addressApi,
+              bookingApi,
+            ).bookedWorkers,
       completedPhases: json.containsKey('completedPhases')
           ? Set<int>.from(
               (json['completedPhases'] as List<dynamic>? ?? const []).map(
@@ -315,6 +450,7 @@ class OwnerAppState extends ChangeNotifier {
               store,
               sessionStore,
               profileApi,
+              addressApi,
               bookingApi,
             ).completedPhases,
       phaseCompletedAt: json.containsKey('phaseCompletedAt')
@@ -325,17 +461,36 @@ class OwnerAppState extends ChangeNotifier {
               store,
               sessionStore,
               profileApi,
+              addressApi,
               bookingApi,
             ).phaseCompletedAt,
       dailyReports: json.containsKey('dailyReports')
           ? read('dailyReports', DailyReport.fromJson)
-          : _seeded(store, sessionStore, profileApi, bookingApi).dailyReports,
+          : _seeded(
+              store,
+              sessionStore,
+              profileApi,
+              addressApi,
+              bookingApi,
+            ).dailyReports,
       inspections: json.containsKey('inspections')
           ? read('inspections', InspectionRequest.fromJson)
-          : _seeded(store, sessionStore, profileApi, bookingApi).inspections,
+          : _seeded(
+              store,
+              sessionStore,
+              profileApi,
+              addressApi,
+              bookingApi,
+            ).inspections,
       archives: json['archives'] is List
           ? read('archives', RenovationArchive.fromJson)
-          : _seeded(store, sessionStore, profileApi, bookingApi).archives,
+          : _seeded(
+              store,
+              sessionStore,
+              profileApi,
+              addressApi,
+              bookingApi,
+            ).archives,
       materialEstimates: (() {
         if (json['materialEstimates'] is List) {
           return read('materialEstimates', MaterialEstimate.fromJson);
@@ -344,6 +499,7 @@ class OwnerAppState extends ChangeNotifier {
           store,
           sessionStore,
           profileApi,
+          addressApi,
           bookingApi,
         ).materialEstimates;
       })(),
@@ -365,7 +521,24 @@ class OwnerAppState extends ChangeNotifier {
       savedQuotes: json.containsKey('savedQuotes')
           ? read('savedQuotes', SavedQuote.fromJson)
           : const [],
+      notificationFacts: Map<String, String>.from(
+        json['notificationFacts'] as Map? ?? const <String, String>{},
+      ),
+      businessEventCursor:
+          ((json['_businessEventCursor'] as num?)?.toInt() ?? 0)
+              .clamp(0, 1 << 62)
+              .toInt(),
+      remoteServiceRequestIds: Set<String>.from(
+        (json['remoteServiceRequestIds'] as List<dynamic>? ?? const [])
+            .whereType<String>()
+            .where((id) => id.isNotEmpty),
+      ),
+      remoteServiceRequests: read(
+        'remoteServiceRequests',
+        RemoteServiceRequest.fromJson,
+      ),
       isLoggedIn: json['isLoggedIn'] as bool? ?? false,
+      sessionUserId: json['sessionUserId'] as String?,
     );
   }
 
@@ -373,11 +546,13 @@ class OwnerAppState extends ChangeNotifier {
     OwnerKeyValueStore store,
     AuthSessionStore sessionStore,
     OwnerProfileApi profileApi,
+    OwnerAddressApi addressApi,
     OwnerBookingApi bookingApi,
   ) => OwnerAppState._(
     store: store,
     sessionStore: sessionStore,
     profileApi: profileApi,
+    addressApi: addressApi,
     bookingApi: bookingApi,
     ready: true,
     profile: const OwnerProfile(name: '', city: '', phone: ''),
@@ -399,8 +574,13 @@ class OwnerAppState extends ChangeNotifier {
     dailyReports: const [],
     materialEstimates: const [],
     isLoggedIn: false,
+    sessionUserId: null,
     chatMessages: const {},
     savedQuotes: const [],
+    notificationFacts: const {},
+    businessEventCursor: 0,
+    remoteServiceRequestIds: const {},
+    remoteServiceRequests: const [],
   );
 
   Map<String, dynamic> toJson() => {
@@ -434,7 +614,14 @@ class OwnerAppState extends ChangeNotifier {
       (key, msgs) => MapEntry(key, msgs.map((m) => m.toJson()).toList()),
     ),
     'savedQuotes': _savedQuotes.map((e) => e.toJson()).toList(),
+    'notificationFacts': _notificationFacts,
+    '_businessEventCursor': _businessEventCursor,
+    'remoteServiceRequestIds': _remoteServiceRequestIds.toList(),
+    'remoteServiceRequests': _remoteServiceRequests
+        .map((request) => request.toJson())
+        .toList(),
     'isLoggedIn': _isLoggedIn,
+    'sessionUserId': _sessionUserId,
   };
 
   Future<void> _mutate(
@@ -453,6 +640,7 @@ class OwnerAppState extends ChangeNotifier {
           _store,
           _sessionStore,
           _profileApi,
+          _addressApi,
           _bookingApi,
         );
         _profile = restored._profile;
@@ -475,7 +663,12 @@ class OwnerAppState extends ChangeNotifier {
         _materialEstimates = restored._materialEstimates;
         _chatMessages = restored._chatMessages;
         _savedQuotes = restored._savedQuotes;
+        _notificationFacts = restored._notificationFacts;
+        _businessEventCursor = restored._businessEventCursor;
+        _remoteServiceRequestIds = restored._remoteServiceRequestIds;
+        _remoteServiceRequests = restored._remoteServiceRequests;
         _isLoggedIn = restored._isLoggedIn;
+        _sessionUserId = restored._sessionUserId;
       }
       notifyListeners();
     });
@@ -496,13 +689,47 @@ class OwnerAppState extends ChangeNotifier {
     return null;
   }
 
+  Future<AuthSession> _requireOwnerSession() async {
+    final session = await _validSession();
+    if (session != null) return session;
+    throw const AuthApiException(
+      code: 'NOT_AUTHENTICATED',
+      message: '登录已过期，请重新登录',
+    );
+  }
+
   OwnerProfile _localProfile(RemoteOwnerProfile remote) => OwnerProfile(
     name: remote.name ?? '',
     city: remote.city,
     phone: remote.phone,
+    avatarUrl: remote.avatarUrl,
+    gender: remote.gender,
     decorationType: remote.decorationType,
     address: remote.address,
     area: remote.area,
+  );
+
+  OwnerAddress _localAddress(RemoteOwnerAddress remote) => OwnerAddress(
+    id: remote.id,
+    recipient: remote.recipient,
+    phone: remote.phone,
+    province: remote.province,
+    city: remote.city,
+    district: remote.district,
+    detail: remote.detail,
+    isDefault: remote.isDefault,
+    createdAt: remote.createdAt,
+    updatedAt: remote.updatedAt,
+  );
+
+  OwnerAddressDraft _addressDraft(OwnerAddress address) => OwnerAddressDraft(
+    recipient: address.recipient,
+    phone: address.phone,
+    province: address.province,
+    city: address.city,
+    district: address.district,
+    detail: address.detail,
+    isDefault: address.isDefault,
   );
 
   /// 获取当前有效 accessToken，若过期或未登录返回 null。
@@ -513,12 +740,21 @@ class OwnerAppState extends ChangeNotifier {
   }
 
   Future<void> _clearAuthenticatedState() async {
+    _sessionGeneration += 1;
+    _remoteServiceRequestSnapshotVersion += 1;
+    _remoteBookingFetchInFlight = null;
+    _remoteBusinessFetchInFlight = null;
+    _remoteBusinessEventFetchInFlight = null;
+    _remoteServiceRequestFetchInFlight = null;
+    _isFetchingRemoteBookings = false;
+    _isFetchingRemoteServiceRequests = false;
+    _remoteBookingError = null;
+    _remoteServiceRequestError = null;
     await _sessionStore.clear();
-    await _mutate(() {
-      if (!_isLoggedIn) return null;
-      return {...toJson(), 'isLoggedIn': false};
-    });
+    await _mutate(() => _emptyUserDocument());
   }
+
+  bool _isCurrentSession(int generation) => generation == _sessionGeneration;
 
   Future<void> _handleProfileError(Object error) async {
     if (error is AuthApiException && error.statusCode == 401) {
@@ -527,42 +763,177 @@ class OwnerAppState extends ChangeNotifier {
   }
 
   Future<void> refreshOwnerProfile() async {
+    final generation = _sessionGeneration;
     final session = await _validSession();
-    if (session == null) return;
+    if (session == null || !_isCurrentSession(generation)) return;
     try {
       final remote = await _profileApi.getCurrent(session.accessToken);
+      if (!_isCurrentSession(generation)) return;
       await _mutate(
-        () => {
-          ...toJson(),
-          'profile': _localProfile(remote).toJson(),
-          'isLoggedIn': true,
-        },
+        () => !_isCurrentSession(generation)
+            ? null
+            : {
+                ...toJson(),
+                'profile': _localProfile(remote).toJson(),
+                'isLoggedIn': true,
+              },
       );
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       await _handleProfileError(error);
       rethrow;
     }
   }
 
-  Future<void> fetchRemoteBookings() async {
+  Future<void> refreshOwnerAddresses() async {
+    final generation = _sessionGeneration;
     final session = await _validSession();
-    if (session == null) return;
+    if (session == null || !_isCurrentSession(generation)) return;
+    try {
+      final remote = await _addressApi.list(session.accessToken);
+      if (!_isCurrentSession(generation)) return;
+      await _replaceRemoteAddresses(remote, sessionGeneration: generation);
+    } catch (error) {
+      if (!_isCurrentSession(generation)) return;
+      await _handleProfileError(error);
+      rethrow;
+    }
+  }
+
+  Future<void> _replaceRemoteAddresses(
+    Iterable<RemoteOwnerAddress> remote, {
+    int? sessionGeneration,
+  }) async {
+    final next = remote.map(_localAddress).toList();
+    await _mutate(() {
+      if (sessionGeneration != null && !_isCurrentSession(sessionGeneration)) {
+        return null;
+      }
+      return {
+        ...toJson(),
+        'addresses': next.map((address) => address.toJson()).toList(),
+      };
+    });
+  }
+
+  Future<void> fetchRemoteBookings() {
+    final inFlight = _remoteBookingFetchInFlight;
+    if (inFlight != null) return inFlight;
+    final operation = _doFetchRemoteBookings();
+    _remoteBookingFetchInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_remoteBookingFetchInFlight, operation)) {
+        _remoteBookingFetchInFlight = null;
+      }
+    });
+  }
+
+  Future<void> fetchRemoteServiceRequests({
+    ServiceRequestApi? serviceRequestApi,
+  }) {
+    final inFlight = _remoteServiceRequestFetchInFlight;
+    if (inFlight != null) return inFlight;
+    final snapshotVersion = ++_remoteServiceRequestSnapshotVersion;
+    final operation = _doFetchRemoteServiceRequests(
+      serviceRequestApi: serviceRequestApi,
+      snapshotVersion: snapshotVersion,
+    );
+    _remoteServiceRequestFetchInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_remoteServiceRequestFetchInFlight, operation)) {
+        _remoteServiceRequestFetchInFlight = null;
+        // A business-notification refresh can supersede this request's
+        // snapshot while it is still pending. In that case the operation's
+        // own finally intentionally does not change the flag, but there is
+        // no newer explicit request using this in-flight slot. Clear it here
+        // so callers are never left in a permanent loading state.
+        if (_isFetchingRemoteServiceRequests) {
+          _isFetchingRemoteServiceRequests = false;
+          notifyListeners();
+        }
+      }
+    });
+  }
+
+  Future<void> _doFetchRemoteServiceRequests({
+    ServiceRequestApi? serviceRequestApi,
+    required int snapshotVersion,
+  }) async {
+    final generation = _sessionGeneration;
+    final session = await _validSession();
+    if (session == null || !_isCurrentSession(generation)) return;
+    _isFetchingRemoteServiceRequests = true;
+    _remoteServiceRequestError = null;
+    notifyListeners();
+    try {
+      final api = serviceRequestApi ?? ServiceRequestApiClient();
+      final remote = await api.listOwnerRequests(session.accessToken);
+      if (!_isCurrentSession(generation) ||
+          snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+        return;
+      }
+      final requestIds = remote.map((request) => request.id).toSet();
+      await _mutate(() {
+        if (!_isCurrentSession(generation) ||
+            snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+          return null;
+        }
+        if (_sameRemoteServiceRequests(remote, _remoteServiceRequests) &&
+            setEquals(requestIds, _remoteServiceRequestIds)) {
+          return null;
+        }
+        return {
+          ...toJson(),
+          'remoteServiceRequests': remote
+              .map((request) => request.toJson())
+              .toList(),
+          'remoteServiceRequestIds': requestIds.toList(),
+        };
+      });
+    } catch (error) {
+      if (!_isCurrentSession(generation) ||
+          snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+        return;
+      }
+      await _handleProfileError(error);
+      if (!_isCurrentSession(generation)) return;
+      _remoteServiceRequestError = error is AuthApiException
+          ? error.message
+          : '暂时无法加载项目，请重试';
+    } finally {
+      if (_isCurrentSession(generation) &&
+          snapshotVersion == _remoteServiceRequestSnapshotVersion) {
+        _isFetchingRemoteServiceRequests = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  Future<void> _doFetchRemoteBookings() async {
+    final generation = _sessionGeneration;
+    final session = await _validSession();
+    if (session == null || !_isCurrentSession(generation)) return;
     _isFetchingRemoteBookings = true;
     _remoteBookingError = null;
     notifyListeners();
     try {
       final remote = await _bookingApi.listOwnerBookings(session.accessToken);
+      if (!_isCurrentSession(generation)) return;
       final remoteOrders = remote
           .map(
             (r) => OrderItem(
               id: 'rm-${r.id}',
+              bookingId: r.id,
+              serviceRequestId: r.serviceRequestId,
               workerName: r.workerName,
               customerName: _profile.name,
               phone: _profile.phone,
               address: r.serviceAddress ?? '',
               area: '',
               description: r.remark ?? '',
-              visitTime: '',
+              visitTime: _ownerVisitTimeLabel(r.scheduledVisitAt),
+              scheduledVisitAt: r.scheduledVisitAt,
+              actualOnSiteAt: r.actualOnSiteAt ?? r.onSiteAt,
               status: switch (r.status) {
                 'PENDING' => '待接单',
                 'ACCEPTED' => '已确认',
@@ -573,6 +944,7 @@ class OwnerAppState extends ChangeNotifier {
                 'QUOTE_PENDING' => '待确认报价',
                 'READY_TO_START' => '待开工',
                 'HIRED' => '施工中',
+                'COMPLETED' => '已完成',
                 'REJECTED' => '已拒绝',
                 'CANCELLED' => '已取消',
                 'NOT_SELECTED' => '未选中',
@@ -582,70 +954,497 @@ class OwnerAppState extends ChangeNotifier {
             ),
           )
           .toList();
-      final existingMessageIds = _messages.map((m) => m.id).toSet();
-      final acceptedMessages = remote
-          .where((r) => r.status == 'ACCEPTED')
-          .map(_acceptedBookingMessage)
-          .where((message) => !existingMessageIds.contains(message.id))
-          .toList();
-      final pendingMessages = remote
-          .where((r) => r.status == 'PENDING')
-          .map(_pendingBookingMessage)
-          .where((message) => !existingMessageIds.contains(message.id))
-          .toList();
-      final nextMessages = [
-        ...acceptedMessages,
-        ...pendingMessages,
-        ..._messages,
-      ];
+      final inferredRequestIds = {
+        ..._remoteServiceRequestIds,
+        ...remote.map((booking) => booking.serviceRequestId),
+      };
       await _mutate(() {
+        if (!_isCurrentSession(generation)) return null;
+        final facts = Map<String, String>.of(_notificationFacts);
+        final currentIds = _messages.map((message) => message.id).toSet();
+        final newMessages = <OwnerMessage>[];
+        for (final booking in remote) {
+          final factKey = 'booking:${booking.id}';
+          final previous = facts[factKey];
+          final current = booking.status;
+          if (previous != current) {
+            final shouldNotify = previous != null || current == 'PENDING';
+            final message = shouldNotify ? _bookingMessage(booking) : null;
+            if (message != null &&
+                !currentIds.contains(message.id) &&
+                !_hasLegacyBookingMessage(message.eventType!, booking.id)) {
+              currentIds.add(message.id);
+              newMessages.add(message);
+            }
+            facts[factKey] = current;
+          }
+        }
         return {
           ...toJson(),
           'appointments': remoteOrders.map((e) => e.toJson()).toList(),
-          if (acceptedMessages.isNotEmpty || pendingMessages.isNotEmpty)
-            'messages': nextMessages.map((e) => e.toJson()).toList(),
+          'notificationFacts': facts,
+          'remoteServiceRequestIds': inferredRequestIds.toList(),
+          if (newMessages.isNotEmpty)
+            'messages': [
+              ...newMessages.reversed,
+              ..._messages,
+            ].map((e) => e.toJson()).toList(),
         };
       });
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       await _handleProfileError(error);
+      if (!_isCurrentSession(generation)) return;
       _remoteBookingError = error is AuthApiException
           ? error.message
           : '预约同步失败，请稍后重试';
     } finally {
-      _isFetchingRemoteBookings = false;
+      if (_isCurrentSession(generation)) {
+        _isFetchingRemoteBookings = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  bool _hasLegacyBookingMessage(String eventType, String bookingId) {
+    final legacyId = switch (eventType) {
+      'PENDING' => 'msg-remote-booking-pending-$bookingId',
+      'ACCEPTED' => 'msg-remote-booking-accepted-$bookingId',
+      'VISIT_PROPOSED' => 'msg-remote-booking-visit-proposed-$bookingId',
+      _ => null,
+    };
+    return legacyId != null &&
+        _messages.any((message) => message.id == legacyId);
+  }
+
+  OwnerMessage? _bookingMessage(RemoteOwnerBooking booking) {
+    final event = switch (booking.status) {
+      'PENDING' => (
+        'PENDING',
+        '预约已提交',
+        '您已预约${booking.workerName}（${_tradeLabel(booking.trade)}），正在等待师傅接单。',
+        'OWNER_BOOKING',
+      ),
+      'ACCEPTED' => (
+        'ACCEPTED',
+        '工人已接单',
+        '您预约的${booking.workerName}（${_tradeLabel(booking.trade)}）已接单，师傅将与您联系确认上门时间。',
+        'OWNER_BOOKING',
+      ),
+      'VISIT_PROPOSED' => (
+        'VISIT_PROPOSED',
+        '待确认上门时间',
+        '${booking.workerName}（${_tradeLabel(booking.trade)}）已提交上门时间，请前往订单确认上门时间。',
+        'OWNER_BOOKING',
+      ),
+      'VISIT_SCHEDULED' => (
+        'VISIT_SCHEDULED',
+        '上门时间已确认',
+        '您与${booking.workerName}的上门时间已确认。',
+        'OWNER_BOOKING',
+      ),
+      'ARRIVAL_PENDING' => (
+        'ARRIVAL_PENDING',
+        '待确认到场',
+        '该订单已进入到场确认阶段，请查看候选工人详情。',
+        'OWNER_BOOKING',
+      ),
+      'QUOTE_PENDING' => (
+        'QUOTE_SUBMITTED',
+        '报价已提交',
+        '${booking.workerName}已提交报价，请前往报价比较。',
+        'OWNER_QUOTE_COMPARISON',
+      ),
+      'READY_TO_START' || 'HIRED' => (
+        'HIRED',
+        '已选定施工师傅',
+        '您已选定${booking.workerName}，请查看订单进度。',
+        'OWNER_BOOKING',
+      ),
+      'NOT_SELECTED' => (
+        'NOT_SELECTED',
+        '候选工人已更新',
+        '${booking.workerName}未被选为本次施工师傅。',
+        'OWNER_BOOKING',
+      ),
+      _ => null,
+    };
+    if (event == null) return null;
+    final address = booking.serviceAddress?.trim();
+    final addressText = address == null || address.isEmpty
+        ? ''
+        : '服务地址：$address。';
+    return OwnerMessage(
+      id: 'owner:${event.$1}:${booking.id}',
+      title: event.$2,
+      content: '${event.$3}$addressText',
+      category: '预约',
+      createdAt:
+          (booking.status == 'PENDING' ? booking.createdAt : booking.updatedAt)
+              .toLocal(),
+      eventType: event.$1,
+      bookingId: booking.id,
+      serviceRequestId: booking.serviceRequestId,
+      targetAction: event.$4,
+    );
+  }
+
+  void initBusinessEventApi(BusinessEventApi api) {
+    _businessEventApi = api;
+  }
+
+  Future<void> fetchRemoteBusinessEvents({int pageSize = 100}) {
+    if (pageSize < 1 || pageSize > 100) {
+      throw RangeError.range(pageSize, 1, 100, 'pageSize');
+    }
+    final inFlight = _remoteBusinessEventFetchInFlight;
+    if (inFlight != null) return inFlight;
+    final operation = _doFetchRemoteBusinessEvents(pageSize);
+    _remoteBusinessEventFetchInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_remoteBusinessEventFetchInFlight, operation)) {
+        _remoteBusinessEventFetchInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _doFetchRemoteBusinessEvents(int pageSize) async {
+    final generation = _sessionGeneration;
+    final session = await _validSession();
+    if (session == null || !_isCurrentSession(generation)) return;
+    var after = _businessEventCursor;
+    while (true) {
+      final page = await _businessEventApi.list(
+        session.accessToken,
+        after: after,
+        size: pageSize,
+      );
+      if (!_isCurrentSession(generation)) return;
+      if (page.items.isEmpty) return;
+      final messages = page.items.map(_ownerBusinessEventMessage).toList();
+      await _mutate(() {
+        if (!_isCurrentSession(generation) || _businessEventCursor != after) {
+          return null;
+        }
+        final knownEventIds = _messages
+            .map((message) => message.serverEventId)
+            .whereType<String>()
+            .toSet();
+        final additions = messages
+            .where((message) => knownEventIds.add(message.serverEventId!))
+            .toList();
+        return {
+          ...toJson(),
+          '_businessEventCursor': page.nextCursor,
+          if (additions.isNotEmpty)
+            'messages': [
+              ...additions.reversed,
+              ..._messages,
+            ].map((message) => message.toJson()).toList(),
+        };
+      });
+      if (!_isCurrentSession(generation) ||
+          _businessEventCursor != page.nextCursor) {
+        return;
+      }
+      after = page.nextCursor;
+      if (page.items.length < pageSize) return;
+    }
+  }
+
+  OwnerMessage _ownerBusinessEventMessage(RemoteBusinessEvent event) {
+    final round = event.payload?['round'];
+    final revision = event.payload?['revision'];
+    final reportDate = event.payload?['reportDate'];
+    final presentation = switch (event.eventType) {
+      'DAILY_REPORT_SUBMITTED' => (
+        '施工日报已提交',
+        reportDate == null
+            ? '工人已提交施工日报${revision == null ? '' : '（第 $revision 版）'}。'
+            : '工人已提交 $reportDate 施工日报${revision == null ? '' : '（第 $revision 版）'}。',
+        '日报',
+        'OWNER_DAILY_REPORT',
+      ),
+      'INSPECTION_REQUESTED' => (
+        '待验收节点',
+        '工人已发起${round == null ? '' : '第 $round 轮'}验收，请及时查看。',
+        '验收',
+        'OWNER_INSPECTION',
+      ),
+      'AFTER_SALE_CREATED' => (
+        '售后工单已创建',
+        '本单售后工单已创建，可进入工单查看最新进展。',
+        '售后',
+        'OWNER_AFTER_SALE',
+      ),
+      'AFTER_SALE_PARTICIPANT_MESSAGE' => (
+        '售后有新回复',
+        '工人已在售后工单中追加回复。',
+        '售后',
+        'OWNER_AFTER_SALE',
+      ),
+      'AFTER_SALE_PLATFORM_ACCEPTED' => (
+        '平台已受理售后',
+        '平台已受理本单售后，请查看处理进展。',
+        '售后',
+        'OWNER_AFTER_SALE',
+      ),
+      'AFTER_SALE_PLATFORM_REPLIED' => (
+        '平台回复了售后',
+        '平台已更新售后处理意见。',
+        '售后',
+        'OWNER_AFTER_SALE',
+      ),
+      'AFTER_SALE_RESOLVED' => (
+        '售后已解决',
+        '本单售后已有解决结果。',
+        '售后',
+        'OWNER_AFTER_SALE',
+      ),
+      'AFTER_SALE_CLOSED' => ('售后已关闭', '本单售后工单已关闭。', '售后', 'OWNER_AFTER_SALE'),
+      _ => ('业务进度已更新', '本单有新的业务进展。', '系统', null),
+    };
+    return OwnerMessage(
+      id: 'business:${event.eventId}',
+      title: presentation.$1,
+      content: presentation.$2,
+      category: presentation.$3,
+      createdAt: event.occurredAt.toLocal(),
+      isRead: event.readAt != null,
+      eventType: event.eventType,
+      bookingId: event.bookingId,
+      serviceRequestId: event.serviceRequestId,
+      targetAction: presentation.$4,
+      serverEventId: event.eventId,
+      aggregateType: event.aggregateType,
+      aggregateId: event.aggregateId,
+    );
+  }
+
+  Future<void> fetchRemoteBusinessNotifications({
+    ServiceRequestApi? serviceRequestApi,
+    InspectionApi? inspectionApi,
+    PaymentApiClient? paymentApi,
+  }) {
+    final inFlight = _remoteBusinessFetchInFlight;
+    if (inFlight != null) return inFlight;
+    final snapshotVersion = ++_remoteServiceRequestSnapshotVersion;
+    final operation = _doFetchRemoteBusinessNotifications(
+      serviceRequestApi: serviceRequestApi,
+      inspectionApi: inspectionApi,
+      paymentApi: paymentApi,
+      snapshotVersion: snapshotVersion,
+    );
+    _remoteBusinessFetchInFlight = operation;
+    return operation.whenComplete(() {
+      if (identical(_remoteBusinessFetchInFlight, operation)) {
+        _remoteBusinessFetchInFlight = null;
+      }
+    });
+  }
+
+  Future<void> _doFetchRemoteBusinessNotifications({
+    ServiceRequestApi? serviceRequestApi,
+    InspectionApi? inspectionApi,
+    PaymentApiClient? paymentApi,
+    required int snapshotVersion,
+  }) async {
+    final generation = _sessionGeneration;
+    final session = await _validSession();
+    if (session == null || !_isCurrentSession(generation)) return;
+    final requestsApi = serviceRequestApi ?? ServiceRequestApiClient();
+    final paymentsApi = paymentApi ?? PaymentApiClient();
+
+    List<RemoteServiceRequest> requests = const [];
+    var requestsLoaded = false;
+    try {
+      requests = await requestsApi.listOwnerRequests(session.accessToken);
+      requestsLoaded = true;
+    } catch (_) {
+      // A failed source must not fabricate a transition from missing data.
+    }
+    if (!_isCurrentSession(generation) ||
+        snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+      return;
+    }
+
+    final serviceRequestByBooking = <String, String>{};
+    for (final request in requests) {
+      for (final booking in request.candidates) {
+        serviceRequestByBooking[booking.id] = request.id;
+      }
+    }
+    if (!_isCurrentSession(generation) ||
+        snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+      return;
+    }
+
+    List<PaymentOrderModel> paymentOrders = const [];
+    try {
+      paymentOrders = await _listAllOwnerPaymentOrders(
+        paymentsApi,
+        session.accessToken,
+        generation,
+      );
+    } catch (_) {
+      // Payment failures are isolated from inspection and after-sale sync.
+    }
+    if (!_isCurrentSession(generation)) return;
+
+    await _mutate(() {
+      if (!_isCurrentSession(generation) ||
+          snapshotVersion != _remoteServiceRequestSnapshotVersion) {
+        return null;
+      }
+      final facts = Map<String, String>.of(_notificationFacts);
+      final existingIds = _messages.map((message) => message.id).toSet();
+      final newMessages = <OwnerMessage>[];
+
+      void record({
+        required String factKey,
+        required String current,
+        required String bookingId,
+        required String? serviceRequestId,
+        required DateTime occurredAt,
+        required bool notifyWhenFirstSeen,
+        required OwnerMessage? Function(String eventType) build,
+      }) {
+        final previous = facts[factKey];
+        if (previous == current) return;
+        facts[factKey] = current;
+        if (previous == null && !notifyWhenFirstSeen) return;
+        final message = build(current);
+        if (message == null || !existingIds.add(message.id)) return;
+        newMessages.add(message);
+      }
+
+      for (final order in paymentOrders) {
+        final stage = _paymentSnapshot(order);
+        record(
+          factKey: 'payment:${order.id}',
+          current: stage,
+          bookingId: order.bookingId,
+          serviceRequestId: serviceRequestByBooking[order.bookingId],
+          occurredAt:
+              DateTime.tryParse(order.updatedAt)?.toUtc() ??
+              DateTime.tryParse(order.createdAt)?.toUtc() ??
+              DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+          notifyWhenFirstSeen: stage == 'PAYMENT_REPORTED',
+          build: (status) => _ownerPaymentMessage(
+            status,
+            order,
+            serviceRequestByBooking[order.bookingId],
+          ),
+        );
+      }
+
+      final remoteRequestIds = requestsLoaded
+          ? requests.map((request) => request.id).toSet()
+          : _remoteServiceRequestIds;
+      final requestsChanged =
+          requestsLoaded &&
+          !_sameRemoteServiceRequests(requests, _remoteServiceRequests);
+      if (mapEquals(facts, _notificationFacts) &&
+          newMessages.isEmpty &&
+          setEquals(remoteRequestIds, _remoteServiceRequestIds) &&
+          !requestsChanged) {
+        return null;
+      }
+      return {
+        ...toJson(),
+        'notificationFacts': facts,
+        'remoteServiceRequestIds': remoteRequestIds.toList(),
+        if (requestsLoaded)
+          'remoteServiceRequests': requests
+              .map((request) => request.toJson())
+              .toList(),
+        if (newMessages.isNotEmpty)
+          'messages': [
+            ...newMessages.reversed,
+            ..._messages,
+          ].map((message) => message.toJson()).toList(),
+      };
+    });
+    if (requestsLoaded &&
+        _isCurrentSession(generation) &&
+        snapshotVersion == _remoteServiceRequestSnapshotVersion) {
+      _remoteServiceRequestError = null;
       notifyListeners();
     }
   }
 
-  OwnerMessage _pendingBookingMessage(RemoteOwnerBooking booking) {
-    final address = booking.serviceAddress?.trim();
-    final addressText = address == null || address.isEmpty
-        ? ''
-        : '服务地址：$address。';
-    return OwnerMessage(
-      id: 'msg-remote-booking-pending-${booking.id}',
-      title: '预约已提交',
-      content:
-          '您已预约${booking.workerName}（${_tradeLabel(booking.trade)}），'
-          '正在等待师傅接单。$addressText',
-      category: '预约',
-      createdAt: booking.createdAt.toLocal(),
-    );
+  Future<List<PaymentOrderModel>> _listAllOwnerPaymentOrders(
+    PaymentApiClient api,
+    String accessToken,
+    int generation,
+  ) async {
+    const pageSize = 100;
+    final result = <PaymentOrderModel>[];
+    final seen = <String>{};
+    for (var page = 0; ; page += 1) {
+      final batch = await api.listOrders(
+        accessToken,
+        page: page,
+        size: pageSize,
+      );
+      if (!_isCurrentSession(generation)) return const [];
+      var added = false;
+      for (final order in batch) {
+        if (seen.add(order.id)) {
+          result.add(order);
+          added = true;
+        }
+      }
+      if (batch.length < pageSize || !added) return result;
+    }
   }
 
-  OwnerMessage _acceptedBookingMessage(RemoteOwnerBooking booking) {
-    final address = booking.serviceAddress?.trim();
-    final addressText = address == null || address.isEmpty
-        ? ''
-        : '服务地址：$address。';
+  String _paymentSnapshot(PaymentOrderModel order) {
+    if (order.constructionPaymentStatus == 'CONFIRMED' ||
+        order.constructionConfirmedAt != null ||
+        order.workerConfirmedReceivedAt != null ||
+        (!order.isSplitOfflineV2 && order.status == 'PAID')) {
+      return 'RECEIPT_CONFIRMED';
+    }
+    if (order.constructionPaymentStatus == 'REPORTED' ||
+        order.constructionReportedAt != null ||
+        order.ownerReportedPaidAt != null ||
+        order.status == 'OWNER_REPORTED_PAID') {
+      return 'PAYMENT_REPORTED';
+    }
+    return 'PENDING';
+  }
+
+  OwnerMessage? _ownerPaymentMessage(
+    String status,
+    PaymentOrderModel order,
+    String? serviceRequestId,
+  ) {
+    final event = switch (status) {
+      'PAYMENT_REPORTED' => (
+        'PAYMENT_REPORTED',
+        '付款申报已提交',
+        '服务器已记录本单工程款申报，等待工人确认收款。',
+      ),
+      'RECEIPT_CONFIRMED' => ('RECEIPT_CONFIRMED', '工人已确认收款', '本单工程款已由工人确认收到。'),
+      _ => null,
+    };
+    if (event == null) return null;
+    final occurredAt =
+        DateTime.tryParse(order.updatedAt)?.toUtc() ??
+        DateTime.tryParse(order.createdAt)?.toUtc() ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
     return OwnerMessage(
-      id: 'msg-remote-booking-accepted-${booking.id}',
-      title: '工人已接单',
-      content:
-          '您预约的${booking.workerName}（${_tradeLabel(booking.trade)}）已接单，'
-          '师傅将与您联系确认上门时间。$addressText',
-      category: '预约',
-      createdAt: booking.updatedAt.toLocal(),
+      id: 'owner:${event.$1}:${order.bookingId}',
+      title: event.$2,
+      content: event.$3,
+      category: '付款',
+      createdAt: occurredAt.toLocal(),
+      eventType: event.$1,
+      bookingId: order.bookingId,
+      serviceRequestId: serviceRequestId,
+      paymentOrderId: order.id,
+      targetAction: 'OWNER_PAYMENT',
     );
   }
 
@@ -668,14 +1467,20 @@ class OwnerAppState extends ChangeNotifier {
   }
 
   Future<List<RemoteDailyReport>> fetchDailyReports(String bookingId) async {
+    final generation = _sessionGeneration;
     final session = await _validSession();
-    if (session == null || _reportApi == null) return [];
+    if (session == null ||
+        _reportApi == null ||
+        !_isCurrentSession(generation)) {
+      return [];
+    }
 
     try {
       final remote = await _reportApi!.getReportsByBooking(
         session.accessToken,
         bookingId,
       );
+      if (!_isCurrentSession(generation)) return [];
       final syncedReports = remote
           .map(
             (r) => DailyReport(
@@ -689,6 +1494,7 @@ class OwnerAppState extends ChangeNotifier {
           )
           .toList();
       await _mutate(() {
+        if (!_isCurrentSession(generation)) return null;
         return {
           ...toJson(),
           'dailyReports': syncedReports.map((e) => e.toJson()).toList(),
@@ -696,35 +1502,45 @@ class OwnerAppState extends ChangeNotifier {
       });
       return remote;
     } catch (error) {
+      if (!_isCurrentSession(generation)) return [];
       await _handleProfileError(error);
       rethrow;
     }
   }
 
   Future<void> updateProfile(OwnerProfile value) async {
+    final generation = _sessionGeneration;
     final session = await _validSession();
-    if (session != null) {
+    if (session != null && _isCurrentSession(generation)) {
       try {
         final remote = await _profileApi.updateCurrent(
           session.accessToken,
           OwnerProfileUpdate(
             name: value.name,
             city: value.city,
+            avatarUrl: value.avatarUrl,
+            gender: value.gender,
             decorationType: value.decorationType,
             address: value.address,
             area: value.area,
           ),
         );
+        if (!_isCurrentSession(generation)) return;
         await _mutate(
-          () => {...toJson(), 'profile': _localProfile(remote).toJson()},
+          () => !_isCurrentSession(generation)
+              ? null
+              : {...toJson(), 'profile': _localProfile(remote).toJson()},
         );
         return;
       } catch (error) {
+        if (!_isCurrentSession(generation)) return;
         await _handleProfileError(error);
         rethrow;
       }
     }
+    if (!_isCurrentSession(generation) || !_isLoggedIn) return;
     await _mutate(() {
+      if (!_isCurrentSession(generation)) return null;
       if (value.name == _profile.name &&
           value.city == _profile.city &&
           value.phone == _profile.phone) {
@@ -746,50 +1562,167 @@ class OwnerAppState extends ChangeNotifier {
     });
   }
 
-  Future<void> addAddress(OwnerAddress value) => _mutate(() {
-    if (_addresses.any((item) => item.id == value.id)) return null;
-    final next = _normalizeAddresses(
-      [..._addresses, value],
-      preferredDefaultId: value.isDefault || _addresses.isEmpty
-          ? value.id
-          : null,
-    );
-    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
-  });
-
-  Future<void> updateAddress(OwnerAddress value) => _mutate(() {
-    final index = _addresses.indexWhere((item) => item.id == value.id);
-    if (index < 0 ||
-        jsonEncode(_addresses[index].toJson()) == jsonEncode(value.toJson())) {
-      return null;
+  Future<void> addAddress(OwnerAddress value) async {
+    final generation = _sessionGeneration;
+    final session = await _requireOwnerSession();
+    if (!_isCurrentSession(generation)) return;
+    try {
+      final remote = await _addressApi.create(
+        session.accessToken,
+        _addressDraft(value),
+      );
+      if (!_isCurrentSession(generation)) return;
+      final created = _localAddress(remote);
+      final next = _normalizeAddresses([
+        ..._addresses.where((item) => item.id != created.id),
+        created,
+      ], preferredDefaultId: created.isDefault ? created.id : null);
+      await _mutate(
+        () => !_isCurrentSession(generation)
+            ? null
+            : {
+                ...toJson(),
+                'addresses': next.map((address) => address.toJson()).toList(),
+              },
+      );
+    } catch (error) {
+      if (!_isCurrentSession(generation)) return;
+      await _handleProfileError(error);
+      rethrow;
     }
-    final replaced = [..._addresses]..[index] = value;
-    final next = _normalizeAddresses(
-      replaced,
-      preferredDefaultId: value.isDefault ? value.id : null,
-    );
-    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
-  });
+  }
 
-  Future<void> deleteAddress(String id) => _mutate(() {
-    final next = _normalizeAddresses(_addresses.where((item) => item.id != id));
-    if (next.length == _addresses.length) return null;
-    return {...toJson(), 'addresses': next.map((e) => e.toJson()).toList()};
-  });
+  Future<void> updateAddress(OwnerAddress value) async {
+    final generation = _sessionGeneration;
+    final session = await _requireOwnerSession();
+    if (!_isCurrentSession(generation)) return;
+    try {
+      final remote = await _addressApi.update(
+        session.accessToken,
+        value.id,
+        _addressDraft(value),
+      );
+      if (!_isCurrentSession(generation)) return;
+      final updated = _localAddress(remote);
+      final index = _addresses.indexWhere((item) => item.id == updated.id);
+      final replaced = [..._addresses];
+      if (index < 0) {
+        replaced.add(updated);
+      } else {
+        replaced[index] = updated;
+      }
+      final next = _normalizeAddresses(
+        replaced,
+        preferredDefaultId: updated.isDefault ? updated.id : null,
+      );
+      await _mutate(
+        () => !_isCurrentSession(generation)
+            ? null
+            : {
+                ...toJson(),
+                'addresses': next.map((address) => address.toJson()).toList(),
+              },
+      );
+    } catch (error) {
+      if (!_isCurrentSession(generation)) return;
+      await _handleProfileError(error);
+      rethrow;
+    }
+  }
 
-  Future<void> markMessageRead(String id) => _mutate(() {
-    final index = _messages.indexWhere((item) => item.id == id && !item.isRead);
-    if (index < 0) return null;
-    final next = [..._messages]
-      ..[index] = _messages[index].copyWith(isRead: true);
-    return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
-  });
+  Future<void> setDefaultAddress(String id) async {
+    final generation = _sessionGeneration;
+    final session = await _requireOwnerSession();
+    if (!_isCurrentSession(generation)) return;
+    try {
+      final remote = await _addressApi.setDefault(session.accessToken, id);
+      if (!_isCurrentSession(generation)) return;
+      final selected = _localAddress(remote);
+      final next = _normalizeAddresses(
+        _addresses.map(
+          (address) => address.id == selected.id ? selected : address,
+        ),
+        preferredDefaultId: selected.id,
+      );
+      await _mutate(
+        () => !_isCurrentSession(generation)
+            ? null
+            : {
+                ...toJson(),
+                'addresses': next.map((address) => address.toJson()).toList(),
+              },
+      );
+    } catch (error) {
+      if (!_isCurrentSession(generation)) return;
+      await _handleProfileError(error);
+      rethrow;
+    }
+  }
 
-  Future<void> markAllMessagesRead() => _mutate(() {
-    if (_messages.every((item) => item.isRead)) return null;
-    final next = _messages.map((item) => item.copyWith(isRead: true)).toList();
-    return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
-  });
+  Future<void> deleteAddress(String id) async {
+    final generation = _sessionGeneration;
+    final session = await _requireOwnerSession();
+    if (!_isCurrentSession(generation)) return;
+    try {
+      await _addressApi.delete(session.accessToken, id);
+      if (!_isCurrentSession(generation)) return;
+      final remote = await _addressApi.list(session.accessToken);
+      if (!_isCurrentSession(generation)) return;
+      await _replaceRemoteAddresses(remote, sessionGeneration: generation);
+    } catch (error) {
+      if (!_isCurrentSession(generation)) return;
+      await _handleProfileError(error);
+      rethrow;
+    }
+  }
+
+  Future<void> markMessageRead(String id) async {
+    final currentIndex = _messages.indexWhere((item) => item.id == id);
+    if (currentIndex < 0 || _messages[currentIndex].isRead) return;
+    final message = _messages[currentIndex];
+    final serverEventId = message.serverEventId;
+    if (serverEventId != null) {
+      final generation = _sessionGeneration;
+      final session = await _requireOwnerSession();
+      if (!_isCurrentSession(generation)) return;
+      await _businessEventApi.markRead(session.accessToken, serverEventId);
+      if (!_isCurrentSession(generation)) return;
+    }
+    await _mutate(() {
+      final index = _messages.indexWhere(
+        (item) => item.id == id && !item.isRead,
+      );
+      if (index < 0) return null;
+      final next = [..._messages]
+        ..[index] = _messages[index].copyWith(isRead: true);
+      return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
+    });
+  }
+
+  Future<void> markAllMessagesRead() async {
+    if (_messages.every((item) => item.isRead)) return;
+    final serverEventIds = _messages
+        .where((item) => !item.isRead)
+        .map((item) => item.serverEventId)
+        .whereType<String>()
+        .toList();
+    if (serverEventIds.isNotEmpty) {
+      final generation = _sessionGeneration;
+      final session = await _requireOwnerSession();
+      if (!_isCurrentSession(generation)) return;
+      for (final eventId in serverEventIds) {
+        await _businessEventApi.markRead(session.accessToken, eventId);
+        if (!_isCurrentSession(generation)) return;
+      }
+    }
+    await _mutate(() {
+      if (_messages.every((item) => item.isRead)) return null;
+      final next = _messages
+          .map((item) => item.copyWith(isRead: true))
+          .toList();
+      return {...toJson(), 'messages': next.map((e) => e.toJson()).toList()};
+    });
+  }
 
   bool isFavorite(String workerId) =>
       _favoriteWorkers.any((item) => item.id == workerId);
@@ -831,16 +1764,19 @@ class OwnerAppState extends ChangeNotifier {
 
   /// 取消远端预约（远程订单）
   Future<void> cancelRemoteBooking(String localId) async {
+    final generation = _sessionGeneration;
     final session = await _validSession();
-    if (session == null) return;
+    if (session == null || !_isCurrentSession(generation)) return;
     // localId 格式 "rm-{uuid}"
     final remoteId = localId.startsWith('rm-') ? localId.substring(3) : localId;
     try {
       await _bookingApi.cancelBooking(session.accessToken, remoteId, '业主主动取消');
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       await _handleProfileError(error);
       rethrow;
     }
+    if (!_isCurrentSession(generation)) return;
     await removeAppointment(localId);
   }
 
@@ -919,8 +1855,9 @@ class OwnerAppState extends ChangeNotifier {
   Future<void> bookWorker(
     BookedWorker worker, {
     String? remoteWorkerUserId,
-    String? serviceCity,
+    HouseInfo? houseInfo,
   }) async {
+    final generation = _sessionGeneration;
     if (remoteWorkerUserId == null || remoteWorkerUserId.trim().isEmpty) {
       throw const AuthApiException(
         code: 'SERVER_WORKER_REQUIRED',
@@ -930,6 +1867,7 @@ class OwnerAppState extends ChangeNotifier {
     }
     if (remoteWorkerUserId.isNotEmpty) {
       final session = await _validSession();
+      if (!_isCurrentSession(generation)) return;
       if (session == null) {
         throw const AuthApiException(
           code: 'AUTHENTICATION_REQUIRED',
@@ -937,23 +1875,42 @@ class OwnerAppState extends ChangeNotifier {
           statusCode: 401,
         );
       }
+      final serviceAddress = defaultAddress;
+      if (serviceAddress == null) {
+        throw const AuthApiException(
+          code: 'OWNER_ADDRESS_REQUIRED',
+          message: '请先添加上门地址',
+          statusCode: 409,
+        );
+      }
+      if (houseInfo == null) {
+        throw const AuthApiException(
+          code: 'HOUSE_INFO_REQUIRED',
+          message: '请先填写房屋面积与户型',
+          statusCode: 400,
+        );
+      }
       try {
         await _bookingApi.createBooking(
           session.accessToken,
           OwnerBookingCreateRequest(
             workerUserId: remoteWorkerUserId,
+            houseInfo: houseInfo,
             trade: worker.trade,
-            serviceCity: serviceCity ?? _profile.city,
-            serviceAddress: _profile.address,
+            serviceCity: serviceAddress.city,
+            serviceAddress: serviceAddress.fullAddress,
             remark: '来自安卓业主端',
           ),
         );
+        if (!_isCurrentSession(generation)) return;
       } catch (error) {
+        if (!_isCurrentSession(generation)) return;
         await _handleProfileError(error);
         rethrow;
       }
     }
     await _mutate(() {
+      if (!_isCurrentSession(generation)) return null;
       final existingIndex = _bookedWorkers.indexWhere(
         (w) => w.id == worker.id || _sameServicePhase(w, worker),
       );
@@ -976,6 +1933,7 @@ class OwnerAppState extends ChangeNotifier {
         'bookedWorkers': next.map((e) => e.toJson()).toList(),
       };
     });
+    if (!_isCurrentSession(generation)) return;
     await fetchRemoteBookings();
   }
 
@@ -1365,79 +2323,154 @@ class OwnerAppState extends ChangeNotifier {
 
   /// 完成后端认证：安全令牌保存成功后才进入登录态。
   Future<void> completeAuthenticatedLogin(OwnerLoginResponse response) async {
+    _sessionGeneration += 1;
+    _remoteServiceRequestSnapshotVersion += 1;
+    _remoteBookingFetchInFlight = null;
+    _remoteBusinessFetchInFlight = null;
+    _remoteBusinessEventFetchInFlight = null;
+    _remoteServiceRequestFetchInFlight = null;
+    _isFetchingRemoteBookings = false;
+    _isFetchingRemoteServiceRequests = false;
+    _remoteBookingError = null;
+    _remoteServiceRequestError = null;
+    final generation = _sessionGeneration;
     final session = AuthSession.fromLogin(response);
-    await _sessionStore.save(session);
     try {
+      final previousSession = await _sessionStore.read();
+      if (!_isCurrentSession(generation)) return;
+      final switchingAccounts =
+          previousSession?.userId != session.userId ||
+          (_sessionUserId != null && _sessionUserId != session.userId);
+      final baseDocument = switchingAccounts
+          ? _emptyUserDocument(session: session)
+          : toJson();
+      final baseProfile = OwnerProfile.fromJson(
+        Map<String, dynamic>.from(baseDocument['profile'] as Map),
+      );
+      await _sessionStore.save(session);
+      if (!_isCurrentSession(generation)) return;
       await _mutate(() {
+        if (!_isCurrentSession(generation)) return null;
         return {
-          ...toJson(),
-          'profile': _profile.copyWith(phone: response.user.phone).toJson(),
+          ...baseDocument,
+          'profile': baseProfile.copyWith(phone: response.user.phone).toJson(),
           'isLoggedIn': true,
+          'sessionUserId': session.userId,
         };
       });
     } catch (_) {
       await _sessionStore.clear();
       rethrow;
     }
+    if (!_isCurrentSession(generation)) return;
     try {
       await refreshOwnerProfile();
     } on AuthApiException {
       // Login remains successful for retryable profile-fetch failures. A 401 is
       // handled by refreshOwnerProfile and has already cleared login state.
     }
+    if (_isLoggedIn) {
+      try {
+        await refreshOwnerAddresses();
+      } on AuthApiException {
+        // Address sync is retryable. A 401 has already cleared login state.
+      }
+    }
   }
 
   /// 首次登录完成资料填写
   Future<void> completeOnboarding({
     String? name,
-    required String decorationType,
-    required String address,
-    required double area,
+    String? city,
+    String? avatarUrl,
+    String? gender,
+    String? decorationType,
+    String? address,
+    double? area,
   }) async {
+    final generation = _sessionGeneration;
+    final session = await _requireOwnerSession();
+    if (!_isCurrentSession(generation)) return;
     final nextProfile = _profile.copyWith(
       name: name?.trim().isNotEmpty == true ? name!.trim() : _profile.name,
-      decorationType: decorationType,
-      address: address,
-      area: area,
+      city: city?.trim().isNotEmpty == true ? city!.trim() : _profile.city,
+      avatarUrl: avatarUrl ?? _profile.avatarUrl,
+      gender: gender ?? _profile.gender,
+      decorationType: decorationType ?? _profile.decorationType,
+      address: address ?? _profile.address,
+      area: area ?? _profile.area,
     );
     if (!nextProfile.isProfileComplete) return;
-    final session = await _validSession();
-    if (session == null) {
-      throw const AuthApiException(
-        code: 'NOT_AUTHENTICATED',
-        message: '登录已过期，请重新登录',
-      );
-    }
     try {
       final remote = await _profileApi.updateCurrent(
         session.accessToken,
         OwnerProfileUpdate(
           name: nextProfile.name,
           city: nextProfile.city,
+          avatarUrl: nextProfile.avatarUrl,
+          gender: nextProfile.gender,
           decorationType: nextProfile.decorationType,
           address: nextProfile.address,
           area: nextProfile.area,
         ),
       );
+      if (!_isCurrentSession(generation)) return;
       await _mutate(
-        () => {
-          ...toJson(),
-          'profile': _localProfile(remote).toJson(),
-          'isLoggedIn': true,
-        },
+        () => !_isCurrentSession(generation)
+            ? null
+            : {
+                ...toJson(),
+                'profile': _localProfile(remote).toJson(),
+                'isLoggedIn': true,
+              },
       );
     } catch (error) {
+      if (!_isCurrentSession(generation)) return;
       await _handleProfileError(error);
       rethrow;
     }
   }
 
   /// 退出登录：先删除安全令牌，再清理本地登录状态。
-  Future<void> logout() async {
-    await _sessionStore.clear();
-    await _mutate(() {
-      if (!_isLoggedIn) return null;
-      return {...toJson(), 'isLoggedIn': false};
-    });
-  }
+  Future<void> logout() => _clearAuthenticatedState();
+}
+
+final class _EmptyOwnerAddressApi implements OwnerAddressApi {
+  const _EmptyOwnerAddressApi();
+
+  @override
+  Future<List<RemoteOwnerAddress>> list(String accessToken) async => const [];
+
+  @override
+  Future<RemoteOwnerAddress> create(
+    String accessToken,
+    OwnerAddressDraft draft,
+  ) => throw const AuthApiException(
+    code: 'ADDRESS_API_NOT_CONFIGURED',
+    message: '地址服务暂不可用',
+  );
+
+  @override
+  Future<RemoteOwnerAddress> update(
+    String accessToken,
+    String addressId,
+    OwnerAddressDraft draft,
+  ) => throw const AuthApiException(
+    code: 'ADDRESS_API_NOT_CONFIGURED',
+    message: '地址服务暂不可用',
+  );
+
+  @override
+  Future<RemoteOwnerAddress> setDefault(String accessToken, String addressId) =>
+      throw const AuthApiException(
+        code: 'ADDRESS_API_NOT_CONFIGURED',
+        message: '地址服务暂不可用',
+      );
+
+  @override
+  Future<void> delete(String accessToken, String addressId) =>
+      throw const AuthApiException(
+        code: 'ADDRESS_API_NOT_CONFIGURED',
+        message: '地址服务暂不可用',
+      );
 }

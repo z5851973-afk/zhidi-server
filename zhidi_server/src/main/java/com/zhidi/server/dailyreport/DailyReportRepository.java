@@ -10,7 +10,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface DailyReportRepository extends JpaRepository<DailyReport, UUID> {
 
-	List<DailyReport> findByBookingIdOrderByReportDateDesc(UUID bookingId);
+	List<DailyReport> findByBookingIdOrderByReportDateDescReportRevisionDesc(
+		UUID bookingId);
 
-	Optional<DailyReport> findByBookingIdAndReportDate(UUID bookingId, LocalDate reportDate);
+	Optional<DailyReport> findFirstByBookingIdAndReportDateOrderByReportRevisionDesc(
+		UUID bookingId, LocalDate reportDate);
 }

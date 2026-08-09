@@ -3,11 +3,11 @@ import 'package:share_plus/share_plus.dart';
 import '../../models/renovation.dart';
 import '../../app/owner_app_scope.dart';
 import '../../app/owner_models.dart';
-import 'worker_chat_page.dart';
 import 'booking_success_page.dart';
+import 'house_info_page.dart';
 import 'construction_standards_page.dart';
+import '../profile/address_page.dart';
 import '../../design/tokens.dart';
-import '../../services/auth_api_client.dart';
 import '../../services/worker_directory_api_client.dart';
 import '../../services/worker_case_api_client.dart';
 
@@ -100,9 +100,6 @@ class Review {
   });
 }
 
-// ── 师傅库存（数据来源：首页施工团队「更多师傅」）──
-const _allWorkers = <String, WorkerDetail>{};
-
 // ══════════════════════════════════════════
 // 师傅详情页
 // ══════════════════════════════════════════
@@ -110,7 +107,7 @@ class WorkerDetailPage extends StatefulWidget {
   final String workerName;
   final Trade? trade;
   final double? distance;
-  final RemoteWorkerDirectoryProfile? remoteProfile;
+  final RemoteWorkerDirectoryProfile remoteProfile;
   final WorkerCaseApi? caseApi;
   final bool candidateSelected;
   final Future<bool> Function()? onAddCandidate;
@@ -118,9 +115,9 @@ class WorkerDetailPage extends StatefulWidget {
   const WorkerDetailPage({
     super.key,
     required this.workerName,
+    required this.remoteProfile,
     this.trade,
     this.distance,
-    this.remoteProfile,
     this.caseApi,
     this.candidateSelected = false,
     this.onAddCandidate,
@@ -131,7 +128,6 @@ class WorkerDetailPage extends StatefulWidget {
 }
 
 class _WorkerDetailPageState extends State<WorkerDetailPage> {
-  bool _savingFavorite = false;
   bool _booking = false;
   bool _addingCandidate = false;
   late bool _candidateSelected;
@@ -141,14 +137,40 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
 
   WorkerCaseApi get _caseApi => widget.caseApi ?? WorkerCaseApiClient();
 
+  Future<bool> _ensureServiceAddress() async {
+    final state = OwnerAppScope.of(context);
+    if (state.defaultAddress != null) return true;
+    final addAddress = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('请先添加上门地址'),
+        content: const Text('师傅需要准确的联系人和上门地址，添加后才能预约。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('暂不'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('去添加'),
+          ),
+        ],
+      ),
+    );
+    if (addAddress != true || !mounted) return false;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AddressPage()),
+    );
+    return mounted && state.defaultAddress != null;
+  }
+
   @override
   void initState() {
     super.initState();
     _candidateSelected = widget.candidateSelected;
-    if (widget.remoteProfile != null) {
-      _casesLoading = true;
-      Future<void>.microtask(_loadRemoteCases);
-    }
+    _casesLoading = true;
+    Future<void>.microtask(_loadRemoteCases);
   }
 
   @override
@@ -157,48 +179,33 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     if (oldWidget.candidateSelected != widget.candidateSelected) {
       _candidateSelected = widget.candidateSelected;
     }
-    if (oldWidget.remoteProfile?.userId != widget.remoteProfile?.userId ||
+    if (oldWidget.remoteProfile.userId != widget.remoteProfile.userId ||
         oldWidget.caseApi != widget.caseApi) {
       _remoteCases = const [];
       _casesError = null;
-      _casesLoading = widget.remoteProfile != null;
-      if (widget.remoteProfile != null) {
-        Future<void>.microtask(_loadRemoteCases);
-      }
+      _casesLoading = true;
+      Future<void>.microtask(_loadRemoteCases);
     }
   }
 
   Future<void> _loadRemoteCases() async {
-    final workerId = widget.remoteProfile?.userId;
-    if (workerId == null) return;
+    final workerId = widget.remoteProfile.userId;
     try {
       final values = await _caseApi.listPublicCases(workerId);
-      if (!mounted || widget.remoteProfile?.userId != workerId) return;
+      if (!mounted || widget.remoteProfile.userId != workerId) return;
       setState(() {
         _remoteCases = values;
         _casesError = null;
       });
     } catch (_) {
-      if (!mounted || widget.remoteProfile?.userId != workerId) return;
+      if (!mounted || widget.remoteProfile.userId != workerId) return;
       setState(() => _casesError = '施工案例加载失败');
     } finally {
-      if (mounted && widget.remoteProfile?.userId == workerId) {
+      if (mounted && widget.remoteProfile.userId == workerId) {
         setState(() => _casesLoading = false);
       }
     }
   }
-
-  // Trade.label → _allWorkers trades 字符串映射
-  static const _labelToTrade = <String, String>{
-    '拆除': '拆除师傅',
-    '水电工': '水电师傅',
-    '泥瓦工': '泥工师傅',
-    '防水工': '防水师傅',
-    '木工': '木工师傅',
-    '油漆工': '油漆师傅',
-    '安装工': '安装师傅',
-    '保洁': '清洁师傅',
-  };
 
   // 工种 emoji
   static const _tradeEmoji = <String, String>{
@@ -211,25 +218,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     '安装师傅': '🔧',
     '清洁师傅': '🧹',
   };
-
-  /// 从 mockWorkers 中动态构建 WorkerDetail
-  WorkerDetail _buildFromMock(String workerName, String tradeKey) {
-    return _fallbackFirst();
-  }
-
-  WorkerDetail _fallbackFirst() => WorkerDetail(
-    name: widget.workerName,
-    trades: const [],
-    rating: 0.0,
-    completedOrders: 0,
-    years: 0,
-    positiveRate: 0,
-    distanceKm: 0.0,
-    avatarEmoji: '👷',
-    skills: const [],
-    matchReason: '',
-    reviews: const [],
-  );
 
   WorkerDetail _buildFromRemote(RemoteWorkerDirectoryProfile remote) {
     final tradeKey = _remoteTradeLabel(remote.primaryTrade);
@@ -253,43 +241,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     );
   }
 
-  WorkerDetail _resolveDetail() {
-    if (widget.remoteProfile != null) {
-      return _buildFromRemote(widget.remoteProfile!);
-    }
-
-    // 1. 优先从 _allWorkers 精确匹配姓名
-    WorkerDetail? direct = _allWorkers[widget.workerName];
-
-    // 2. 姓名未命中，从 mockWorkers 动态构建（优先于工种回退，避免同名工种匹配到其他人）
-    if (direct == null && widget.trade != null) {
-      final tradeKey = _labelToTrade[widget.trade!.label];
-      if (tradeKey != null) {
-        direct = _buildFromMock(widget.workerName, tradeKey);
-      }
-    }
-
-    // 3. 仍找不到，按工种从 _allWorkers 回退
-    if (widget.trade != null && direct == null) {
-      final candidates = <String>{
-        '${widget.trade!.label}师傅',
-        widget.trade!.label,
-        _labelToTrade[widget.trade!.label] ?? '',
-      };
-      for (final d in _allWorkers.values) {
-        if (d.trades.any((t) => candidates.contains(t))) {
-          direct = d;
-          break;
-        }
-      }
-    }
-
-    direct ??= _fallbackFirst();
-    if (widget.distance != null) {
-      direct = direct.copyWith(distanceKm: widget.distance!);
-    }
-    return direct;
-  }
+  WorkerDetail _resolveDetail() => _buildFromRemote(widget.remoteProfile);
 
   String _remoteTradeLabel(String primaryTrade) {
     final value = primaryTrade.trim().toLowerCase();
@@ -319,38 +271,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     return value.toStringAsFixed(1);
   }
 
-  String _favoriteId(WorkerDetail detail) =>
-      'renovation:${detail.name}:${detail.trades.join(",")}';
-
-  Future<void> _toggleFavorite(WorkerDetail detail) async {
-    if (_savingFavorite) return;
-    final state = OwnerAppScope.of(context);
-    final id = _favoriteId(detail);
-    final wasFavorite = state.isFavorite(id);
-    setState(() => _savingFavorite = true);
-    try {
-      await state.toggleFavorite(
-        FavoriteWorker(
-          id: id,
-          name: detail.name,
-          trade: detail.trades.isEmpty ? '施工' : detail.trades.first,
-          city: state.profile.city,
-        ),
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(wasFavorite ? '已取消收藏' : '已收藏，可在我的收藏查看')),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('收藏保存失败，请稍后重试')));
-    } finally {
-      if (mounted) setState(() => _savingFavorite = false);
-    }
-  }
-
   String _getTradeTag(WorkerDetail w) {
     if (w.trades.isEmpty) return '施工';
     final t = w.trades.first;
@@ -367,8 +287,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   @override
   Widget build(BuildContext context) {
     final detail = _resolveDetail();
-    final state = OwnerAppScope.of(context);
-    final favoriteSelected = state.isFavorite(_favoriteId(detail));
 
     return Scaffold(
       backgroundColor: _bg,
@@ -389,16 +307,6 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
         backgroundColor: _bg,
         elevation: 0,
         actions: [
-          IconButton(
-            icon: Icon(
-              favoriteSelected
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              color: favoriteSelected ? _primary : _textDark,
-              size: 22,
-            ),
-            onPressed: _savingFavorite ? null : () => _toggleFavorite(detail),
-          ),
           IconButton(
             icon: const Icon(Icons.share_outlined, color: _textDark, size: 22),
             onPressed: () {
@@ -423,14 +331,12 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               children: [
                 // ── 1. 基础信息卡 ──
                 _buildBasicCard(detail),
-                // ── 2. 擅长领域 ──
-                _buildSkills(detail),
-                // ── 3. 服务范围 / 施工标准 / 工价 ──
-                _buildServiceInfo(detail),
+                // ── 2. 服务工种 / 施工标准 / 工价 ──
+                _buildServiceInfo(),
                 // ── 4. 匹配说明 ──
                 _buildMatchReason(detail),
                 // ── 4.5. 施工案例 ──
-                _buildCasesSection(detail),
+                _buildCasesSection(),
                 // ── 5. 业主评价 ──
                 _buildReviews(detail),
                 const SizedBox(height: 20),
@@ -447,7 +353,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   // ── 基础信息卡 ──
   Widget _buildBasicCard(WorkerDetail w) {
     final isTop = w.rating >= 4.9 && w.positiveRate >= 99;
-    final badgeText = widget.remoteProfile != null ? '资料已完善' : '资料待核验';
+    const badgeText = '资料已完善';
 
     return Container(
       margin: const EdgeInsets.only(top: 8),
@@ -622,7 +528,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    // 评分 + 接单量 + 从业年限 强化行
+                    // 只展示服务器已返回的可核验统计。
                     Container(
                       padding: const EdgeInsets.symmetric(
                         vertical: 6,
@@ -635,24 +541,16 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       child: Row(
                         children: [
                           _buildStatItem(
-                            w.rating > 0 ? '${w.rating}' : '暂无',
-                            '评价',
-                            isHighlighted: w.rating > 0,
+                            '${widget.remoteProfile.caseCount}',
+                            '施工案例',
                           ),
                           _buildStatDivider(),
                           _buildStatItem(
-                            w.completedOrders > 0
-                                ? '${w.completedOrders}'
-                                : '暂无',
-                            '成交记录',
+                            '${widget.remoteProfile.hiredCount}',
+                            '被选中',
                           ),
                           _buildStatDivider(),
                           _buildStatItem('${w.years}', '年经验'),
-                          _buildStatDivider(),
-                          _buildStatItem(
-                            w.positiveRate > 0 ? '${w.positiveRate}%' : '暂无',
-                            '好评率',
-                          ),
                         ],
                       ),
                     ),
@@ -764,75 +662,9 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
     return Container(width: 1, height: 22, color: const Color(0x20FF6B00));
   }
 
-  // ── 擅长领域 ──
-  Widget _buildSkills(WorkerDetail w) {
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.all(Radius.circular(12)),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(Icons.build_circle_outlined, size: 18, color: _primary),
-              SizedBox(width: 6),
-              Text(
-                '擅长领域',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: _textDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: w.skills
-                .map(
-                  (s) => Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _primaryLight,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      s,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: _primary,
-                      ),
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
   // ── 施工案例 ──
-  Widget _buildCasesSection(WorkerDetail w) {
-    if (widget.remoteProfile != null) return _buildRemoteCasesSection();
-    return const SizedBox.shrink();
+  Widget _buildCasesSection() {
+    return _buildRemoteCasesSection();
   }
 
   Widget _buildRemoteCasesSection() {
@@ -1218,7 +1050,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
   }
 
   // ── 服务说明 ──
-  Widget _buildServiceInfo(WorkerDetail w) {
+  Widget _buildServiceInfo() {
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(16),
@@ -1241,7 +1073,7 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
               Icon(Icons.info_outline_rounded, size: 18, color: _primary),
               SizedBox(width: 6),
               Text(
-                '服务范围',
+                '服务资料',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -1253,45 +1085,8 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
           const SizedBox(height: 14),
           _BuildServiceRow(
             Icons.check_circle_outline,
-            '服务范围',
-            w.trades
-                .map((t) {
-                  switch (t) {
-                    case '拆除师傅':
-                      return '拆除/砸墙/铲墙皮/垃圾清运/门窗拆除';
-                    case '拆除工':
-                      return '拆除/砸墙/垃圾清运';
-                    case '水电师傅':
-                      return '水电改造/强弱电布线/给排水改造/灯具安装';
-                    case '水电工':
-                      return '水电改造/布线/防水施工';
-                    case '泥工师傅':
-                      return '贴砖/砌墙/地面找平/砌墙抹灰';
-                    case '泥瓦工':
-                      return '贴砖/砌墙/地面找平/砌墙抹灰';
-                    case '防水师傅':
-                      return '厨卫防水/阳台防水/闭水试验/漏点修补';
-                    case '木工师傅':
-                      return '吊顶/柜体/木作定制';
-                    case '木工':
-                      return '吊顶/柜体/木作定制';
-                    case '油漆师傅':
-                      return '墙面处理/喷涂/旧墙翻新';
-                    case '油漆工':
-                      return '墙面处理/喷涂/墙纸';
-                    case '安装师傅':
-                      return '橱柜/卫浴/灯具安装';
-                    case '安装工':
-                      return '橱柜/卫浴/灯具安装';
-                    case '清洁师傅':
-                      return '开荒保洁/精保/除醛';
-                    case '保洁':
-                      return '开荒保洁/精保/除醛';
-                    default:
-                      return '基础施工';
-                  }
-                })
-                .join('、'),
+            '服务工种',
+            _remoteTradeLabel(widget.remoteProfile.primaryTrade),
           ),
           const SizedBox(height: 10),
           InkWell(
@@ -1326,7 +1121,11 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                     '查看平台施工标准',
                     style: TextStyle(fontSize: 12, color: _textMid),
                   ),
-                  Icon(Icons.chevron_right_rounded, size: 18, color: _textLight),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: _textLight,
+                  ),
                 ],
               ),
             ),
@@ -1367,48 +1166,20 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 紧迫感引导文案
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.access_time, size: 13, color: Color(0xFFFF7A2F)),
-                  SizedBox(width: 4),
-                  Text(
-                    '已有326人正在预约该类型师傅',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFFFF7A2F),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
             Row(
               children: [
-                // 在线咨询 - 弱化
                 Expanded(
-                  child: GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            WorkerChatPage(workerName: widget.workerName),
-                      ),
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: ZdColors.background,
+                      borderRadius: BorderRadius.circular(26),
                     ),
-                    child: Container(
-                      height: 52,
-                      decoration: BoxDecoration(
-                        color: ZdColors.background,
-                        borderRadius: BorderRadius.circular(26),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        '客服',
-                        style: TextStyle(fontSize: 14, color: _textMid),
-                      ),
+                    alignment: Alignment.center,
+                    child: const Text(
+                      '平台咨询暂未开放',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: _textMid),
                     ),
                   ),
                 ),
@@ -1434,9 +1205,11 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                       final trade = d.trades.isEmpty ? '施工' : d.trades.first;
                       final phaseIndex = _tradeToPhaseIndex(trade);
                       final appState = OwnerAppScope.of(context);
+                      if (!await _ensureServiceAddress()) return;
+                      if (!mounted) return;
                       final remoteProfile = widget.remoteProfile;
                       final bookedWorker = BookedWorker(
-                        id: remoteProfile?.userId ?? 'wrk-${d.name}',
+                        id: remoteProfile.userId,
                         name: d.name,
                         trade: trade,
                         phaseName: _phaseNames[phaseIndex],
@@ -1449,39 +1222,39 @@ class _WorkerDetailPageState extends State<WorkerDetailPage> {
                         distance: d.distanceKm,
                       );
                       setState(() => _booking = true);
+                      HouseInfoPageResult? houseInfoResult;
                       try {
-                        await appState.bookWorker(
-                          bookedWorker,
-                          remoteWorkerUserId: remoteProfile?.userId,
-                          serviceCity: remoteProfile?.serviceCity,
-                        );
-                      } on AuthApiException catch (error) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(error.message)));
-                        return;
-                      } catch (_) {
-                        if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('预约失败，请稍后重试')),
-                        );
-                        return;
+                        houseInfoResult =
+                            await Navigator.push<HouseInfoPageResult>(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => HouseInfoPage(
+                                  tradeLabel: trade,
+                                  address:
+                                      appState.defaultAddress?.fullAddress ??
+                                      '',
+                                  failureMessage: '预约失败，请重试',
+                                  onSubmit: (houseInfo) => appState.bookWorker(
+                                    bookedWorker,
+                                    remoteWorkerUserId: remoteProfile.userId,
+                                    houseInfo: houseInfo,
+                                  ),
+                                ),
+                              ),
+                            );
                       } finally {
                         if (mounted) setState(() => _booking = false);
                       }
-                      if (!mounted) return;
+                      if (!mounted || houseInfoResult == null) return;
                       final result = await Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => BookingSuccessPage(
                             workerName: d.name,
                             workerJob: trade,
-                            rating: d.rating,
-                            renovationStage: '基础施工',
                             tradeType: trade,
-                            serviceAddress: '您提交的服务地址',
-                            estimatedTime: '下单后30分钟内',
+                            serviceAddress:
+                                appState.defaultAddress?.fullAddress ?? '',
                           ),
                         ),
                       );

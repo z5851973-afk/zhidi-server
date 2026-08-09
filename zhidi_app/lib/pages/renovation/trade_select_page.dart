@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import '../../models/renovation.dart';
 import '../price/price_transparency_page.dart';
 import '../home/worker/candidate_picker_page.dart';
+import '../profile/address_page.dart';
+import 'house_info_page.dart';
 import '../../app/owner_app_scope.dart';
+import '../../app/owner_app_state.dart';
 import '../../services/service_request_api_client.dart';
 import '../../services/auth_api_client.dart';
 import '../../services/worker_directory_api_client.dart';
@@ -18,7 +21,7 @@ class _TradeCardData {
   final Trade? trade;
   final String label;
   final String stageLabel;
-  final int workerCount; // 在线可接单师傅数（按工种统计 mockWorkers 中 isOnline 的数量）
+  final int workerCount; // 服务器目录中按工种统计的资料完整师傅数
   final List<String> tags;
   final String stepLabel;
 
@@ -72,6 +75,7 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
   // 工种数据
   late final List<_TradeCardData> _allTrades;
   Map<Trade, int> _remoteWorkerCounts = const {};
+  int _selectionEpoch = 0;
 
   WorkerDirectoryApi get _workerDirectoryApi =>
       widget.workerDirectoryApi ?? WorkerDirectoryApiClient();
@@ -270,6 +274,7 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
 
   /// 选工种 → 创建 ServiceRequest → CandidatePicker
   Future<void> _onTradeSelected(Trade trade) async {
+    final selectionEpoch = ++_selectionEpoch;
     final apiTrade = _tradeApiValue[trade];
     if (apiTrade == null) {
       if (mounted) {
@@ -281,8 +286,12 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
     }
 
     final state = OwnerAppScope.of(context);
-    final token = await state.getAccessToken();
-    if (token == null) {
+    final initialToken = await state.getAccessToken();
+    if (!_isCurrentSelection(selectionEpoch)) return;
+    if (initialToken == null ||
+        !state.isLoggedIn ||
+        state.sessionUserId == null) {
+      await state.logout();
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -290,41 +299,179 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
       }
       return;
     }
+    if (!_isCurrentSelection(selectionEpoch)) return;
 
-    final city = state.profile.city.trim().isNotEmpty
-        ? state.profile.city.trim()
-        : '成都';
-    final address = state.profile.address?.trim();
-    try {
-      final draft = ServiceRequestDraft(
-        trade: apiTrade,
-        serviceCity: city,
-        serviceAddress: address == null || address.isEmpty ? null : address,
+    final address = state.defaultAddress;
+    if (address == null) {
+      if (!mounted) return;
+      final addAddress = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('请先添加上门地址'),
+          content: const Text('师傅需要准确的联系人和上门地址，添加后才能创建装修需求。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('暂不'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('去添加'),
+            ),
+          ],
+        ),
       );
-      final request = await _serviceRequestApi.createRequest(token, draft);
+      if (addAddress == true && _isCurrentSelection(selectionEpoch)) {
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const AddressPage()),
+        );
+        if (_isCurrentSelection(selectionEpoch) &&
+            state.defaultAddress != null) {
+          await _onTradeSelected(trade);
+        }
+      }
+      return;
+    }
+    final expectedSessionUserId = state.sessionUserId!;
+    RemoteServiceRequest? request;
+    String? requestCreationToken;
+    if (!mounted) return;
+    final houseResult = await Navigator.push<HouseInfoPageResult>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HouseInfoPage(
+          tradeLabel: '${trade.label}师傅',
+          address: address.fullAddress,
+          onSubmit: (houseInfo) async {
+            if (!_isCurrentRequestTarget(
+              selectionEpoch: selectionEpoch,
+              state: state,
+              sessionUserId: expectedSessionUserId,
+              addressId: address.id,
+              fullAddress: address.fullAddress,
+            )) {
+              throw const HouseInfoSubmissionException('登录或上门地址已变化，请重新提交');
+            }
+            final submissionToken = await state.getAccessToken();
+            if (submissionToken == null ||
+                !_isCurrentRequestTarget(
+                  selectionEpoch: selectionEpoch,
+                  state: state,
+                  sessionUserId: expectedSessionUserId,
+                  addressId: address.id,
+                  fullAddress: address.fullAddress,
+                )) {
+              await state.logout();
+              throw const HouseInfoSubmissionException('登录已过期，请重新登录');
+            }
+            final draft = ServiceRequestDraft(
+              trade: apiTrade,
+              serviceCity: address.city,
+              serviceAddress: address.fullAddress,
+              houseInfo: houseInfo,
+            );
+            RemoteServiceRequest created;
+            try {
+              created = await _serviceRequestApi.createRequest(
+                submissionToken,
+                draft,
+              );
+            } on AuthApiException catch (error) {
+              if (_requiresLogin(error)) {
+                await state.logout();
+                throw const HouseInfoSubmissionException('登录已过期，请重新登录');
+              }
+              rethrow;
+            }
+            final currentToken = await state.getAccessToken();
+            final sessionStillCurrent =
+                currentToken == submissionToken &&
+                state.isLoggedIn &&
+                state.sessionUserId == expectedSessionUserId;
+            final targetStillCurrent = _isCurrentRequestTarget(
+              selectionEpoch: selectionEpoch,
+              state: state,
+              sessionUserId: expectedSessionUserId,
+              addressId: address.id,
+              fullAddress: address.fullAddress,
+            );
+            if (!sessionStillCurrent || !targetStillCurrent) {
+              await _cancelCreatedRequest(
+                accessToken: submissionToken,
+                requestId: created.id,
+              );
+              throw HouseInfoSubmissionException(
+                sessionStillCurrent ? '上门地址已变化，请重新提交' : '登录状态已变化，请重新登录',
+              );
+            }
+            requestCreationToken = submissionToken;
+            request = created;
+          },
+        ),
+      ),
+    );
+    if (!_isCurrentSelection(selectionEpoch) ||
+        houseResult == null ||
+        request == null) {
+      return;
+    }
+    final createdRequest = request!;
+    final token = await state.getAccessToken();
+    if (token == null ||
+        token != requestCreationToken ||
+        !_isCurrentRequestTarget(
+          selectionEpoch: selectionEpoch,
+          state: state,
+          sessionUserId: expectedSessionUserId,
+          addressId: address.id,
+          fullAddress: address.fullAddress,
+        )) {
+      final cleanupToken = requestCreationToken;
+      if (cleanupToken != null) {
+        await _cancelCreatedRequest(
+          accessToken: cleanupToken,
+          requestId: createdRequest.id,
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('登录或上门地址已变化，请重新提交')));
+      }
+      return;
+    }
+    try {
+      if (!_isCurrentSelection(selectionEpoch)) return;
       if (!mounted) return;
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => CandidatePickerPage(
-            requestId: request.id,
+            requestId: createdRequest.id,
             accessToken: token,
             trade: apiTrade,
-            serviceCity: request.serviceCity,
+            serviceCity: createdRequest.serviceCity,
+            houseInfo: createdRequest.houseInfo ?? houseResult.houseInfo,
+            serviceRequestApi: widget.serviceRequestApi,
+            workerDirectoryApi: widget.workerDirectoryApi,
           ),
         ),
       );
-      if (result is CandidatePickerResult && mounted) {
+      if (!mounted) return;
+      if (result is CandidatePickerResult &&
+          _isCurrentSelection(selectionEpoch)) {
         Navigator.pop(context, result);
       }
     } on AuthApiException catch (e) {
       if (mounted) {
-        if (e.statusCode == 401) {
+        if (_requiresLogin(e)) {
           await state.logout();
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('登录已过期，请重新登录')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
           Navigator.pop(context);
           return;
         }
@@ -339,6 +486,45 @@ class _TradeSelectPageState extends State<TradeSelectPage> {
         ).showSnackBar(SnackBar(content: Text('创建需求失败：$e')));
       }
     }
+  }
+
+  bool _isCurrentSelection(int selectionEpoch) =>
+      mounted && selectionEpoch == _selectionEpoch;
+
+  bool _isCurrentRequestTarget({
+    required int selectionEpoch,
+    required OwnerAppState state,
+    required String sessionUserId,
+    required String addressId,
+    required String fullAddress,
+  }) {
+    final currentAddress = state.defaultAddress;
+    return _isCurrentSelection(selectionEpoch) &&
+        state.isLoggedIn &&
+        state.sessionUserId == sessionUserId &&
+        currentAddress?.id == addressId &&
+        currentAddress?.fullAddress == fullAddress;
+  }
+
+  Future<void> _cancelCreatedRequest({
+    required String accessToken,
+    required String requestId,
+  }) async {
+    try {
+      await _serviceRequestApi.cancelRequest(accessToken, requestId);
+    } catch (error) {
+      debugPrint('[TradeSelectPage] failed to cancel stale request: $error');
+    }
+  }
+
+  bool _requiresLogin(AuthApiException error) {
+    final code = error.code.toUpperCase();
+    return error.statusCode == 401 ||
+        error.statusCode == 403 ||
+        code == 'TOKEN_EXPIRED' ||
+        code == 'AUTHENTICATION_REQUIRED' ||
+        code == 'UNAUTHORIZED' ||
+        code == 'FORBIDDEN';
   }
 
   void _onQuoteTap() {
@@ -608,32 +794,25 @@ class _TradeCard extends StatelessWidget {
   }
 
   Widget _buildWorkerRow() {
-    return Row(
-      children: [
-        const Spacer(),
-        if (data.trade == null)
-          Text(
-            '查看报价标准',
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.white.withValues(alpha: 0.75),
-              fontWeight: FontWeight.w500,
-            ),
-          )
-        else
-          Text(
-            data.workerCount > 0 ? '${data.workerCount}位可预约' : '暂无可约 · 先看工价',
-            style: TextStyle(
-              fontSize: 11,
-              color: data.workerCount > 0
-                  ? Colors.white.withValues(alpha: 0.82)
-                  : const Color(0xFFFFE2C8),
-              fontWeight: data.workerCount > 0
-                  ? FontWeight.w600
-                  : FontWeight.w700,
-            ),
-          ),
-      ],
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Text(
+        data.trade == null
+            ? '查看报价标准'
+            : data.workerCount > 0
+            ? '${data.workerCount}位资料完整师傅'
+            : '暂无资料完整师傅 · 先看工价',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        textAlign: TextAlign.right,
+        style: TextStyle(
+          fontSize: 11,
+          color: data.trade == null || data.workerCount > 0
+              ? Colors.white.withValues(alpha: 0.82)
+              : const Color(0xFFFFE2C8),
+          fontWeight: data.workerCount > 0 ? FontWeight.w600 : FontWeight.w700,
+        ),
+      ),
     );
   }
 }

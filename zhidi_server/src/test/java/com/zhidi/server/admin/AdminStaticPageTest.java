@@ -29,4 +29,34 @@ class AdminStaticPageTest {
 		assertThat(html).contains("/api/v1/admin/warranty-retentions");
 		assertThat(html).contains("warrantyDeductionAmount");
 	}
+
+	@Test
+	void adminPageUsesTheExplicitAfterSaleLifecycleInsteadOfLegacyProcess()
+			throws Exception {
+		String html = new ClassPathResource("static/admin.html")
+			.getContentAsString(StandardCharsets.UTF_8);
+
+		assertThat(html)
+			.contains("/accept", "/events", "/resolve", "/close")
+			.doesNotContain("/process");
+		assertThat(html).contains(
+			"id=\"acceptAfterSale\"",
+			"id=\"replyAfterSale\"",
+			"id=\"resolveAfterSale\"",
+			"id=\"closeAfterSale\"");
+	}
+
+	@Test
+	void adminPageExplainsLifecycleStatusesAndWarrantyDeduction() throws Exception {
+		String html = new ClassPathResource("static/admin.html")
+			.getContentAsString(StandardCharsets.UTF_8);
+
+		assertThat(html).contains(
+			"待平台受理",
+			"平台处理中",
+			"已解决 · 待关闭",
+			"已关闭",
+			"扣减质保金金额（可选）",
+			"id=\"selectedAfterSaleStatus\"");
+	}
 }

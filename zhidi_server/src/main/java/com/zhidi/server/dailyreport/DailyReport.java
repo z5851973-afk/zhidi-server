@@ -29,6 +29,9 @@ public class DailyReport extends BaseEntity {
 	@Column(name = "report_date", nullable = false)
 	private LocalDate reportDate;
 
+	@Column(name = "report_revision", nullable = false, updatable = false)
+	private int reportRevision;
+
 	@Column(nullable = false, columnDefinition = "TEXT")
 	private String content;
 
@@ -40,29 +43,32 @@ public class DailyReport extends BaseEntity {
 	}
 
 	private DailyReport(UUID bookingId, UUID workerUserId, LocalDate reportDate,
-			String content, List<String> photos) {
+			int reportRevision, String content, List<String> photos) {
 		this.bookingId = Objects.requireNonNull(bookingId);
 		this.workerUserId = Objects.requireNonNull(workerUserId);
 		this.reportDate = Objects.requireNonNull(reportDate);
+		if (reportRevision < 1) {
+			throw new IllegalArgumentException("reportRevision must be positive");
+		}
+		this.reportRevision = reportRevision;
 		this.content = Objects.requireNonNull(content);
 		this.photos = (photos == null || photos.isEmpty()) ? null : List.copyOf(photos);
 	}
 
 	public static DailyReport create(UUID bookingId, UUID workerUserId,
-			LocalDate reportDate, String content, List<String> photos) {
-		return new DailyReport(bookingId, workerUserId, reportDate, content, photos);
+			LocalDate reportDate, int reportRevision, String content,
+			List<String> photos) {
+		return new DailyReport(bookingId, workerUserId, reportDate,
+			reportRevision, content, photos);
 	}
 
 	public UUID getBookingId() { return bookingId; }
 	public UUID getWorkerUserId() { return workerUserId; }
 	public LocalDate getReportDate() { return reportDate; }
+	public int getReportRevision() { return reportRevision; }
 	public String getContent() { return content; }
 	public List<String> getPhotos() {
 		return photos != null ? Collections.unmodifiableList(photos) : Collections.emptyList();
 	}
 
-	public void updateContent(String content, List<String> photos) {
-		this.content = Objects.requireNonNull(content);
-		this.photos = (photos == null || photos.isEmpty()) ? null : List.copyOf(photos);
-	}
 }

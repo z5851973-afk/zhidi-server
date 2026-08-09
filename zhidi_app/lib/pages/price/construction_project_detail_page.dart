@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../design/tokens.dart';
+import '../renovation/trade_select_page.dart';
 
 class ConstructionProjectDetailPage extends StatelessWidget {
   const ConstructionProjectDetailPage({super.key, required this.project});
@@ -127,7 +128,7 @@ const _wallDemolitionProject = ConstructionProjectData(
   subtitle: '装修第一步，拆对才能装好',
   priceRange: '¥38-55/㎡',
   heroImage: 'assets/images/trades/demolition_banner.jpg',
-  tags: ['明码标价', '工艺透明', '平台验收'],
+  tags: ['示例工价', '工艺说明', '验收留痕'],
   priceOptions: [
     ProjectPriceOption(
       name: '12墙拆除',
@@ -177,8 +178,8 @@ const _wallDemolitionProject = ConstructionProjectData(
   guarantees: [
     ProjectGuarantee(
       icon: Icons.fact_check_outlined,
-      title: '平台验收',
-      description: '按节点确认标准',
+      title: '验收留痕',
+      description: '业主按节点确认',
     ),
     ProjectGuarantee(
       icon: Icons.photo_camera_outlined,
@@ -187,13 +188,13 @@ const _wallDemolitionProject = ConstructionProjectData(
     ),
     ProjectGuarantee(
       icon: Icons.price_check_outlined,
-      title: '价格透明',
-      description: '统一工价先说明',
+      title: '报价清单',
+      description: '以服务器报价为准',
     ),
     ProjectGuarantee(
       icon: Icons.verified_user_outlined,
-      title: '售后保障',
-      description: '问题协助处理',
+      title: '售后人工协助',
+      description: '按订单提交处理',
     ),
   ],
 );
@@ -289,7 +290,7 @@ class _ProjectHeroSection extends StatelessWidget {
                     const Padding(
                       padding: EdgeInsets.only(bottom: 3),
                       child: Text(
-                        '平台统一人工价',
+                        '本地示例人工价',
                         style: TextStyle(
                           color: ZdColors.textSecondary,
                           fontSize: 13,
@@ -327,7 +328,7 @@ class _StandardPriceSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(title: '标准工价'),
+          const _SectionTitle(title: '示例计价'),
           const SizedBox(height: 12),
           for (final option in project.priceOptions) ...[
             _PriceOptionRow(option: option),
@@ -623,28 +624,26 @@ class _ProjectCaseSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(title: '真实施工案例'),
+          const _SectionTitle(title: '施工流程示意'),
           const SizedBox(height: 12),
           Row(
             children: [
               const Icon(
-                Icons.location_on_outlined,
+                Icons.info_outline_rounded,
                 color: ZdColors.primary,
                 size: 18,
               ),
               const SizedBox(width: 4),
-              Text(
-                project.caseLocation,
-                style: const TextStyle(
-                  color: ZdColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+              const Expanded(
+                child: Text(
+                  '图片用于说明施工阶段，实际项目以订单上传记录为准',
+                  style: TextStyle(
+                    color: ZdColors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Text(project.caseTime, style: ZdText.caption),
-              const Spacer(),
-              const Text('施工师傅已认证', style: ZdText.caption),
             ],
           ),
           const SizedBox(height: 12),
@@ -726,7 +725,7 @@ class _GuaranteeGridSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle(title: '知底保障'),
+          const _SectionTitle(title: '服务与记录'),
           const SizedBox(height: 14),
           GridView.builder(
             shrinkWrap: true,
@@ -814,7 +813,7 @@ class _BottomQuoteBar extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const Text(
-            '按标准工价预估，现场核量后确认',
+            '本地示例，仅用于了解计价结构；实际以服务器报价清单和现场核量为准',
             style: TextStyle(
               color: ZdColors.textSecondary,
               fontSize: 12,
@@ -826,11 +825,10 @@ class _BottomQuoteBar extends StatelessWidget {
             width: double.infinity,
             height: 52,
             child: ElevatedButton(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('已为你生成${project.title}报价咨询')),
-                );
-              },
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TradeSelectPage()),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: ZdColors.primary,
                 foregroundColor: Colors.white,
@@ -841,7 +839,7 @@ class _BottomQuoteBar extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                '立即获取报价',
+                '查看资料完整师傅',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
               ),
             ),

@@ -75,6 +75,8 @@ final class RemoteWorkerDirectoryProfile {
     required this.experienceYears,
     required this.dailyRate,
     required this.bio,
+    this.caseCount = 0,
+    this.hiredCount = 0,
   });
 
   factory RemoteWorkerDirectoryProfile.fromJson(Map<String, dynamic> json) {
@@ -86,6 +88,8 @@ final class RemoteWorkerDirectoryProfile {
       experienceYears: _requiredInt(json, 'experienceYears'),
       dailyRate: _requiredDouble(json, 'dailyRate'),
       bio: _nullableString(json, 'bio'),
+      caseCount: _optionalInt(json, 'caseCount'),
+      hiredCount: _optionalInt(json, 'hiredCount'),
     );
   }
 
@@ -96,6 +100,8 @@ final class RemoteWorkerDirectoryProfile {
   final int experienceYears;
   final double dailyRate;
   final String? bio;
+  final int caseCount;
+  final int hiredCount;
 }
 
 List<RemoteWorkerDirectoryProfile> _parseList(http.Response response) {
@@ -214,6 +220,17 @@ int _requiredInt(Map<String, dynamic> json, String key) {
     throw FormatException('$key must be an integer');
   }
   return value;
+}
+
+int _optionalInt(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value == null) {
+    return 0;
+  }
+  if (value is! int) {
+    throw FormatException('$key must be an integer');
+  }
+  return value < 0 ? 0 : value;
 }
 
 double _requiredDouble(Map<String, dynamic> json, String key) {

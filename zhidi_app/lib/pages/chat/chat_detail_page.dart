@@ -253,7 +253,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
             ),
             const SizedBox(height: 2),
             Text(
-              _wsConnected ? '在线' : '连接中…',
+              _wsConnected ? '已连接' : '连接中…',
               style: TextStyle(
                 fontSize: 12,
                 color: _wsConnected

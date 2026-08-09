@@ -16,16 +16,17 @@ void main() {
 
       expect(find.text('墙体拆除'), findsWidgets);
       expect(find.text('装修第一步，拆对才能装好'), findsOneWidget);
-      expect(find.text('¥38-55/㎡'), findsOneWidget);
-      expect(find.text('明码标价'), findsOneWidget);
-      expect(find.text('工艺透明'), findsOneWidget);
-      expect(find.text('平台验收'), findsWidgets);
+      expect(find.text('示例工价'), findsOneWidget);
+      expect(find.text('本地示例人工价'), findsOneWidget);
+      expect(find.text('示例计价'), findsOneWidget);
+      expect(find.textContaining('本地示例，仅用于了解计价结构'), findsOneWidget);
+      expect(find.textContaining('平台统一人工价'), findsNothing);
+      expect(find.text('标准工价'), findsNothing);
+      expect(find.text('工艺说明'), findsOneWidget);
+      expect(find.text('验收留痕'), findsWidgets);
       expect(find.text('12墙拆除'), findsOneWidget);
-      expect(find.text('¥38/㎡'), findsOneWidget);
       expect(find.text('24墙拆除'), findsOneWidget);
-      expect(find.text('¥45/㎡'), findsOneWidget);
       expect(find.text('37墙拆除'), findsOneWidget);
-      expect(find.text('¥55/㎡'), findsOneWidget);
       expect(find.text('人工拆除'), findsOneWidget);
       expect(find.text('垃圾外运'), findsOneWidget);
       expect(find.text('为什么是这个价格'), findsOneWidget);
@@ -43,16 +44,17 @@ void main() {
       expect(find.text('04'), findsOneWidget);
       expect(find.text('清理'), findsOneWidget);
 
-      await tester.ensureVisible(find.text('真实施工案例'));
+      await tester.ensureVisible(find.text('施工流程示意'));
       await tester.pumpAndSettle();
 
-      expect(find.text('真实施工案例'), findsOneWidget);
+      expect(find.text('施工流程示意'), findsOneWidget);
       expect(find.text('施工前'), findsOneWidget);
       expect(find.text('施工过程'), findsOneWidget);
       expect(find.text('施工完成'), findsOneWidget);
-      expect(find.text('成都·金牛区'), findsOneWidget);
+      expect(find.text('成都·金牛区'), findsNothing);
+      expect(find.text('施工师傅已认证'), findsNothing);
 
-      await tester.ensureVisible(find.text('知底保障'));
+      await tester.ensureVisible(find.text('服务与记录'));
       await tester.pumpAndSettle();
 
       expect(find.text('认证施工师傅'), findsNothing);
@@ -60,11 +62,12 @@ void main() {
       expect(find.text('工龄 8 年'), findsNothing);
       expect(find.text('已完成 128 单'), findsNothing);
       expect(find.text('评分 4.9'), findsNothing);
-      expect(find.text('知底保障'), findsOneWidget);
+      expect(find.text('服务与记录'), findsOneWidget);
       expect(find.text('施工照片留档'), findsOneWidget);
-      expect(find.text('价格透明'), findsOneWidget);
-      expect(find.text('售后保障'), findsOneWidget);
-      expect(find.text('立即获取报价'), findsOneWidget);
+      expect(find.text('报价清单'), findsOneWidget);
+      expect(find.text('售后人工协助'), findsOneWidget);
+      expect(find.text('查看资料完整师傅'), findsOneWidget);
+      expect(find.text('立即获取报价'), findsNothing);
     },
   );
 
@@ -80,7 +83,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('装修第一步，拆对才能装好'), findsOneWidget);
-      expect(find.text('¥38-55/㎡'), findsOneWidget);
+      expect(find.text('本地示例人工价'), findsOneWidget);
       expect(find.text('知底施工标准'), findsOneWidget);
     },
   );
@@ -107,7 +110,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('装修第一步，拆对才能装好'), findsOneWidget);
-      expect(find.text('¥38-55/㎡'), findsOneWidget);
+      expect(find.text('本地示例人工价'), findsOneWidget);
       expect(find.text('知底施工标准'), findsOneWidget);
     },
   );

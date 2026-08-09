@@ -37,18 +37,40 @@ public class AfterSaleController {
 			@Valid @RequestBody CreateAfterSaleRequest request) {
 		return ApiResponse.ok(
 			afterSaleService.create(request.bookingId(), principal.userId(),
-				request.type(), request.reason(), request.evidence()),
+				request.type(), request.reason(), request.evidenceUrls()),
 			traceId());
 	}
 
 	@GetMapping("/api/v1/after-sales/{id}")
 	@PreAuthorize("isAuthenticated()")
 	@Operation(summary = "查询售后工单详情")
-	public ApiResponse<AfterSaleResponse> getAfterSale(
+	public ApiResponse<AfterSaleDetailResponse> getAfterSale(
 			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@PathVariable UUID id) {
 		return ApiResponse.ok(
 			afterSaleService.getAfterSale(principal.userId(), id), traceId());
+	}
+
+	@GetMapping("/api/v1/after-sales/booking-context/{bookingId}")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "查询申请售后前的订单上下文")
+	public ApiResponse<AfterSaleDetailResponse.OrderContext> getBookingContext(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID bookingId) {
+		return ApiResponse.ok(afterSaleService.getBookingContext(
+			principal.userId(), bookingId), traceId());
+	}
+
+	@PostMapping("/api/v1/after-sales/{id}/events")
+	@PreAuthorize("isAuthenticated()")
+	@Operation(summary = "参与方追加售后说明或证据")
+	public ApiResponse<AfterSaleEventResponse> appendEvent(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @RequestBody AppendAfterSaleEventRequest request) {
+		return ApiResponse.ok(afterSaleService.appendParticipantEvent(
+			principal.userId(), id, request.content(), request.evidenceUrls(),
+			request.idempotencyKey()), traceId());
 	}
 
 	@GetMapping("/api/v1/after-sales")
@@ -70,6 +92,11 @@ public class AfterSaleController {
 		@NotNull UUID bookingId,
 		@NotNull AfterSaleType type,
 		@NotBlank String reason,
-		String evidence) {}
+		List<String> evidenceUrls) {}
+
+	public record AppendAfterSaleEventRequest(
+		String content,
+		List<String> evidenceUrls,
+		@NotBlank String idempotencyKey) {}
 
 }

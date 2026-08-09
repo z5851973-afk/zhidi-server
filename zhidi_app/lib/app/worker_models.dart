@@ -3,6 +3,7 @@
 // 严格对齐 owner_models.dart 的设计模式：每个模型含 toJson/fromJson/copyWith
 // ============================================================
 
+import '../models/house_info.dart';
 import '../models/renovation.dart';
 
 const _notProvided = Object();
@@ -151,6 +152,7 @@ class WorkerOrder {
     required this.ownerPhone,
     required this.ownerAddress,
     required this.area,
+    this.houseInfo,
     required this.requirement,
     required this.description,
     required this.trade,
@@ -163,9 +165,11 @@ class WorkerOrder {
     this.phaseName,
     this.images = const [],
     this.proposedTime,
+    this.scheduledVisitAt,
     this.arrivalConfirmedByOwner = false,
     this.arrivalConfirmedByWorker = false,
     this.onSiteAt,
+    this.actualOnSiteAt,
   });
 
   final String id;
@@ -173,6 +177,7 @@ class WorkerOrder {
   final String ownerPhone;
   final String ownerAddress;
   final String area;
+  final HouseInfo? houseInfo;
   final String requirement;
   final String description;
   final String trade;
@@ -186,9 +191,13 @@ class WorkerOrder {
   final List<String> images;
   // 阶段 2: 上门时间与到场确认
   final DateTime? proposedTime;
+  final DateTime? scheduledVisitAt;
   final bool arrivalConfirmedByOwner;
   final bool arrivalConfirmedByWorker;
   final DateTime? onSiteAt;
+  final DateTime? actualOnSiteAt;
+
+  String get houseSummary => houseInfo?.summaryLabel ?? missingHouseInfoLabel;
 
   String get statusLabel => switch (status) {
     WorkerOrderStatus.pending => '待接单',
@@ -210,6 +219,8 @@ class WorkerOrder {
     String? ownerPhone,
     String? ownerAddress,
     String? area,
+    HouseInfo? houseInfo,
+    bool clearHouseInfo = false,
     String? requirement,
     String? description,
     String? trade,
@@ -228,16 +239,21 @@ class WorkerOrder {
     List<String>? images,
     DateTime? proposedTime,
     bool clearProposedTime = false,
+    DateTime? scheduledVisitAt,
+    bool clearScheduledVisitAt = false,
     bool? arrivalConfirmedByOwner,
     bool? arrivalConfirmedByWorker,
     DateTime? onSiteAt,
     bool clearOnSiteAt = false,
+    DateTime? actualOnSiteAt,
+    bool clearActualOnSiteAt = false,
   }) => WorkerOrder(
     id: id ?? this.id,
     ownerName: ownerName ?? this.ownerName,
     ownerPhone: ownerPhone ?? this.ownerPhone,
     ownerAddress: ownerAddress ?? this.ownerAddress,
     area: area ?? this.area,
+    houseInfo: clearHouseInfo ? null : (houseInfo ?? this.houseInfo),
     requirement: requirement ?? this.requirement,
     description: description ?? this.description,
     trade: trade ?? this.trade,
@@ -249,10 +265,20 @@ class WorkerOrder {
     phaseIndex: clearPhaseIndex ? null : (phaseIndex ?? this.phaseIndex),
     phaseName: clearPhaseName ? null : (phaseName ?? this.phaseName),
     images: images ?? this.images,
-    proposedTime: clearProposedTime ? null : (proposedTime ?? this.proposedTime),
-    arrivalConfirmedByOwner: arrivalConfirmedByOwner ?? this.arrivalConfirmedByOwner,
-    arrivalConfirmedByWorker: arrivalConfirmedByWorker ?? this.arrivalConfirmedByWorker,
+    proposedTime: clearProposedTime
+        ? null
+        : (proposedTime ?? this.proposedTime),
+    scheduledVisitAt: clearScheduledVisitAt
+        ? null
+        : (scheduledVisitAt ?? this.scheduledVisitAt),
+    arrivalConfirmedByOwner:
+        arrivalConfirmedByOwner ?? this.arrivalConfirmedByOwner,
+    arrivalConfirmedByWorker:
+        arrivalConfirmedByWorker ?? this.arrivalConfirmedByWorker,
     onSiteAt: clearOnSiteAt ? null : (onSiteAt ?? this.onSiteAt),
+    actualOnSiteAt: clearActualOnSiteAt
+        ? null
+        : (actualOnSiteAt ?? this.actualOnSiteAt),
   );
 
   Map<String, dynamic> toJson() => {
@@ -261,6 +287,7 @@ class WorkerOrder {
     'ownerPhone': ownerPhone,
     'ownerAddress': ownerAddress,
     'area': area,
+    if (houseInfo != null) 'houseInfo': houseInfo!.toJson(),
     'requirement': requirement,
     'description': description,
     'trade': trade,
@@ -273,42 +300,77 @@ class WorkerOrder {
     if (phaseName != null) 'phaseName': phaseName,
     'images': images,
     if (proposedTime != null) 'proposedTime': proposedTime!.toIso8601String(),
+    if (scheduledVisitAt != null)
+      'scheduledVisitAt': scheduledVisitAt!.toIso8601String(),
     'arrivalConfirmedByOwner': arrivalConfirmedByOwner,
     'arrivalConfirmedByWorker': arrivalConfirmedByWorker,
     if (onSiteAt != null) 'onSiteAt': onSiteAt!.toIso8601String(),
+    if (actualOnSiteAt != null)
+      'actualOnSiteAt': actualOnSiteAt!.toIso8601String(),
   };
 
-  factory WorkerOrder.fromJson(Map<String, dynamic> j) => WorkerOrder(
-    id: j['id'] as String,
-    ownerName: j['ownerName'] as String,
-    ownerPhone: j['ownerPhone'] as String,
-    ownerAddress: j['ownerAddress'] as String,
-    area: j['area'] as String,
-    requirement: j['requirement'] as String,
-    description: j['description'] as String,
-    trade: j['trade'] as String,
-    status: WorkerOrderStatus.values.byName(j['status'] as String),
-    quotedPrice: (j['quotedPrice'] as num?)?.toDouble(),
-    visitTime: j['visitTime'] != null
-        ? DateTime.parse(j['visitTime'] as String)
-        : null,
-    hasVisited: (j['hasVisited'] as bool?) ?? false,
-    createdAt: j['createdAt'] != null
-        ? DateTime.parse(j['createdAt'] as String)
-        : null,
-    phaseIndex: j['phaseIndex'] as int?,
-    phaseName: j['phaseName'] as String?,
-    images: List<String>.from((j['images'] as List<dynamic>?) ?? []),
-    proposedTime: j['proposedTime'] != null
+  factory WorkerOrder.fromJson(Map<String, dynamic> j) {
+    final status = WorkerOrderStatus.values.byName(j['status'] as String);
+    final proposedTime = j['proposedTime'] != null
         ? DateTime.parse(j['proposedTime'] as String)
-        : null,
-    arrivalConfirmedByOwner: (j['arrivalConfirmedByOwner'] as bool?) ?? false,
-    arrivalConfirmedByWorker: (j['arrivalConfirmedByWorker'] as bool?) ?? false,
-    onSiteAt: j['onSiteAt'] != null
+        : null;
+    final legacyOnSiteAt = j['onSiteAt'] != null
         ? DateTime.parse(j['onSiteAt'] as String)
-        : null,
-  );
+        : null;
+    return WorkerOrder(
+      id: j['id'] as String,
+      ownerName: j['ownerName'] as String,
+      ownerPhone: j['ownerPhone'] as String,
+      ownerAddress: j['ownerAddress'] as String,
+      area: j['area'] as String,
+      houseInfo: j['houseInfo'] is Map
+          ? HouseInfo.tryFromJson(
+              Map<String, dynamic>.from(j['houseInfo'] as Map),
+            )
+          : null,
+      requirement: j['requirement'] as String,
+      description: j['description'] as String,
+      trade: j['trade'] as String,
+      status: status,
+      quotedPrice: (j['quotedPrice'] as num?)?.toDouble(),
+      visitTime: j['visitTime'] != null
+          ? DateTime.parse(j['visitTime'] as String)
+          : null,
+      hasVisited: (j['hasVisited'] as bool?) ?? false,
+      createdAt: j['createdAt'] != null
+          ? DateTime.parse(j['createdAt'] as String)
+          : null,
+      phaseIndex: j['phaseIndex'] as int?,
+      phaseName: j['phaseName'] as String?,
+      images: List<String>.from((j['images'] as List<dynamic>?) ?? []),
+      proposedTime: proposedTime,
+      scheduledVisitAt: j['scheduledVisitAt'] != null
+          ? DateTime.parse(j['scheduledVisitAt'] as String)
+          : _workerOrderHasFixedVisitTime(status)
+          ? proposedTime
+          : null,
+      arrivalConfirmedByOwner: (j['arrivalConfirmedByOwner'] as bool?) ?? false,
+      arrivalConfirmedByWorker:
+          (j['arrivalConfirmedByWorker'] as bool?) ?? false,
+      onSiteAt: legacyOnSiteAt,
+      actualOnSiteAt: j['actualOnSiteAt'] != null
+          ? DateTime.parse(j['actualOnSiteAt'] as String)
+          : legacyOnSiteAt,
+    );
+  }
 }
+
+bool _workerOrderHasFixedVisitTime(WorkerOrderStatus status) =>
+    switch (status) {
+      WorkerOrderStatus.visitScheduled ||
+      WorkerOrderStatus.arrivalPending ||
+      WorkerOrderStatus.onSite ||
+      WorkerOrderStatus.quotePending ||
+      WorkerOrderStatus.hired ||
+      WorkerOrderStatus.inProgress ||
+      WorkerOrderStatus.completed => true,
+      _ => false,
+    };
 
 // ── 工序进度（关联到某个订单的某个阶段）──
 class WorkerPhaseProgress {
@@ -613,6 +675,14 @@ class WorkerMessage {
     required this.createdAt,
     this.isRead = false,
     this.orderId,
+    this.paymentOrderId,
+    this.eventType,
+    this.bookingId,
+    this.serviceRequestId,
+    this.targetAction,
+    this.serverEventId,
+    this.aggregateType,
+    this.aggregateId,
   });
 
   final String id;
@@ -622,6 +692,14 @@ class WorkerMessage {
   final DateTime createdAt;
   final bool isRead;
   final String? orderId;
+  final String? paymentOrderId;
+  final String? eventType;
+  final String? bookingId;
+  final String? serviceRequestId;
+  final String? targetAction;
+  final String? serverEventId;
+  final String? aggregateType;
+  final String? aggregateId;
 
   WorkerMessage copyWith({
     String? id,
@@ -631,6 +709,14 @@ class WorkerMessage {
     DateTime? createdAt,
     bool? isRead,
     String? orderId,
+    String? paymentOrderId,
+    String? eventType,
+    String? bookingId,
+    String? serviceRequestId,
+    String? targetAction,
+    String? serverEventId,
+    String? aggregateType,
+    String? aggregateId,
     bool clearOrderId = false,
   }) => WorkerMessage(
     id: id ?? this.id,
@@ -640,6 +726,14 @@ class WorkerMessage {
     createdAt: createdAt ?? this.createdAt,
     isRead: isRead ?? this.isRead,
     orderId: clearOrderId ? null : (orderId ?? this.orderId),
+    paymentOrderId: paymentOrderId ?? this.paymentOrderId,
+    eventType: eventType ?? this.eventType,
+    bookingId: bookingId ?? this.bookingId,
+    serviceRequestId: serviceRequestId ?? this.serviceRequestId,
+    targetAction: targetAction ?? this.targetAction,
+    serverEventId: serverEventId ?? this.serverEventId,
+    aggregateType: aggregateType ?? this.aggregateType,
+    aggregateId: aggregateId ?? this.aggregateId,
   );
 
   Map<String, dynamic> toJson() => {
@@ -650,6 +744,14 @@ class WorkerMessage {
     'createdAt': createdAt.toIso8601String(),
     'isRead': isRead,
     if (orderId != null) 'orderId': orderId,
+    if (paymentOrderId != null) 'paymentOrderId': paymentOrderId,
+    if (eventType != null) 'eventType': eventType,
+    if (bookingId != null) 'bookingId': bookingId,
+    if (serviceRequestId != null) 'serviceRequestId': serviceRequestId,
+    if (targetAction != null) 'targetAction': targetAction,
+    if (serverEventId != null) 'serverEventId': serverEventId,
+    if (aggregateType != null) 'aggregateType': aggregateType,
+    if (aggregateId != null) 'aggregateId': aggregateId,
   };
 
   factory WorkerMessage.fromJson(Map<String, dynamic> j) => WorkerMessage(
@@ -659,7 +761,15 @@ class WorkerMessage {
     category: j['category'] as String,
     createdAt: DateTime.parse(j['createdAt'] as String),
     isRead: j['isRead'] as bool? ?? false,
-    orderId: j['orderId'] as String?,
+    orderId: (j['orderId'] ?? j['bookingId']) as String?,
+    paymentOrderId: j['paymentOrderId'] as String?,
+    eventType: j['eventType'] as String?,
+    bookingId: (j['bookingId'] ?? j['orderId']) as String?,
+    serviceRequestId: j['serviceRequestId'] as String?,
+    targetAction: j['targetAction'] as String?,
+    serverEventId: j['serverEventId'] as String?,
+    aggregateType: j['aggregateType'] as String?,
+    aggregateId: j['aggregateId'] as String?,
   );
 }
 

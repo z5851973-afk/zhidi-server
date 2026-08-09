@@ -1,6 +1,9 @@
 package com.zhidi.server.worker;
 
 import com.zhidi.server.common.error.BusinessException;
+import com.zhidi.server.booking.BookingRepository;
+import com.zhidi.server.booking.BookingStatus;
+import com.zhidi.server.workercase.WorkerCaseRepository;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -15,9 +18,14 @@ public class WorkerProfileService {
 	private static final String DEFAULT_CITY = "成都";
 
 	private final WorkerProfileRepository repository;
+	private final WorkerCaseRepository workerCases;
+	private final BookingRepository bookings;
 
-	public WorkerProfileService(WorkerProfileRepository repository) {
+	public WorkerProfileService(WorkerProfileRepository repository,
+			WorkerCaseRepository workerCases, BookingRepository bookings) {
 		this.repository = repository;
+		this.workerCases = workerCases;
+		this.bookings = bookings;
 	}
 
 	@Transactional(readOnly = true)
@@ -80,9 +88,19 @@ public class WorkerProfileService {
 	}
 
 	private WorkerDirectoryResponse toDirectoryResponse(WorkerProfile profile) {
+		int caseCount = safeCount(workerCases.countByWorkerUserId(profile.getUserId()));
+		int hiredCount = safeCount(
+			bookings.countByWorkerUserIdAndStatus(
+				profile.getUserId(), BookingStatus.HIRED)
+				+ bookings.countByWorkerUserIdAndStatus(
+					profile.getUserId(), BookingStatus.COMPLETED));
 		return new WorkerDirectoryResponse(profile.getUserId(), profile.getName(),
 			profile.getServiceCity(), profile.getPrimaryTrade(), profile.getExperienceYears(),
-			profile.getDailyRate(), profile.getBio());
+			profile.getDailyRate(), profile.getBio(), caseCount, hiredCount);
+	}
+
+	private int safeCount(long value) {
+		return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) value;
 	}
 
 	private String normalizeNullable(String value) {

@@ -2,12 +2,17 @@ package com.zhidi.server;
 
 import com.zhidi.server.infrastructure.sms.SmsConfig;
 import com.zhidi.server.infrastructure.storage.TencentCosProperties;
+import com.zhidi.server.payment.OfflinePaymentProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({SmsConfig.class, TencentCosProperties.class})
+@EnableConfigurationProperties({
+	SmsConfig.class,
+	TencentCosProperties.class,
+	OfflinePaymentProperties.class
+})
 public class ZhidiServerApplication {
 
 	public static void main(String[] args) {

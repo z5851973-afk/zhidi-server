@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
 
 @SpringBootTest
@@ -93,7 +94,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 	@Test
 	void ownerCanAddThreeDistinctSameTradeCandidates() {
 		ServiceRequestResponse created = service.createRequest(owner.getId(),
-			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", "旧房水电改造"));
+			houseRequest("旧房水电改造"));
 		ServiceRequestResponse withOne = service.addCandidate(owner.getId(),
 			created.id(), new CandidateCreateRequest(worker1.getId()));
 		ServiceRequestResponse withTwo = service.addCandidate(owner.getId(),
@@ -109,9 +110,33 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 	}
 
 	@Test
+	void assignedRequestCannotAcceptAnotherCandidate() {
+		ServiceRequestResponse created = service.createRequest(owner.getId(),
+			houseRequest(null));
+		service.addCandidate(owner.getId(), created.id(),
+			new CandidateCreateRequest(worker1.getId()));
+		ServiceRequest assigned = requests.findById(created.id()).orElseThrow();
+		assigned.markAssigned();
+		requests.saveAndFlush(assigned);
+
+		Throwable error = catchThrowable(() ->
+			service.addCandidate(owner.getId(), created.id(),
+				new CandidateCreateRequest(worker2.getId())));
+
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class, ex -> {
+			assertThat(ex.status()).isEqualTo(HttpStatus.CONFLICT);
+			assertThat(ex.code()).isEqualTo("SERVICE_REQUEST_NOT_OPEN");
+		});
+		assertThat(bookings.findByServiceRequestIdOrderByCreatedAtAsc(created.id()))
+			.hasSize(1);
+		assertThat(requests.findById(created.id()).orElseThrow().getStatus())
+			.isEqualTo(ServiceRequestStatus.ASSIGNED);
+	}
+
+	@Test
 	void fourthActiveCandidateReturnsCandidateLimitReached() {
 		ServiceRequestResponse created = service.createRequest(owner.getId(),
-			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", null));
+			houseRequest(null));
 		service.addCandidate(owner.getId(), created.id(),
 			new CandidateCreateRequest(worker1.getId()));
 		service.addCandidate(owner.getId(), created.id(),
@@ -133,7 +158,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 	@Test
 	void duplicateWorkerReturnsCandidateAlreadyExists() {
 		ServiceRequestResponse created = service.createRequest(owner.getId(),
-			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", null));
+			houseRequest(null));
 		service.addCandidate(owner.getId(), created.id(),
 			new CandidateCreateRequest(worker1.getId()));
 
@@ -151,7 +176,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 	@Test
 	void crossTradeWorkerReturnsWorkerTradeMismatch() {
 		ServiceRequestResponse created = service.createRequest(owner.getId(),
-			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", null));
+			houseRequest(null));
 
 		Throwable error = catchThrowable(() ->
 			service.addCandidate(owner.getId(), created.id(),
@@ -167,7 +192,7 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 	@Test
 	void anotherOwnerReceivesServiceRequestNotFound() {
 		ServiceRequestResponse created = service.createRequest(owner.getId(),
-			new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", null));
+			houseRequest(null));
 
 		Throwable error = catchThrowable(() ->
 			service.addCandidate(otherOwner.getId(), created.id(),
@@ -184,5 +209,11 @@ class ServiceRequestServiceTest extends MySqlContainerSupport {
 		User user = User.create(phone);
 		user.grantRole(role);
 		return users.saveAndFlush(user);
+	}
+
+	private ServiceRequestCreateRequest houseRequest(String remark) {
+		return new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号",
+			new BigDecimal("98.50"), (short) 3, (short) 2, (short) 1,
+			(short) 2, remark);
 	}
 }

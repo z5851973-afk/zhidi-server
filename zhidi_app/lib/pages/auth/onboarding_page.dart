@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
-import '../../design/tokens.dart';
+
 import '../../app/owner_app_scope.dart';
+import '../../design/tokens.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key, this.onDone});
+
   final VoidCallback? onDone;
 
   @override
@@ -12,69 +14,44 @@ class OnboardingPage extends StatefulWidget {
 
 class _OnboardingPageState extends State<OnboardingPage> {
   final _nameController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _areaController = TextEditingController();
+  final _cityController = TextEditingController();
   final _phoneController = TextEditingController();
-  String? _decorationType;
+  String? _gender;
+  bool _initialized = false;
   bool _loading = false;
-
-  final _decorationOptions = const ['新房装修', '旧房改造', '局部改造'];
-
-  @override
-  void initState() {
-    super.initState();
-  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (_initialized) return;
     final profile = OwnerAppScope.of(context).profile;
-    if (_nameController.text.isEmpty) {
-      _nameController.text = profile.name;
-    }
-    if (_phoneController.text.isEmpty) {
-      _phoneController.text = profile.phone;
-    }
+    _nameController.text = profile.name;
+    _cityController.text = profile.city;
+    _phoneController.text = profile.phone;
+    _gender = profile.gender;
+    _initialized = true;
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _addressController.dispose();
-    _areaController.dispose();
+    _cityController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
 
   bool get _canSubmit =>
       _nameController.text.trim().isNotEmpty &&
-      _addressController.text.trim().isNotEmpty &&
-      _decorationType != null &&
-      _areaController.text.trim().isNotEmpty &&
-      _phoneController.text.trim().length == 11;
+      _cityController.text.trim().isNotEmpty;
 
   Future<void> _submit() async {
-    if (!_canSubmit) return;
+    if (!_canSubmit || _loading) return;
     setState(() => _loading = true);
-
-    final area = double.tryParse(_areaController.text.trim());
-    if (area == null || area <= 0) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('请输入有效面积')));
-        setState(() => _loading = false);
-      }
-      return;
-    }
-
     try {
-      final appState = OwnerAppScope.of(context);
-      await appState.completeOnboarding(
+      await OwnerAppScope.of(context).completeOnboarding(
         name: _nameController.text.trim(),
-        decorationType: _decorationType!,
-        address: _addressController.text.trim(),
-        area: area,
+        city: _cityController.text.trim(),
+        gender: _gender,
       );
     } catch (_) {
       if (!mounted) return;
@@ -86,8 +63,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
 
     if (!mounted) return;
-    if (widget.onDone != null) {
-      widget.onDone!();
+    if (widget.onDone case final onDone?) {
+      onDone();
     } else {
       Navigator.of(context).pop(true);
     }
@@ -101,241 +78,141 @@ class _OnboardingPageState extends State<OnboardingPage> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_rounded,
-            color: ZdColors.textPrimary,
-            size: 20,
-          ),
-          onPressed: () {
-            if (widget.onDone != null) return;
-            Navigator.of(context).pop(false);
-          },
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 20),
+          onPressed: widget.onDone == null
+              ? () => Navigator.of(context).pop(false)
+              : null,
         ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 28),
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 36),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 24),
               const Text(
-                '完善您的资料',
+                '先认识一下您',
                 style: TextStyle(
                   fontSize: 28,
-                  fontWeight: FontWeight.bold,
+                  height: 1.2,
+                  fontWeight: FontWeight.w800,
                   color: ZdColors.textPrimary,
-                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                '帮助我们为您匹配最合适的装修方案',
+              const Text(
+                '姓名和所在城市用于联系与同城服务，房屋信息可在找师傅时再填写。',
                 style: TextStyle(
                   fontSize: 14,
+                  height: 1.5,
                   color: ZdColors.textSecondary,
-                  letterSpacing: -0.1,
                 ),
               ),
-              const SizedBox(height: 36),
-
-              _InputLabel('姓名'),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key('onboarding-name-field'),
-                controller: _nameController,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: '请输入您的姓名',
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: ZdColors.primary,
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── 小区名称 & 详细地址 ──
-              _InputLabel('房屋地址'),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key('onboarding-address-field'),
-                controller: _addressController,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  hintText: '请输入小区名称、栋、单元、门牌号',
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: ZdColors.primary,
-                      width: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── 装修类型 ──
-              _InputLabel('装修类型'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: ZdColors.divider),
-                ),
-                child: Row(
-                  children: _decorationOptions.map((option) {
-                    final selected = _decorationType == option;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _decorationType = option),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? ZdColors.primary
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Center(
-                            child: Text(
-                              option,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: selected
-                                    ? Colors.white
-                                    : ZdColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
+              const SizedBox(height: 24),
+              Center(
+                child: Column(
+                  children: [
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFFFE9DC),
+                        shape: BoxShape.circle,
                       ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // ── 预估面积 ──
-              _InputLabel('预估面积'),
-              const SizedBox(height: 8),
-              TextField(
-                key: const Key('onboarding-area-field'),
-                controller: _areaController,
-                onChanged: (_) => setState(() {}),
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '请输入房屋面积',
-                  suffixText: 'm²',
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: ZdColors.primary,
-                      width: 1.5,
+                      child: const Icon(
+                        Icons.person_rounded,
+                        size: 42,
+                        color: ZdColors.primary,
+                      ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      '头像可稍后在个人资料中设置',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: ZdColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // ── 手机号 ──
-              _InputLabel('手机号'),
+              const SizedBox(height: 24),
+              const _InputLabel('姓名或称呼', requiredField: true),
               const SizedBox(height: 8),
-              TextField(
-                key: const Key('onboarding-phone-field'),
+              _ProfileTextField(
+                fieldKey: const Key('onboarding-name-field'),
+                controller: _nameController,
+                hintText: '例如：王女士',
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 18),
+              const _InputLabel('所在城市', requiredField: true),
+              const SizedBox(height: 8),
+              _ProfileTextField(
+                fieldKey: const Key('onboarding-city-field'),
+                controller: _cityController,
+                hintText: '例如：成都',
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 18),
+              const _InputLabel('手机号'),
+              const SizedBox(height: 8),
+              _ProfileTextField(
+                fieldKey: const Key('onboarding-phone-field'),
                 controller: _phoneController,
-                onChanged: (_) => setState(() {}),
-                keyboardType: TextInputType.phone,
-                maxLength: 11,
-                decoration: InputDecoration(
-                  hintText: '请输入手机号',
-                  counterText: '',
-                  filled: true,
-                  fillColor: Colors.white,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: ZdColors.divider),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: ZdColors.primary,
-                      width: 1.5,
+                hintText: '',
+                readOnly: true,
+                suffix: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.verified_rounded,
+                      size: 16,
+                      color: Color(0xFF00B85A),
                     ),
+                    SizedBox(width: 4),
+                    Text(
+                      '已验证',
+                      style: TextStyle(color: Color(0xFF00A852), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              const _InputLabel('性别（选填）'),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'MALE', label: Text('男')),
+                  ButtonSegment(value: 'FEMALE', label: Text('女')),
+                  ButtonSegment(value: 'UNDISCLOSED', label: Text('不透露')),
+                ],
+                selected: _gender == null ? const {} : {_gender!},
+                emptySelectionAllowed: true,
+                showSelectedIcon: false,
+                onSelectionChanged: (selection) {
+                  setState(() => _gender = selection.firstOrNull);
+                },
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  side: WidgetStateProperty.all(
+                    const BorderSide(color: ZdColors.divider),
                   ),
                 ),
               ),
-              const SizedBox(height: 36),
-
-              // ── 提交按钮 ──
+              const SizedBox(height: 30),
               SizedBox(
                 width: double.infinity,
-                height: 50,
+                height: 52,
                 child: ElevatedButton(
-                  onPressed: (_canSubmit && !_loading) ? _submit : null,
+                  onPressed: _canSubmit && !_loading ? _submit : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: ZdColors.primary,
                     foregroundColor: Colors.white,
-                    elevation: 0,
                     disabledBackgroundColor: ZdColors.divider,
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                   ),
                   child: _loading
@@ -344,19 +221,18 @@ class _OnboardingPageState extends State<OnboardingPage> {
                           height: 20,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation(Colors.white),
+                            color: Colors.white,
                           ),
                         )
                       : const Text(
                           '开始使用',
                           style: TextStyle(
                             fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                 ),
               ),
-              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -366,17 +242,78 @@ class _OnboardingPageState extends State<OnboardingPage> {
 }
 
 class _InputLabel extends StatelessWidget {
-  const _InputLabel(this.label);
+  const _InputLabel(this.label, {this.requiredField = false});
+
   final String label;
+  final bool requiredField;
 
   @override
   Widget build(BuildContext context) {
-    return Text(
-      label,
-      style: const TextStyle(
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-        color: ZdColors.textPrimary,
+    return Row(
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: ZdColors.textPrimary,
+          ),
+        ),
+        if (requiredField)
+          const Text(' *', style: TextStyle(color: ZdColors.primary)),
+      ],
+    );
+  }
+}
+
+class _ProfileTextField extends StatelessWidget {
+  const _ProfileTextField({
+    this.fieldKey,
+    required this.controller,
+    required this.hintText,
+    this.onChanged,
+    this.readOnly = false,
+    this.suffix,
+  });
+
+  final TextEditingController controller;
+  final Key? fieldKey;
+  final String hintText;
+  final ValueChanged<String>? onChanged;
+  final bool readOnly;
+  final Widget? suffix;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      readOnly: readOnly,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hintText,
+        suffixIcon: suffix == null
+            ? null
+            : Padding(padding: const EdgeInsets.only(right: 14), child: suffix),
+        suffixIconConstraints: const BoxConstraints(minHeight: 48),
+        filled: true,
+        fillColor: readOnly ? const Color(0xFFF4F1EF) : Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 15,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ZdColors.divider),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ZdColors.divider),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: ZdColors.primary, width: 1.5),
+        ),
       ),
     );
   }

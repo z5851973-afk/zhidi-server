@@ -17,7 +17,13 @@ import com.zhidi.server.worker.WorkerProfileRepository;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -98,6 +104,8 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 			owner.getId(), acceptedBooking.id());
 		assertThat(scheduled.status()).isEqualTo(BookingStatus.VISIT_SCHEDULED);
 		assertThat(scheduled.proposedTime()).isEqualTo(proposedTime);
+		assertThat(scheduled.scheduledVisitAt()).isEqualTo(proposedTime);
+		assertThat(scheduled.actualOnSiteAt()).isNull();
 
 		// 工人标记到达
 		BookingResponse workerArrived = bookingService.arrive(
@@ -111,6 +119,9 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 			owner.getId(), acceptedBooking.id(), false);
 		assertThat(onSite.status()).isEqualTo(BookingStatus.ON_SITE);
 		assertThat(onSite.onSiteAt()).isNotNull();
+		assertThat(onSite.scheduledVisitAt()).isEqualTo(proposedTime);
+		assertThat(onSite.actualOnSiteAt()).isEqualTo(onSite.onSiteAt());
+		assertThat(onSite.actualOnSiteAt()).isNotEqualTo(onSite.scheduledVisitAt());
 	}
 
 	@Test
@@ -129,6 +140,11 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 			worker.getId(), acceptedBooking.id(), secondTime);
 		assertThat(reproposed.status()).isEqualTo(BookingStatus.VISIT_PROPOSED);
 		assertThat(visitProposals.count()).isEqualTo(2);
+
+		BookingResponse rescheduled = bookingService.acceptVisit(
+			owner.getId(), acceptedBooking.id());
+		assertThat(rescheduled.scheduledVisitAt()).isEqualTo(secondTime);
+		assertThat(rescheduled.scheduledVisitAt()).isNotEqualTo(firstTime);
 	}
 
 	@Test
@@ -136,7 +152,7 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 		// 跳过 VISIT_PROPOSED 直接设置状态到 VISIT_SCHEDULED 来测试 confirm-arrival
 		Booking booking = bookings.findById(acceptedBooking.id()).orElseThrow();
 		booking.proposeVisit();
-		booking.scheduleVisit();
+		booking.scheduleVisit(Instant.parse("2026-08-08T10:00:00Z"));
 		bookings.saveAndFlush(booking);
 
 		// 只有工人标记到达
@@ -153,6 +169,28 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 	}
 
 	@Test
+	void workerConfirmsOwnerArrivalAndAdvancesBookingToOnSite() {
+		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
+			.truncatedTo(ChronoUnit.MINUTES);
+		bookingService.proposeVisit(worker.getId(), acceptedBooking.id(), proposedTime);
+		bookingService.acceptVisit(owner.getId(), acceptedBooking.id());
+
+		BookingResponse ownerArrived = bookingService.arrive(
+			owner.getId(), acceptedBooking.id(), false);
+		assertThat(ownerArrived.status()).isEqualTo(BookingStatus.ARRIVAL_PENDING);
+		assertThat(ownerArrived.arrivalConfirmedByOwner()).isTrue();
+		assertThat(ownerArrived.arrivalConfirmedByWorker()).isFalse();
+
+		BookingResponse onSite = bookingService.confirmArrival(
+			worker.getId(), acceptedBooking.id(), true);
+
+		assertThat(onSite.status()).isEqualTo(BookingStatus.ON_SITE);
+		assertThat(onSite.arrivalConfirmedByOwner()).isTrue();
+		assertThat(onSite.arrivalConfirmedByWorker()).isTrue();
+		assertThat(onSite.onSiteAt()).isNotNull();
+	}
+
+	@Test
 	void arriveWhenAlreadyOnSiteIsIdempotent() {
 		// 完整流程到 ON_SITE
 		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS).truncatedTo(ChronoUnit.MINUTES);
@@ -160,11 +198,71 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 		bookingService.acceptVisit(owner.getId(), acceptedBooking.id());
 		bookingService.arrive(worker.getId(), acceptedBooking.id(), true);
 		bookingService.arrive(owner.getId(), acceptedBooking.id(), false);
+		BookingResponse firstOnSite = bookingService.listForWorker(worker.getId())
+			.stream().filter(item -> item.id().equals(acceptedBooking.id()))
+			.findFirst().orElseThrow();
 
 		// 再次 arrive → 幂等，直接返回当前状态
 		BookingResponse idempotent = bookingService.arrive(
 			worker.getId(), acceptedBooking.id(), true);
 		assertThat(idempotent.status()).isEqualTo(BookingStatus.ON_SITE);
+		assertThat(idempotent.actualOnSiteAt())
+			.isEqualTo(firstOnSite.actualOnSiteAt());
+	}
+
+	@Test
+	void confirmArrivalWhenAlreadyOnSiteIsIdempotent() {
+		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
+			.truncatedTo(ChronoUnit.MINUTES);
+		bookingService.proposeVisit(worker.getId(), acceptedBooking.id(), proposedTime);
+		bookingService.acceptVisit(owner.getId(), acceptedBooking.id());
+		bookingService.arrive(worker.getId(), acceptedBooking.id(), true);
+		BookingResponse firstOnSite = bookingService.confirmArrival(
+			owner.getId(), acceptedBooking.id(), false);
+
+		BookingResponse repeated = bookingService.confirmArrival(
+			owner.getId(), acceptedBooking.id(), false);
+
+		assertThat(repeated.status()).isEqualTo(BookingStatus.ON_SITE);
+		assertThat(repeated.arrivalConfirmedByOwner()).isTrue();
+		assertThat(repeated.arrivalConfirmedByWorker()).isTrue();
+		assertThat(repeated.actualOnSiteAt()).isEqualTo(firstOnSite.actualOnSiteAt());
+	}
+
+	@Test
+	void concurrentOwnerAndWorkerArrivalPersistsBothConfirmations() throws Exception {
+		Instant proposedTime = Instant.now().plus(1, ChronoUnit.DAYS)
+			.truncatedTo(ChronoUnit.MINUTES);
+		bookingService.proposeVisit(worker.getId(), acceptedBooking.id(), proposedTime);
+		bookingService.acceptVisit(owner.getId(), acceptedBooking.id());
+
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch ready = new CountDownLatch(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<Object> ownerArrival = executor.submit(() -> arriveAfter(
+				ready, start, owner.getId(), false));
+			Future<Object> workerArrival = executor.submit(() -> arriveAfter(
+				ready, start, worker.getId(), true));
+			assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+			start.countDown();
+
+			List<Object> results = List.of(
+				ownerArrival.get(10, TimeUnit.SECONDS),
+				workerArrival.get(10, TimeUnit.SECONDS));
+			assertThat(results)
+				.as("concurrent arrival results: %s", results)
+				.allMatch(BookingResponse.class::isInstance);
+		} finally {
+			executor.shutdownNow();
+		}
+
+		Booking persisted = bookings.findById(acceptedBooking.id()).orElseThrow();
+		assertThat(persisted.getStatus()).isEqualTo(BookingStatus.ON_SITE);
+		assertThat(persisted.isArrivalConfirmedByOwner()).isTrue();
+		assertThat(persisted.isArrivalConfirmedByWorker()).isTrue();
+		assertThat(persisted.getOnSiteAt()).isNotNull();
+		assertThat(persisted.getScheduledVisitAt()).isEqualTo(proposedTime);
 	}
 
 	@Test
@@ -197,7 +295,8 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 		Throwable error = catchThrowable(() ->
 			bookingService.ownerCancel(owner.getId(), acceptedBooking.id(), "不想做了"));
 
-		assertThat(error).isInstanceOf(IllegalStateException.class);
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
+			ex -> assertThat(ex.status().value()).isEqualTo(409));
 	}
 
 	@Test
@@ -207,6 +306,17 @@ class VisitFlowIntegrationTest extends MySqlContainerSupport {
 
 		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
 			ex -> assertThat(ex.status().value()).isEqualTo(409));
+	}
+
+	private Object arriveAfter(CountDownLatch ready, CountDownLatch start,
+			UUID userId, boolean isWorker) {
+		ready.countDown();
+		try {
+			start.await(5, TimeUnit.SECONDS);
+			return bookingService.arrive(userId, acceptedBooking.id(), isWorker);
+		} catch (Throwable error) {
+			return error;
+		}
 	}
 
 	private User createUser(String phone, UserRole role) {

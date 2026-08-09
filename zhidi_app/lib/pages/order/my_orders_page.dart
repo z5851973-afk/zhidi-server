@@ -3,9 +3,25 @@ import '../../app/owner_appointment.dart';
 import '../../app/owner_app_scope.dart';
 import '../renovation/trade_select_page.dart';
 import '../../design/tokens.dart';
+import '../home/my_home_page.dart';
+
+typedef OwnerBookingDetailsBuilder =
+    Widget Function(String serviceRequestId, String bookingId);
+
+String _formatOrderDateTime(DateTime? value) {
+  if (value == null) return '';
+  final local = value.toLocal();
+  final month = local.month.toString().padLeft(2, '0');
+  final day = local.day.toString().padLeft(2, '0');
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${local.year}-$month-$day $hour:$minute';
+}
 
 class MyOrdersPage extends StatefulWidget {
-  const MyOrdersPage({super.key});
+  const MyOrdersPage({super.key, this.bookingDetailsBuilder});
+
+  final OwnerBookingDetailsBuilder? bookingDetailsBuilder;
 
   @override
   State<MyOrdersPage> createState() => _MyOrdersPageState();
@@ -53,9 +69,19 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
               separatorBuilder: (_, _) => const SizedBox(height: 14),
               itemBuilder: (context, index) {
                 final order = orders[index];
+                final isRemote = order.id.startsWith('rm-');
+                final canDismiss =
+                    !isRemote ||
+                    _cancellableRemoteStatuses.contains(order.status);
+                final serviceRequestId = order.serviceRequestId;
+                final bookingId = order.bookingId;
+                final canOpenDetails =
+                    serviceRequestId != null && bookingId != null;
                 return Dismissible(
                   key: ValueKey(order.id),
-                  direction: DismissDirection.endToStart,
+                  direction: canDismiss
+                      ? DismissDirection.endToStart
+                      : DismissDirection.none,
                   background: Align(
                     alignment: Alignment.centerRight,
                     child: Container(
@@ -75,32 +101,33 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                   ),
                   confirmDismiss: (_) async {
                     final ownerState = OwnerAppScope.of(context);
-                    final isRemote = order.id.startsWith('rm-');
                     final dialogTitle = isRemote ? '确认取消预约' : '确认删除';
                     final dialogContent = isRemote
                         ? '确定要取消「${order.workerName}」的预约吗？取消后不可恢复。'
                         : '确定要删除「${order.workerName}」的预约吗？';
                     final actionLabel = isRemote ? '取消预约' : '删除';
-                    final confirmed = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: Text(dialogTitle),
-                        content: Text(dialogContent),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('取消'),
+                    final confirmed =
+                        await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: Text(dialogTitle),
+                            content: Text(dialogContent),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('取消'),
+                              ),
+                              FilledButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: const Color(0xFFE53935),
+                                ),
+                                child: Text(actionLabel),
+                              ),
+                            ],
                           ),
-                          FilledButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFE53935),
-                            ),
-                            child: Text(actionLabel),
-                          ),
-                        ],
-                      ),
-                    ) ?? false;
+                        ) ??
+                        false;
                     if (!confirmed) return false;
 
                     try {
@@ -139,13 +166,33 @@ class _MyOrdersPageState extends State<MyOrdersPage> {
                       ),
                     );
                   },
-                  child: _OrderCard(order: order),
+                  child: _OrderCard(
+                    order: order,
+                    onTap: canOpenDetails
+                        ? () {
+                            final destination =
+                                widget.bookingDetailsBuilder?.call(
+                                  serviceRequestId,
+                                  bookingId,
+                                ) ??
+                                MyHomePage(
+                                  initialServiceRequestId: serviceRequestId,
+                                  initialBookingId: bookingId,
+                                );
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => destination),
+                            );
+                          }
+                        : null,
+                  ),
                 );
               },
             ),
     );
   }
 }
+
+const _cancellableRemoteStatuses = {'待接单', '已确认', '待确认上门时间', '已约定上门', '待确认到场'};
 
 class _RemoteBookingError extends StatelessWidget {
   const _RemoteBookingError({required this.message, required this.onRetry});
@@ -208,83 +255,106 @@ class _EmptyOrders extends StatelessWidget {
 
 class _OrderCard extends StatelessWidget {
   final OrderItem order;
+  final VoidCallback? onTap;
 
-  const _OrderCard({required this.order});
+  const _OrderCard({required this.order, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(22),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x08000000),
-            blurRadius: 12,
-            offset: Offset(0, 6),
+        child: Ink(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x08000000),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(
-                Icons.assignment_turned_in_rounded,
-                color: Color(0xFFFF7A2F),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  order.workerName,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: ZdColors.textPrimary,
+              Row(
+                children: [
+                  const Icon(
+                    Icons.assignment_turned_in_rounded,
+                    color: Color(0xFFFF7A2F),
                   ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 5,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAF8ED),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(
-                  order.status,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF15A34A),
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      order.workerName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: ZdColors.textPrimary,
+                      ),
+                    ),
                   ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEAF8ED),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Text(
+                      order.status,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF15A34A),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _RowText(title: '联系人', value: order.customerName),
+              const SizedBox(height: 8),
+              _RowText(title: '手机号', value: order.phone),
+              const SizedBox(height: 8),
+              _RowText(title: '地址', value: order.address),
+              const SizedBox(height: 8),
+              if (order.bookingId != null) ...[
+                _RowText(
+                  title: '约定上门时间',
+                  value: _formatOrderDateTime(order.scheduledVisitAt).isNotEmpty
+                      ? _formatOrderDateTime(order.scheduledVisitAt)
+                      : '待确认',
+                ),
+                const SizedBox(height: 8),
+                _RowText(
+                  title: '实际到场时间',
+                  value: _formatOrderDateTime(order.actualOnSiteAt).isNotEmpty
+                      ? _formatOrderDateTime(order.actualOnSiteAt)
+                      : '待到场',
+                ),
+              ] else
+                _RowText(title: '上门时间', value: order.visitTime),
+              const SizedBox(height: 12),
+              Text(
+                order.description,
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: Color(0xFF666666),
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          _RowText(title: '联系人', value: order.customerName),
-          const SizedBox(height: 8),
-          _RowText(title: '手机号', value: order.phone),
-          const SizedBox(height: 8),
-          _RowText(title: '地址', value: order.address),
-          const SizedBox(height: 8),
-          _RowText(title: '上门时间', value: order.visitTime),
-          const SizedBox(height: 12),
-          Text(
-            order.description,
-            style: const TextStyle(
-              fontSize: 13,
-              height: 1.5,
-              color: Color(0xFF666666),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

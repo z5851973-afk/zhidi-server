@@ -14,12 +14,13 @@ import '../../design/components.dart';
 import '../../services/service_request_api_client.dart';
 import '../../services/auth_api_client.dart';
 import '../../services/worker_booking_api_client.dart';
+import '../../services/worker_quote_api_client.dart';
 import '../../services/chat_api_client.dart';
 import '../../models/chat_models.dart';
+import '../shared/quote_detail_page.dart';
 import 'daily_report_page.dart';
 import 'inspection_page.dart';
 import 'quotation_form_page.dart';
-import 'worker_earnings_page.dart';
 import '../chat/chat_detail_page.dart';
 import 'worker_settlement_page.dart';
 
@@ -35,10 +36,12 @@ class OrderDetailPage extends StatefulWidget {
     super.key,
     required this.orderId,
     this.refreshInterval = const Duration(seconds: 8),
+    this.quoteApi,
   });
 
   final String orderId;
   final Duration? refreshInterval;
+  final WorkerQuoteApiClient? quoteApi;
 
   @override
   State<OrderDetailPage> createState() => _OrderDetailPageState();
@@ -79,15 +82,28 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
   @override
   Widget build(BuildContext context) {
     final state = WorkerAppScope.of(context);
-    final order = state.orders.firstWhere(
-      (o) => o.id == widget.orderId,
-      orElse: () => state.orders.first,
-    );
+    final matchingOrders = state.orders.where((o) => o.id == widget.orderId);
+    final order = matchingOrders.isEmpty ? null : matchingOrders.first;
+
+    if (order == null) {
+      return Scaffold(
+        backgroundColor: ZdColors.background,
+        appBar: AppBar(
+          title: const Text('订单详情'),
+          backgroundColor: Colors.white,
+          foregroundColor: _textDark,
+          elevation: 0,
+        ),
+        body: const Center(child: Text('该订单已更新或不再可用')),
+      );
+    }
 
     return Scaffold(
       backgroundColor: ZdColors.background,
       appBar: AppBar(
-        title: const Text('订单详情'),
+        title: Text(
+          order.status == WorkerOrderStatus.completed ? '完工档案' : '订单详情',
+        ),
         backgroundColor: Colors.white,
         foregroundColor: _textDark,
         elevation: 0,
@@ -101,12 +117,283 @@ class _OrderDetailPageState extends State<OrderDetailPage> {
             if (order.status == WorkerOrderStatus.inProgress ||
                 order.status == WorkerOrderStatus.accepted)
               _PhaseCard(order: order),
-            _QuotationCard(orderId: widget.orderId),
+            _QuotationCard(
+              orderId: widget.orderId,
+              quoteApi: widget.quoteApi,
+              canViewRemote: switch (order.status) {
+                WorkerOrderStatus.quotePending ||
+                WorkerOrderStatus.hired ||
+                WorkerOrderStatus.inProgress ||
+                WorkerOrderStatus.completed => true,
+                _ => false,
+              },
+            ),
+            if (order.status == WorkerOrderStatus.completed)
+              _CompletedArchiveCard(order: order, quoteApi: widget.quoteApi),
             const SizedBox(height: ZdSpacing.lg),
           ],
         ),
       ),
       bottomNavigationBar: _BottomBar(order: order, state: state),
+    );
+  }
+}
+
+class _CompletedArchiveCard extends StatefulWidget {
+  const _CompletedArchiveCard({required this.order, this.quoteApi});
+
+  final WorkerOrder order;
+  final WorkerQuoteApiClient? quoteApi;
+
+  @override
+  State<_CompletedArchiveCard> createState() => _CompletedArchiveCardState();
+}
+
+class _CompletedArchiveCardState extends State<_CompletedArchiveCard> {
+  double? _expectedSettlement;
+  double? _expectedWarranty;
+  bool _loadingQuote = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = WorkerAppScope.of(context);
+    final hasActualFunds =
+        state.remoteSettleableAmountForBooking(widget.order.id) > 0 ||
+        state.remoteWarrantyRetentionAmountForBooking(widget.order.id) > 0;
+    final payment = state.remotePaymentOrderForBooking(widget.order.id);
+    if (!hasActualFunds &&
+        payment == null &&
+        _expectedSettlement == null &&
+        !_loadingQuote) {
+      _loadExpectedSplit();
+    }
+  }
+
+  Future<void> _loadExpectedSplit() async {
+    final token = WorkerAppScope.of(context).accessToken;
+    if (token == null || token.isEmpty) return;
+    _loadingQuote = true;
+    try {
+      final quotes = await (widget.quoteApi ?? WorkerQuoteApiClient())
+          .listQuotesForBooking(token, widget.order.id);
+      if (!mounted || quotes.isEmpty) return;
+      quotes.sort((a, b) {
+        final acceptedA = a.status == 'ACCEPTED' ? 1 : 0;
+        final acceptedB = b.status == 'ACCEPTED' ? 1 : 0;
+        if (acceptedA != acceptedB) return acceptedB.compareTo(acceptedA);
+        return b.updatedAt.compareTo(a.updatedAt);
+      });
+      final quoteTotal = quotes.first.totalPrice;
+      setState(() {
+        _expectedSettlement = double.parse(quoteTotal.toStringAsFixed(2));
+        _expectedWarranty = null;
+      });
+    } on Exception {
+      // 完工档案仍可查看；报价金额会在下一次页面刷新时继续加载。
+    } finally {
+      _loadingQuote = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = WorkerAppScope.of(context);
+    final actualSettleable = state.remoteSettleableAmountForBooking(
+      widget.order.id,
+    );
+    final actualWarranty = state.remoteWarrantyRetentionAmountForBooking(
+      widget.order.id,
+    );
+    final payment = state.remotePaymentOrderForBooking(widget.order.id);
+    final hasActualFunds = actualSettleable > 0 || actualWarranty > 0;
+    final isSplit = payment?.isSplitOfflineV2 ?? !hasActualFunds;
+    final settleable = isSplit
+        ? payment?.quoteAmount ?? _expectedSettlement
+        : hasActualFunds
+        ? actualSettleable
+        : payment?.workerSettlement ?? _expectedSettlement;
+    final warranty = isSplit
+        ? state.remoteWorkerWarrantyAccount?.effectiveBalance
+        : hasActualFunds
+        ? actualWarranty
+        : payment?.warrantyRetention ?? _expectedWarranty;
+    final paymentStatus = isSplit
+        ? switch (payment) {
+            final value when value?.constructionPaymentStatus == 'REPORTED' =>
+              '业主已付工程款，待确认到账',
+            final value
+                when value?.isConstructionConfirmed == true &&
+                    value?.isPaid != true =>
+              '工程款已确认，付款状态核验中',
+            final value when value?.isPaid == true => '本单款项已核验',
+            _ => '等待业主付款',
+          }
+        : switch (payment?.status) {
+            'OWNER_REPORTED_PAID' => '业主已付款，待确认收款',
+            'PAID' => '已确认收款',
+            _ when hasActualFunds => '已确认收款',
+            _ => '等待业主付款',
+          };
+    final amountPrefix = hasActualFunds || payment != null ? '本单' : '预计';
+    final waitingForOwner = paymentStatus == '等待业主付款';
+    return ZdCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('完工资料', style: ZdText.subtitle),
+          const SizedBox(height: ZdSpacing.sm),
+          Container(
+            key: ValueKey('worker-completed-payment-status-${widget.order.id}'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZdSpacing.md,
+              vertical: ZdSpacing.sm,
+            ),
+            decoration: BoxDecoration(
+              color: waitingForOwner
+                  ? const Color(0xFFFFF3DF)
+                  : _success.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(ZdRadius.md),
+            ),
+            child: Text(
+              paymentStatus,
+              style: ZdText.caption.copyWith(
+                color: waitingForOwner ? const Color(0xFFB26A00) : _success,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: ZdSpacing.md),
+          Container(
+            key: ValueKey('worker-completed-fund-summary-${widget.order.id}'),
+            padding: const EdgeInsets.all(ZdSpacing.md),
+            decoration: BoxDecoration(
+              color: _primary.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(ZdRadius.md),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _amountItem(
+                    isSplit ? '$amountPrefix工程款' : '$amountPrefix可结算',
+                    settleable,
+                    _primary,
+                  ),
+                ),
+                Container(width: 1, height: 34, color: _divider),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: ZdSpacing.md),
+                    child: _amountItem(
+                      isSplit ? '履约质保金余额' : '$amountPrefix质保金',
+                      warranty,
+                      _textDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: ZdSpacing.sm),
+          _archiveEntry(
+            icon: Icons.note_alt_outlined,
+            title: '施工记录',
+            subtitle: '查看日报与现场施工记录',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) =>
+                    DailyReportPage(orderId: widget.order.id, readOnly: true),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          _archiveEntry(
+            icon: Icons.fact_check_outlined,
+            title: '验收记录',
+            subtitle: '查看本工种验收结果',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => InspectionPage(
+                  orderId: widget.order.id,
+                  tradeLabel: widget.order.trade,
+                  readOnly: true,
+                ),
+              ),
+            ),
+          ),
+          const Divider(height: 1),
+          _archiveEntry(
+            icon: Icons.account_balance_wallet_outlined,
+            title: isSplit ? '收入与履约质保金' : '收入与质保金',
+            subtitle: isSplit
+                ? waitingForOwner
+                      ? '业主付款后可核对本单工程款，质保账户独立管理'
+                      : '查看本单工程款和独立履约质保账户'
+                : waitingForOwner
+                ? '业主付款后生成本单结算与质保记录'
+                : '查看本单结算与质保冻结记录',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WorkerSettlementPage()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _amountItem(String label, double? amount, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: ZdText.tiny),
+        const SizedBox(height: 2),
+        Text(
+          amount == null ? '核算中' : '¥${amount.toStringAsFixed(0)}',
+          style: ZdText.subtitle.copyWith(color: color),
+        ),
+      ],
+    );
+  }
+
+  Widget _archiveEntry({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: ZdSpacing.md),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: _primary.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(ZdRadius.sm),
+              ),
+              child: Icon(icon, size: 18, color: _primary),
+            ),
+            const SizedBox(width: ZdSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: ZdText.body),
+                  Text(subtitle, style: ZdText.tiny),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 20, color: _textMid),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -172,8 +459,16 @@ class _StatusHeader extends StatelessWidget {
                   ),
                 ),
               ),
-              const Spacer(),
-              Text('订单号：${order.id}', style: ZdText.tiny),
+              const SizedBox(width: ZdSpacing.sm),
+              Expanded(
+                child: Text(
+                  '订单号：${order.id}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: ZdText.tiny,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: ZdSpacing.md),
@@ -204,11 +499,18 @@ class _OwnerCard extends StatelessWidget {
           ),
           const SizedBox(height: ZdSpacing.md),
           _row('姓名', order.ownerName),
-          _row('电话', order.ownerPhone),
+          _row('电话', _ownerPhoneForDisplay()),
           _row('地址', order.ownerAddress),
         ],
       ),
     );
+  }
+
+  String _ownerPhoneForDisplay() {
+    final phone = order.ownerPhone.trim();
+    if (order.status != WorkerOrderStatus.completed) return phone;
+    if (phone.length < 7) return '已隐藏';
+    return '${phone.substring(0, 3)}****${phone.substring(phone.length - 4)}';
   }
 
   Widget _row(String label, String value) {
@@ -245,7 +547,11 @@ class _RequirementCard extends StatelessWidget {
           ),
           const SizedBox(height: ZdSpacing.md),
           _item(Icons.build, '工种', order.trade),
-          _item(Icons.square_foot, '面积', order.area),
+          if (order.houseInfo case final houseInfo?) ...[
+            _item(Icons.square_foot, '面积', houseInfo.areaLabel),
+            _item(Icons.home_work_outlined, '户型', houseInfo.layoutLabel),
+          ] else
+            _item(Icons.home_work_outlined, '房屋信息', order.houseSummary),
           if (order.quotedPrice != null)
             _item(
               Icons.attach_money,
@@ -258,6 +564,22 @@ class _RequirementCard extends StatelessWidget {
               '预约时间',
               '${order.visitTime!.year}年${order.visitTime!.month}月${order.visitTime!.day}日',
             ),
+          if (_showsVisitTimeline(order)) ...[
+            _item(
+              Icons.event_available_outlined,
+              '约定上门时间',
+              order.scheduledVisitAt == null
+                  ? '待确认'
+                  : _formatVisitTime(order.scheduledVisitAt!),
+            ),
+            _item(
+              Icons.location_on_outlined,
+              '实际到场时间',
+              _actualOnSiteAt(order) == null
+                  ? '待到场'
+                  : _formatVisitTime(_actualOnSiteAt(order)!),
+            ),
+          ],
           const SizedBox(height: ZdSpacing.sm),
           Text(order.description, style: ZdText.body),
         ],
@@ -272,26 +594,154 @@ class _RequirementCard extends StatelessWidget {
         children: [
           Icon(icon, size: 14, color: _textMid),
           const SizedBox(width: 6),
-          Text('$label：', style: ZdText.caption),
+          Text(label, style: ZdText.caption),
+          Text('：', style: ZdText.caption),
           const SizedBox(width: 4),
-          Text(value, style: ZdText.caption.copyWith(color: _textDark)),
+          Expanded(
+            child: Text(
+              value,
+              style: ZdText.caption.copyWith(color: _textDark),
+            ),
+          ),
         ],
       ),
     );
   }
+
+  bool _showsVisitTimeline(WorkerOrder order) =>
+      order.proposedTime != null ||
+      order.scheduledVisitAt != null ||
+      _actualOnSiteAt(order) != null ||
+      switch (order.status) {
+        WorkerOrderStatus.accepted ||
+        WorkerOrderStatus.visitProposed ||
+        WorkerOrderStatus.visitScheduled ||
+        WorkerOrderStatus.arrivalPending ||
+        WorkerOrderStatus.onSite ||
+        WorkerOrderStatus.quotePending ||
+        WorkerOrderStatus.hired ||
+        WorkerOrderStatus.inProgress ||
+        WorkerOrderStatus.completed => true,
+        _ => false,
+      };
+
+  DateTime? _actualOnSiteAt(WorkerOrder order) =>
+      order.actualOnSiteAt ?? order.onSiteAt;
+
+  String _formatVisitTime(DateTime value) {
+    final local = value.toLocal();
+    final minute = local.minute.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    return '${local.year}年${local.month}月${local.day}日 $hour:$minute';
+  }
 }
 
 // ── 报价单卡片 ──
-class _QuotationCard extends StatelessWidget {
-  const _QuotationCard({required this.orderId});
+class _QuotationCard extends StatefulWidget {
+  const _QuotationCard({
+    required this.orderId,
+    required this.canViewRemote,
+    this.quoteApi,
+  });
 
   final String orderId;
+  final bool canViewRemote;
+  final WorkerQuoteApiClient? quoteApi;
+
+  @override
+  State<_QuotationCard> createState() => _QuotationCardState();
+}
+
+class _QuotationCardState extends State<_QuotationCard> {
+  bool _loading = false;
+  bool _loadFailed = false;
+
+  Future<void> _openRemoteQuote() async {
+    if (_loading) return;
+    final app = WorkerAppScope.of(context);
+    final token = app.accessToken;
+    if (token == null || token.isEmpty) {
+      setState(() => _loadFailed = true);
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _loadFailed = false;
+    });
+    try {
+      final quotes = await (widget.quoteApi ?? WorkerQuoteApiClient())
+          .listQuotesForBooking(token, widget.orderId);
+      if (!mounted) return;
+      if (quotes.isEmpty) {
+        setState(() => _loadFailed = true);
+        return;
+      }
+      quotes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => QuoteDetailPage(quote: quotes.first)),
+      );
+    } on Exception {
+      if (mounted) setState(() => _loadFailed = true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final app = WorkerAppScope.of(context);
-    final quotation = app.getOrderQuotation(orderId);
-    if (quotation == null) return const SizedBox.shrink();
+    final quotation = app.getOrderQuotation(widget.orderId);
+    if (quotation == null && !widget.canViewRemote) {
+      return const SizedBox.shrink();
+    }
+
+    if (quotation == null) {
+      return ZdCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.receipt_long_outlined, color: _primary),
+                const SizedBox(width: ZdSpacing.sm),
+                Text('已提交报价单', style: ZdText.subtitle),
+              ],
+            ),
+            const SizedBox(height: ZdSpacing.sm),
+            const Text('报价已保存到服务器，可随时核对人工和材料明细。', style: ZdText.caption),
+            if (_loadFailed) ...[
+              const SizedBox(height: ZdSpacing.sm),
+              const Text(
+                '报价加载失败，请重试',
+                style: TextStyle(color: _error, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: ZdSpacing.md),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _loading ? null : _openRemoteQuote,
+                icon: _loading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.visibility_outlined),
+                label: Text(
+                  _loading
+                      ? '正在加载'
+                      : _loadFailed
+                      ? '重试'
+                      : '查看已提交报价单',
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return ZdCard(
       child: Column(
@@ -781,11 +1231,63 @@ class _BottomBar extends StatelessWidget {
         );
 
       case WorkerOrderStatus.completed:
+        final payment = state.remotePaymentOrderForBooking(order.id);
+        final awaitingReceipt =
+            payment?.isAwaitingWorkerReceipt == true ||
+            (payment?.isSplitOfflineV2 == true &&
+                payment?.constructionPaymentStatus == 'REPORTED');
+        final hasIncome =
+            state.remoteSettleableAmountForBooking(order.id) > 0 ||
+            state.remoteWarrantyRetentionAmountForBooking(order.id) > 0 ||
+            payment?.isPaid == true ||
+            payment?.isConstructionConfirmed == true;
+        if (awaitingReceipt) {
+          return ZdPrimaryButton(
+            label: payment?.isSplitOfflineV2 == true
+                ? '核对工程款并确认到账'
+                : '核对明细并确认收款',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WorkerSettlementPage()),
+            ),
+          );
+        }
+        if (payment?.isSplitOfflineV2 == true &&
+            payment?.isConstructionConfirmed == true &&
+            payment?.isPaid != true) {
+          return ZdPrimaryButton(
+            label: '查看付款核验进度',
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const WorkerSettlementPage()),
+            ),
+          );
+        }
+        if (!hasIncome) {
+          return Container(
+            height: 52,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(ZdRadius.pill),
+              color: const Color(0xFFFFF3DF),
+            ),
+            child: const Center(
+              child: Text(
+                '等待业主付款',
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Color(0xFFB26A00),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          );
+        }
         return ZdPrimaryButton(
-          label: '查看收入详情',
-          onTap: () => Navigator.of(
+          label: '查看收入明细',
+          onTap: () => Navigator.push(
             context,
-          ).push(MaterialPageRoute(builder: (_) => const WorkerEarningsPage())),
+            MaterialPageRoute(builder: (_) => const WorkerSettlementPage()),
+          ),
         );
 
       case WorkerOrderStatus.cancelled:

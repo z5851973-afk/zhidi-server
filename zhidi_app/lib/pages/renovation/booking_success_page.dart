@@ -1,37 +1,28 @@
 import 'package:flutter/material.dart';
-import 'worker_chat_page.dart';
 import '../../design/tokens.dart';
 
 // ── 颜色常量 ──
 const _green = ZdColors.success;
 const _greenBg = Color(0xFFE8F8EE);
 const _textDark = ZdColors.textPrimary;
-const _textMid = ZdColors.textSecondary;
 const _textLight = ZdColors.textSecondary;
 const _bg = ZdColors.background;
 const _orange = ZdColors.primary;
 const _orangeLight = ZdColors.cardBg;
-const _star = Color(0xFFFFB800);
 const _cardBg = ZdColors.surfaceWhite;
 
 class BookingSuccessPage extends StatelessWidget {
   final String workerName;
   final String workerJob;
-  final double rating;
-  final String renovationStage;
   final String tradeType;
   final String serviceAddress;
-  final String estimatedTime;
 
   const BookingSuccessPage({
     super.key,
     required this.workerName,
     required this.workerJob,
-    required this.rating,
-    required this.renovationStage,
     required this.tradeType,
     required this.serviceAddress,
-    required this.estimatedTime,
   });
 
   @override
@@ -45,7 +36,7 @@ class BookingSuccessPage extends StatelessWidget {
         backgroundColor: _bg,
         appBar: AppBar(
           title: const Text(
-            '预约成功',
+            '预约结果',
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           centerTitle: true,
@@ -103,7 +94,7 @@ class BookingSuccessPage extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const Text(
-          '已提交预约，等待师傅确认',
+          '预约已提交',
           style: TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.bold,
@@ -112,7 +103,7 @@ class BookingSuccessPage extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          '师傅将在10分钟内与你联系',
+          '上门时间待双方确认',
           style: TextStyle(fontSize: 14, color: _textLight),
         ),
       ],
@@ -141,7 +132,7 @@ class BookingSuccessPage extends StatelessWidget {
             child: const Icon(Icons.person, color: _orange, size: 26),
           ),
           const SizedBox(width: 10),
-          // 姓名 + 工种 + 评分
+          // 姓名 + 工种
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,36 +146,19 @@ class BookingSuccessPage extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _orangeLight,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        workerJob,
-                        style: const TextStyle(fontSize: 11, color: _orange),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    ...List.generate(5, (i) {
-                      return Icon(
-                        i < rating.floor() ? Icons.star : Icons.star_border,
-                        size: 12,
-                        color: _star,
-                      );
-                    }),
-                    const SizedBox(width: 2),
-                    Text(
-                      rating.toString(),
-                      style: const TextStyle(fontSize: 11, color: _textMid),
-                    ),
-                  ],
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _orangeLight,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    workerJob,
+                    style: const TextStyle(fontSize: 11, color: _orange),
+                  ),
                 ),
               ],
             ),
@@ -201,7 +175,7 @@ class BookingSuccessPage extends StatelessWidget {
                 fontSize: 12,
                 color: _orange,
                 fontWeight: FontWeight.w800,
-                ),
+              ),
             ),
           ),
         ],
@@ -230,7 +204,7 @@ class BookingSuccessPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _InfoRow(label: '上门时间', value: estimatedTime),
+          const _InfoRow(label: '上门时间', value: '待双方确认'),
           const SizedBox(height: 12),
           _InfoRow(label: '服务类型', value: tradeType),
           const SizedBox(height: 12),
@@ -312,62 +286,13 @@ class BookingSuccessPage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       child: SafeArea(
         top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => WorkerChatPage(workerName: workerName),
-                  ),
-                ),
-                child: Container(
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(23),
-                    border: Border.all(color: _green, width: 1),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    '联系师傅',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _green,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('请在“我的预约”中取消真实预约')),
-                  );
-                },
-                child: Container(
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F2EF),
-                    borderRadius: BorderRadius.circular(23),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Text(
-                    '取消预约',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: _textMid,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
+        child: FilledButton(
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(46),
+            backgroundColor: _orange,
+          ),
+          child: const Text('完成'),
         ),
       ),
     );

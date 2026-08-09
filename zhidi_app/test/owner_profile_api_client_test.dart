@@ -28,6 +28,8 @@ void main() {
                 'phone': '13800138000',
                 'name': null,
                 'city': '上海',
+                'avatarUrl': '/uploads/owner-avatar/user-1.png',
+                'gender': 'FEMALE',
                 'decorationType': null,
                 'address': null,
                 'area': 89.5,
@@ -53,6 +55,8 @@ void main() {
       expect(profile.phone, '13800138000');
       expect(profile.name, isNull);
       expect(profile.city, '上海');
+      expect(profile.avatarUrl, '/uploads/owner-avatar/user-1.png');
+      expect(profile.gender, 'FEMALE');
       expect(profile.decorationType, isNull);
       expect(profile.address, isNull);
       expect(profile.area, 89.5);
@@ -60,7 +64,7 @@ void main() {
     },
   );
 
-  test('PUT sends exactly five editable fields and parses response', () async {
+  test('PUT sends all editable profile fields and parses response', () async {
     late http.Request captured;
     final client = OwnerProfileApiClient(
       baseUrl: baseUrl,
@@ -75,6 +79,8 @@ void main() {
               'phone': '13800138000',
               'name': '李女士',
               'city': '杭州',
+              'avatarUrl': '/uploads/owner-avatar/user-1.webp',
+              'gender': 'FEMALE',
               'decorationType': '新房装修',
               'address': '西湖区',
               'area': 120,
@@ -92,6 +98,8 @@ void main() {
       const OwnerProfileUpdate(
         name: '李女士',
         city: '杭州',
+        avatarUrl: '/uploads/owner-avatar/user-1.webp',
+        gender: 'FEMALE',
         decorationType: '新房装修',
         address: '西湖区',
         area: 120.0,
@@ -109,6 +117,8 @@ void main() {
     expect(jsonDecode(captured.body), {
       'name': '李女士',
       'city': '杭州',
+      'avatarUrl': '/uploads/owner-avatar/user-1.webp',
+      'gender': 'FEMALE',
       'decorationType': '新房装修',
       'address': '西湖区',
       'area': 120.0,
@@ -206,7 +216,7 @@ void main() {
     );
   });
 
-  for (final missingField in ['name', 'area']) {
+  for (final missingField in ['name', 'avatarUrl', 'gender', 'area']) {
     test(
       'maps OK data missing nullable $missingField to INVALID_RESPONSE',
       () async {
@@ -215,6 +225,8 @@ void main() {
           'phone': '13800138000',
           'name': null,
           'city': '上海',
+          'avatarUrl': null,
+          'gender': null,
           'decorationType': null,
           'address': null,
           'area': null,
@@ -259,6 +271,8 @@ void main() {
         const OwnerProfileUpdate(
           name: privateName,
           city: '北京',
+          avatarUrl: null,
+          gender: null,
           decorationType: null,
           address: null,
           area: null,

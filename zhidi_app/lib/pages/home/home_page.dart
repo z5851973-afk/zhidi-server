@@ -7,13 +7,11 @@ import '../../app/owner_app_state.dart';
 import '../../models/renovation.dart';
 import '../../widgets/home/top_bar.dart';
 import 'my_home_page.dart';
-import '../chat/chat_page.dart';
 import '../message/message_page.dart';
 import '../renovation/renovation_budget_report_page.dart';
 import '../renovation/trade_select_page.dart';
 import 'worker/worker_list_page.dart';
 import 'worker/candidate_picker_page.dart';
-import 'master_selection_page.dart';
 import '../price/price_transparency_page.dart';
 import '../renovation/construction_guarantee_page.dart';
 import '../renovation/fund_bank_escrow_page.dart';
@@ -22,16 +20,23 @@ import '../profile/profile_page.dart';
 import '../auth/login_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({super.key, this.profilePageBuilder});
+
+  final Widget Function(int refreshEpoch)? profilePageBuilder;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
+  static const _notificationRefreshInterval = Duration(seconds: 8);
+
   int _currentTab = 0;
   int _myHomeRefreshEpoch = 0;
+  int _profileRefreshEpoch = 0;
   OwnerAppState? _appState;
+  Timer? _notificationRefreshTimer;
+  Future<void>? _notificationRefreshInFlight;
 
   @override
   void didChangeDependencies() {
@@ -40,17 +45,28 @@ class _HomePageState extends State<HomePage> {
     if (_appState == nextState) return;
     _appState?.removeListener(_handleOwnerStateChanged);
     _appState = nextState..addListener(_handleOwnerStateChanged);
+    if (nextState.isLoggedIn) {
+      _startNotificationRefreshTimer();
+      unawaited(_refreshNotifications(nextState));
+    }
   }
 
   @override
   void dispose() {
     _appState?.removeListener(_handleOwnerStateChanged);
+    _notificationRefreshTimer?.cancel();
     super.dispose();
   }
 
   void _handleOwnerStateChanged() {
     final appState = _appState;
     if (!mounted || appState == null) return;
+    if (appState.isLoggedIn) {
+      _startNotificationRefreshTimer();
+    } else {
+      _notificationRefreshTimer?.cancel();
+      _notificationRefreshTimer = null;
+    }
     if (!appState.isLoggedIn && _currentTab != 0) {
       setState(() => _currentTab = 0);
     }
@@ -71,10 +87,43 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _currentTab = index;
       if (index == 1) _myHomeRefreshEpoch++;
+      if (index == 3) _profileRefreshEpoch++;
     });
     if (index == 2) {
-      unawaited(appState.fetchRemoteBookings());
+      unawaited(_refreshNotifications(appState));
     }
+  }
+
+  Future<void> _refreshNotifications(OwnerAppState state) async {
+    final inFlight = _notificationRefreshInFlight;
+    if (inFlight != null) return inFlight;
+    final operation = () async {
+      await state.fetchRemoteBookings();
+      try {
+        await state.fetchRemoteBusinessEvents();
+      } catch (_) {
+        // 事件流保留游标，下一轮前台轮询会继续追赶。
+      }
+      await state.fetchRemoteBusinessNotifications();
+    }();
+    _notificationRefreshInFlight = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_notificationRefreshInFlight, operation)) {
+        _notificationRefreshInFlight = null;
+      }
+    }
+  }
+
+  void _startNotificationRefreshTimer() {
+    _notificationRefreshTimer ??= Timer.periodic(_notificationRefreshInterval, (
+      _,
+    ) {
+      final state = _appState;
+      if (!mounted || state == null || !state.isLoggedIn) return;
+      unawaited(_refreshNotifications(state));
+    });
   }
 
   @override
@@ -91,7 +140,8 @@ class _HomePageState extends State<HomePage> {
           // 2: 消息
           const MessagePage(),
           // 3: 我的
-          const ProfilePage(),
+          widget.profilePageBuilder?.call(_profileRefreshEpoch) ??
+              ProfilePage(refreshEpoch: _profileRefreshEpoch),
         ],
       ),
 
@@ -1134,12 +1184,9 @@ class HomeRequirementHub extends StatelessWidget {
   }
 
   void _openBudgetFlow(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            _NewHomeRenovationFlowPage(scene: _ServiceRow.newHomeScene),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const TradeSelectPage()));
   }
 
   void _openPriceTransparency(BuildContext context) {
@@ -1172,7 +1219,7 @@ class HomeRequirementHub extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Column(
         children: [
-          // ── Hero: 3分钟匹配合适工人 ──
+          // ── Hero: 按工种查看师傅资料 ──
           _HeroSection(onMatch: () => _onMatch(context)),
           const SizedBox(height: 14),
           _TrustFlowCard(
@@ -1194,7 +1241,7 @@ class HomeRequirementHub extends StatelessWidget {
   }
 }
 
-// ── Hero: 3分钟匹配合适工人（主卡片 + 数据统计条）──
+// ── Hero: 按工种查看师傅资料（主卡片 + 数据统计条）──
 class _HeroSection extends StatelessWidget {
   final VoidCallback onMatch;
   const _HeroSection({required this.onMatch});
@@ -1358,7 +1405,7 @@ class _HeroStatsPanel extends StatelessWidget {
   }
 }
 
-// ── "3 分钟" 数字行（独立组件，const优化）──
+// ── "10 秒" 数字行 ──
 class _LeftNumber extends StatelessWidget {
   const _LeftNumber();
   @override
@@ -1366,11 +1413,11 @@ class _LeftNumber extends StatelessWidget {
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerLeft,
-      child: Row(
+      child: const Row(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          const Text(
+          Text(
             '10',
             style: TextStyle(
               fontSize: 44,
@@ -1379,8 +1426,8 @@ class _LeftNumber extends StatelessWidget {
               height: 1,
             ),
           ),
-          const SizedBox(width: 2),
-          const Padding(
+          SizedBox(width: 2),
+          Padding(
             padding: EdgeInsets.only(bottom: 3),
             child: Text(
               '秒',
@@ -1850,15 +1897,15 @@ class _ServiceRow extends StatelessWidget {
   ];
 
   void _openConsultant(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ChatPage(workerName: 'AI装修顾问')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('平台咨询暂未开放')));
   }
 
   void _openScene(BuildContext context, _ServiceScene scene) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => _ServiceSceneFlowPage(scene: scene)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('该服务暂未开放，请先按工种查看资料完整师傅')));
   }
 
   @override
@@ -2117,6 +2164,15 @@ class _ServiceSceneCopy extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
+        const Text(
+          '暂未开放',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: ZdColors.primary,
+          ),
+        ),
+        const SizedBox(height: 4),
         Text(
           scene.subtitle,
           maxLines: 3,
@@ -2132,6 +2188,8 @@ class _ServiceSceneCopy extends StatelessWidget {
   }
 }
 
+// Retained as an inert draft while every service-card entry is disabled.
+// ignore: unused_element
 class _ServiceSceneFlowPage extends StatelessWidget {
   const _ServiceSceneFlowPage({required this.scene});
 
@@ -2581,9 +2639,7 @@ class _TrustRow extends StatelessWidget {
                 title: '师傅严选',
                 sub: '5重审核机制',
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const MasterSelectionPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const TradeSelectPage()),
                 ),
               ),
             ),

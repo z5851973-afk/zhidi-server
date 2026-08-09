@@ -7,13 +7,18 @@ import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.inspection.InspectionNode;
 import com.zhidi.server.inspection.InspectionNodeRepository;
 import com.zhidi.server.inspection.InspectionNodeStatus;
+import com.zhidi.server.inspection.InspectionTradeMatcher;
 import com.zhidi.server.quote.Quote;
 import com.zhidi.server.quote.QuoteItem;
 import com.zhidi.server.quote.QuoteRepository;
 import com.zhidi.server.quote.QuoteStatus;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
@@ -29,18 +34,24 @@ public class PaymentOrderService {
 	private final InspectionNodeRepository inspectionNodes;
 	private final SettlementRepository settlements;
 	private final WarrantyRetentionRepository warrantyRetentions;
+	private final WorkerWarrantyAccountService workerWarrantyAccounts;
+	private final PaymentReferenceClaimRepository paymentReferenceClaims;
 
 	public PaymentOrderService(PaymentOrderRepository paymentOrders,
 			BookingRepository bookings, QuoteRepository quotes,
 			InspectionNodeRepository inspectionNodes,
 			SettlementRepository settlements,
-			WarrantyRetentionRepository warrantyRetentions) {
+			WarrantyRetentionRepository warrantyRetentions,
+			WorkerWarrantyAccountService workerWarrantyAccounts,
+			PaymentReferenceClaimRepository paymentReferenceClaims) {
 		this.paymentOrders = paymentOrders;
 		this.bookings = bookings;
 		this.quotes = quotes;
 		this.inspectionNodes = inspectionNodes;
 		this.settlements = settlements;
 		this.warrantyRetentions = warrantyRetentions;
+		this.workerWarrantyAccounts = workerWarrantyAccounts;
+		this.paymentReferenceClaims = paymentReferenceClaims;
 	}
 
 	@Transactional
@@ -54,16 +65,17 @@ public class PaymentOrderService {
 				"NOT_OWNER", "只有业主才能创建支付订单");
 		}
 
-		if (booking.getStatus() != BookingStatus.HIRED) {
+		if (booking.getStatus() != BookingStatus.HIRED
+				&& booking.getStatus() != BookingStatus.COMPLETED) {
 			throw new BusinessException(HttpStatus.CONFLICT,
-				"INVALID_STATUS", "只有在 HIRED 状态下才能创建支付订单");
+				"INVALID_STATUS", "只有施工中或验收完成的预约才能创建支付订单");
 		}
 
 		List<InspectionNode> nodes =
 			inspectionNodes.findByBookingIdOrderBySortOrderAsc(bookingId);
 		List<InspectionNode> tradeNodes =
 			nodes.stream()
-				.filter(node -> matchesBookingTrade(node, booking.getTrade()))
+				.filter(node -> InspectionTradeMatcher.matches(node, booking.getTrade()))
 				.toList();
 		if (tradeNodes.isEmpty()) {
 			throw new BusinessException(HttpStatus.CONFLICT,
@@ -98,43 +110,11 @@ public class PaymentOrderService {
 				"INVALID_AMOUNT", "报价总价必须大于 0");
 		}
 
-		PaymentOrder order = PaymentOrder.createOffline(
+		PaymentOrder order = PaymentOrder.createSplitOffline(
 			booking.getId(), ownerUserId, booking.getWorkerUserId(),
 			acceptedQuote.getId(), total);
 
 		return PaymentOrderResponse.from(paymentOrders.saveAndFlush(order));
-	}
-
-	private boolean matchesBookingTrade(InspectionNode node, String bookingTrade) {
-		String tradeLabel = normalizeTradeLabel(bookingTrade);
-		String nodeName = normalizeTradeLabel(node.getName());
-		return nodeName.equals(tradeLabel + "验收") || nodeName.startsWith(tradeLabel);
-	}
-
-	private String normalizeTradeLabel(String value) {
-		if (value == null || value.trim().isEmpty()) {
-			return "工种";
-		}
-		String trimmed = value.trim();
-		return switch (trimmed) {
-			case "demolition", "拆除师傅", "拆除验收" -> "拆除";
-			case "plumbing", "水电师傅", "水电验收" -> "水电";
-			case "masonry", "泥瓦师傅", "泥瓦验收", "泥工", "泥工验收" -> "泥瓦";
-			case "waterproof", "防水师傅", "防水验收" -> "防水";
-			case "carpentry", "木工师傅", "木工验收" -> "木工";
-			case "painting", "油漆师傅", "油漆验收" -> "油漆";
-			case "installation", "安装师傅", "安装验收" -> "安装";
-			case "cleaning", "保洁师傅", "保洁验收" -> "保洁";
-			default -> {
-				if (trimmed.endsWith("师傅")) {
-					yield trimmed.substring(0, trimmed.length() - "师傅".length());
-				}
-				if (trimmed.endsWith("验收")) {
-					yield trimmed.substring(0, trimmed.length() - "验收".length());
-				}
-				yield trimmed;
-			}
-		};
 	}
 
 	@Transactional
@@ -144,6 +124,10 @@ public class PaymentOrderService {
 		if (!order.getOwnerUserId().equals(ownerUserId)) {
 			throw new BusinessException(HttpStatus.FORBIDDEN,
 				"NOT_OWNER", "只有业主才能报告付款");
+		}
+		if (order.getFundingModel() != PaymentFundingModel.LEGACY_OWNER_RETENTION) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"PAYMENT_FLOW_MISMATCH", "新订单请使用两笔线下付款流程");
 		}
 		if (order.getStatus() == PaymentOrderStatus.OWNER_REPORTED_PAID) {
 			return PaymentOrderResponse.from(order);
@@ -168,6 +152,10 @@ public class PaymentOrderService {
 			throw new BusinessException(HttpStatus.FORBIDDEN,
 				"NOT_WORKER", "只有接单工人才能确认收款");
 		}
+		if (order.getFundingModel() != PaymentFundingModel.LEGACY_OWNER_RETENTION) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"PAYMENT_FLOW_MISMATCH", "新订单请分别确认工程款");
+		}
 		if (order.getStatus() == PaymentOrderStatus.PAID
 				&& order.getWorkerConfirmedReceivedAt() != null) {
 			return PaymentOrderResponse.from(order);
@@ -184,7 +172,6 @@ public class PaymentOrderService {
 				saved.getWorkerUserId(), saved.getBookingId(), saved.getId(),
 				saved.getWorkerSettlement());
 			settlement.markSettleable();
-			settlement.markSettled();
 			settlements.saveAndFlush(settlement);
 		}
 		if (saved.getWarrantyRetention().compareTo(BigDecimal.ZERO) > 0
@@ -196,6 +183,165 @@ public class PaymentOrderService {
 		}
 		return PaymentOrderResponse.from(saved);
 	}
+
+	@Transactional
+	public PaymentOrderResponse reportSplitOfflinePayments(UUID ownerUserId,
+			UUID orderId, String constructionChannel,
+			String constructionReference, String platformFeeChannel,
+			String platformFeeReference, String note) {
+		PaymentOrder order = findVisibleOrderForUpdate(ownerUserId, orderId);
+		if (!order.getOwnerUserId().equals(ownerUserId)) {
+			throw new BusinessException(HttpStatus.FORBIDDEN,
+				"NOT_OWNER", "只有业主才能报告付款");
+		}
+		if (order.getFundingModel() != PaymentFundingModel.OFFLINE_SPLIT_V2) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"PAYMENT_FLOW_MISMATCH", "该订单不使用两笔线下付款流程");
+		}
+		try {
+			order.validateSplitOfflinePaymentReport(
+				constructionChannel, constructionReference,
+				platformFeeChannel, platformFeeReference);
+		} catch (IllegalArgumentException ex) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_PAYMENT_REPORT", ex.getMessage());
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		boolean constructionCanChange = order.canReportConstructionPayment();
+		boolean platformFeeCanChange = order.canReportPlatformFee();
+		String effectiveConstructionReference = constructionCanChange
+			? normalizeReference(constructionReference)
+			: order.getConstructionPaymentReference();
+		String effectivePlatformFeeReference = platformFeeCanChange
+			? normalizeReference(platformFeeReference)
+			: order.getPlatformFeeReference();
+		if (effectiveConstructionReference != null
+				&& effectiveConstructionReference.equals(effectivePlatformFeeReference)) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"DUPLICATE_PAYMENT_REFERENCE", "两笔付款不能使用相同交易参考号");
+		}
+		List<PendingReferenceClaim> pendingClaims = new ArrayList<>(2);
+		if (constructionCanChange && effectiveConstructionReference != null) {
+			pendingClaims.add(new PendingReferenceClaim(
+				effectiveConstructionReference,
+				PaymentReferenceComponent.CONSTRUCTION));
+		}
+		if (platformFeeCanChange && effectivePlatformFeeReference != null) {
+			pendingClaims.add(new PendingReferenceClaim(
+				effectivePlatformFeeReference,
+				PaymentReferenceComponent.PLATFORM_FEE));
+		}
+		pendingClaims.sort(Comparator
+			.comparing((PendingReferenceClaim claim) ->
+				claim.reference().toLowerCase(Locale.ROOT))
+			.thenComparing(PendingReferenceClaim::reference));
+		for (PendingReferenceClaim pendingClaim : pendingClaims) {
+			claimReference(pendingClaim.reference(), orderId,
+				pendingClaim.component());
+		}
+		try {
+			order.reportSplitOfflinePayments(
+				constructionChannel, constructionReference,
+				platformFeeChannel, platformFeeReference, note);
+		} catch (IllegalArgumentException ex) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_PAYMENT_REPORT", ex.getMessage());
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		PaymentOrder saved = paymentOrders.saveAndFlush(order);
+		createWarrantyContributionWhenPaid(saved);
+		return PaymentOrderResponse.from(saved);
+	}
+
+	@Transactional
+	public PaymentOrderResponse confirmConstructionReceipt(UUID workerUserId,
+			UUID orderId) {
+		PaymentOrder order = findVisibleOrderForUpdate(workerUserId, orderId);
+		if (!order.getWorkerUserId().equals(workerUserId)) {
+			throw new BusinessException(HttpStatus.FORBIDDEN,
+				"NOT_WORKER", "只有接单工人才能确认工程款");
+		}
+		if (order.getFundingModel() != PaymentFundingModel.OFFLINE_SPLIT_V2) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"PAYMENT_FLOW_MISMATCH", "该订单不使用两笔线下付款流程");
+		}
+		try {
+			order.confirmConstructionReceipt();
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		PaymentOrder saved = paymentOrders.saveAndFlush(order);
+		createWarrantyContributionWhenPaid(saved);
+		return PaymentOrderResponse.from(saved);
+	}
+
+	@Transactional
+	public PaymentOrderResponse verifyPlatformFee(UUID adminUserId, UUID orderId,
+			boolean approved, String reason) {
+		PaymentOrder order = paymentOrders.findByIdForUpdate(orderId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在"));
+		if (order.getFundingModel() != PaymentFundingModel.OFFLINE_SPLIT_V2) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"PAYMENT_FLOW_MISMATCH", "该订单不使用两笔线下付款流程");
+		}
+		try {
+			order.verifyPlatformFee(approved, adminUserId, reason);
+		} catch (IllegalArgumentException ex) {
+			throw new BusinessException(HttpStatus.BAD_REQUEST,
+				"INVALID_PLATFORM_FEE_VERIFICATION", ex.getMessage());
+		} catch (IllegalStateException ex) {
+			throw new BusinessException(HttpStatus.CONFLICT,
+				"INVALID_STATUS", ex.getMessage());
+		}
+		PaymentOrder saved = paymentOrders.saveAndFlush(order);
+		createWarrantyContributionWhenPaid(saved);
+		return PaymentOrderResponse.from(saved);
+	}
+
+	@Transactional(readOnly = true)
+	public Page<PaymentOrderResponse> listForAdmin(
+			PaymentComponentStatus platformFeeStatus, Pageable pageable) {
+		Page<PaymentOrder> page = platformFeeStatus == null
+			? paymentOrders.findAll(pageable)
+			: paymentOrders.findByPlatformFeeStatus(platformFeeStatus, pageable);
+		return page.map(PaymentOrderResponse::from);
+	}
+
+	private void claimReference(String reference, UUID orderId,
+			PaymentReferenceComponent component) {
+		String normalized = normalizeReference(reference);
+		if (normalized == null) return;
+		PaymentReferenceClaim existing = paymentReferenceClaims.findById(normalized)
+			.orElse(null);
+		if (existing != null) {
+			if (existing.belongsTo(orderId, component)) return;
+			throw referenceAlreadyUsed();
+		}
+		try {
+			paymentReferenceClaims.saveAndFlush(
+				PaymentReferenceClaim.create(normalized, orderId, component));
+		} catch (DataIntegrityViolationException ex) {
+			throw referenceAlreadyUsed();
+		}
+	}
+
+	private static String normalizeReference(String reference) {
+		return reference == null || reference.isBlank() ? null : reference.trim();
+	}
+
+	private static BusinessException referenceAlreadyUsed() {
+		return new BusinessException(HttpStatus.CONFLICT,
+			"PAYMENT_REFERENCE_ALREADY_USED", "交易参考号已用于其他付款组件");
+	}
+
+	private record PendingReferenceClaim(String reference,
+			PaymentReferenceComponent component) {}
 
 	@Transactional(readOnly = true)
 	public PaymentOrderResponse getOrder(UUID userId, UUID orderId) {
@@ -254,5 +400,26 @@ public class PaymentOrderService {
 				"ORDER_NOT_FOUND", "支付订单不存在");
 		}
 		return order;
+	}
+
+	private PaymentOrder findVisibleOrderForUpdate(UUID userId, UUID orderId) {
+		PaymentOrder order = paymentOrders.findByIdForUpdate(orderId)
+			.orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在"));
+		if (!order.getOwnerUserId().equals(userId)
+				&& !order.getWorkerUserId().equals(userId)) {
+			throw new BusinessException(HttpStatus.NOT_FOUND,
+				"ORDER_NOT_FOUND", "支付订单不存在");
+		}
+		return order;
+	}
+
+	private void createWarrantyContributionWhenPaid(PaymentOrder order) {
+		if (order.getFundingModel() == PaymentFundingModel.OFFLINE_SPLIT_V2
+				&& order.getStatus() == PaymentOrderStatus.PAID) {
+			workerWarrantyAccounts.createContributionForPaidOrder(
+				order.getWorkerUserId(), order.getId(), order.getBookingId(),
+				order.getQuoteAmount());
+		}
 	}
 }

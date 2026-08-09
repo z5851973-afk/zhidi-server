@@ -223,9 +223,9 @@
         <div class="row">
           <select id="afterSaleStatus" style="width:180px">
             <option value="">全部状态</option>
-            <option value="OPEN">待处理</option>
+            <option value="OPEN">待平台受理</option>
             <option value="PLATFORM_PROCESSING">平台处理中</option>
-            <option value="RESOLVED">已解决</option>
+            <option value="RESOLVED">已解决 · 待关闭</option>
             <option value="CLOSED">已关闭</option>
           </select>
           <button class="btn secondary" id="refreshAfterSales">刷新</button>
@@ -247,22 +247,43 @@
           </table>
         </div>
         <aside class="panel side">
-          <h3>处理售后</h3>
-          <p class="hint">选择左侧工单后填写处理结果。扣减金额可留空；填写后会从该预约对应质保金中扣减并写回售后单。</p>
+          <h3>售后闭环处理</h3>
+          <p class="hint">按“受理 → 回复 → 解决 → 关闭”依次处理。按钮只在当前状态允许操作时启用，避免跳过受理直接结案。</p>
           <div class="field">
-            <label>当前工单</label>
+            <label for="selectedAfterSale">当前工单</label>
             <input id="selectedAfterSale" disabled placeholder="未选择" />
           </div>
           <div class="field">
-            <label>处理结果</label>
-            <textarea id="resolution" placeholder="例如：平台判定由师傅返修，扣减质保金 30 元"></textarea>
-          </div>
-          <div class="field">
-            <label>扣减质保金金额（可选）</label>
-            <input id="deduction" type="number" min="0.01" step="0.01" placeholder="例如 30.00" />
+            <label for="selectedAfterSaleStatus">当前状态</label>
+            <input id="selectedAfterSaleStatus" disabled aria-live="polite" placeholder="未选择" />
           </div>
           <div class="row" style="margin-top:16px">
-            <button class="btn" id="processAfterSale">提交处理</button>
+            <button class="btn" id="acceptAfterSale" disabled>1. 受理工单</button>
+          </div>
+          <div class="field">
+            <label for="afterSaleReply">平台回复</label>
+            <textarea id="afterSaleReply" disabled placeholder="例如：平台已联系双方，请师傅在三日内返修"></textarea>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn secondary" id="replyAfterSale" disabled>2. 回复双方</button>
+          </div>
+          <div class="field">
+            <label for="resolution">解决方案</label>
+            <textarea id="resolution" disabled placeholder="例如：平台判定由师傅返修，扣减履约质保金 30 元"></textarea>
+          </div>
+          <div class="field">
+            <label for="deduction">扣减质保金金额（可选）</label>
+            <input id="deduction" type="number" min="0.01" step="0.01" disabled placeholder="例如 30.00" />
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn" id="resolveAfterSale" disabled>3. 提交解决方案</button>
+          </div>
+          <div class="field">
+            <label for="afterSaleCloseContent">关闭说明</label>
+            <textarea id="afterSaleCloseContent" disabled placeholder="例如：双方已确认返修完成，关闭本工单"></textarea>
+          </div>
+          <div class="row" style="margin-top:12px">
+            <button class="btn green" id="closeAfterSale" disabled>4. 关闭工单</button>
           </div>
         </aside>
       </div>
@@ -420,6 +441,8 @@
     const state = {
       tab: 'afterSales',
       selectedAfterSaleId: '',
+      selectedAfterSaleStatus: '',
+      afterSaleActionPending: false,
       selectedRetentionId: '',
     };
 
@@ -465,7 +488,10 @@
     $('logResult').onchange = loadLogs;
     $('logAction').onkeydown = event => { if (event.key === 'Enter') loadLogs(); };
     $('logTargetType').onkeydown = event => { if (event.key === 'Enter') loadLogs(); };
-    $('processAfterSale').onclick = processAfterSale;
+    $('acceptAfterSale').onclick = acceptAfterSale;
+    $('replyAfterSale').onclick = replyAfterSale;
+    $('resolveAfterSale').onclick = resolveAfterSale;
+    $('closeAfterSale').onclick = closeAfterSale;
     $('deductRetention').onclick = deductRetention;
     $('releaseRetention').onclick = releaseRetention;
 
@@ -555,6 +581,7 @@
         $('metricOpenAfterSales').textContent = dashboard.openAfterSales ?? 0;
         $('metricPendingReceipts').textContent = dashboard.pendingWorkerReceipts ?? 0;
         $('metricHeldWarranty').textContent = `¥${money(dashboard.heldWarrantyAmount)}`;
+        return true;
       } catch (error) {
         $('metricTotalUsers').textContent = '!';
         $('metricNewUsers').textContent = '!';
@@ -563,6 +590,7 @@
         $('metricPendingReceipts').textContent = '!';
         $('metricHeldWarranty').textContent = '!';
         toast(`运营总览加载失败：${error.message}`);
+        return false;
       }
     }
 
@@ -575,8 +603,10 @@
         $('afterSalesBody').innerHTML = rows.length
           ? rows.map(afterSaleRow).join('')
           : `<tr><td colspan="5" class="empty">暂无售后工单</td></tr>`;
+        return true;
       } catch (error) {
         showTableError('afterSalesBody', error);
+        return false;
       }
     }
 
@@ -589,7 +619,7 @@
         <td><strong>${typeText(item.type)}</strong><br><span class="hint">${escapeHtml(item.reason || '')}</span></td>
         <td><span class="mono">${shortId(item.bookingId)}</span></td>
         <td>${deduction}<br><span class="mono">${shortId(item.warrantyRetentionId)}</span></td>
-        <td><button class="btn secondary" onclick="selectAfterSale('${item.id}')">处理</button></td>
+        <td><button class="btn secondary" onclick="selectAfterSale('${item.id}', '${item.status}')">处理</button></td>
       </tr>`;
     }
 
@@ -602,8 +632,10 @@
         $('retentionsBody').innerHTML = rows.length
           ? rows.map(retentionRow).join('')
           : `<tr><td colspan="5" class="empty">暂无质保金记录</td></tr>`;
+        return true;
       } catch (error) {
         showTableError('retentionsBody', error);
+        return false;
       }
     }
 
@@ -705,10 +737,21 @@
       </tr>`;
     }
 
-    window.selectAfterSale = (id) => {
+    window.selectAfterSale = (id, status) => {
+      if (state.afterSaleActionPending) {
+        return toast('当前操作处理中，请稍候');
+      }
+      if (state.selectedAfterSaleId !== id) {
+        clearAfterSaleDrafts();
+      }
       state.selectedAfterSaleId = id;
+      state.selectedAfterSaleStatus = status;
       $('selectedAfterSale').value = id;
-      $('resolution').focus();
+      $('selectedAfterSaleStatus').value = statusText(status);
+      syncAfterSaleActions();
+      if (status === 'OPEN') $('acceptAfterSale').focus();
+      if (status === 'PLATFORM_PROCESSING') $('afterSaleReply').focus();
+      if (status === 'RESOLVED') $('afterSaleCloseContent').focus();
     };
 
     window.selectRetention = (id) => {
@@ -717,25 +760,195 @@
       $('manualDeduction').focus();
     };
 
-    async function processAfterSale() {
-      if (!state.selectedAfterSaleId) return toast('请先选择售后工单');
-      const resolution = $('resolution').value.trim();
-      if (!resolution) return toast('请填写处理结果');
-      const amount = $('deduction').value.trim();
+    function afterSaleActionAvailability(status) {
+      return {
+        accept: status === 'OPEN',
+        reply: status === 'PLATFORM_PROCESSING',
+        resolve: status === 'PLATFORM_PROCESSING',
+        close: status === 'RESOLVED',
+      };
+    }
+
+    function syncAfterSaleActions() {
+      const actions = afterSaleActionAvailability(state.selectedAfterSaleStatus);
+      const pending = state.afterSaleActionPending;
+      $('acceptAfterSale').disabled = pending || !actions.accept;
+      $('replyAfterSale').disabled = pending || !actions.reply;
+      $('resolveAfterSale').disabled = pending || !actions.resolve;
+      $('closeAfterSale').disabled = pending || !actions.close;
+      $('afterSaleReply').disabled = pending || !actions.reply;
+      $('resolution').disabled = pending || !actions.resolve;
+      $('deduction').disabled = pending || !actions.resolve;
+      $('afterSaleCloseContent').disabled = pending || !actions.close;
+    }
+
+    function clearAfterSaleDrafts() {
+      $('afterSaleReply').value = '';
+      $('resolution').value = '';
+      $('deduction').value = '';
+      $('afterSaleCloseContent').value = '';
+    }
+
+    function beginAfterSaleAction(expected, actionText) {
+      if (state.afterSaleActionPending) return false;
+      if (!requireAfterSaleStatus(expected, actionText)) return false;
+      state.afterSaleActionPending = true;
+      syncAfterSaleActions();
+      return true;
+    }
+
+    function finishAfterSaleAction() {
+      state.afterSaleActionPending = false;
+      syncAfterSaleActions();
+    }
+
+    async function reportAfterSaleRefresh(successMessage, refreshTasks) {
+      const results = await Promise.all(refreshTasks.map(async task => {
+        try {
+          return await task() !== false;
+        } catch (error) {
+          return false;
+        }
+      }));
+      const suffix = results.every(Boolean)
+        ? ''
+        : '；数据刷新失败，请手动刷新';
+      toast(`${successMessage}${suffix}`);
+    }
+
+    function requireAfterSaleStatus(expected, actionText) {
+      if (!state.selectedAfterSaleId) {
+        toast('请先选择售后工单');
+        return false;
+      }
+      if (state.selectedAfterSaleStatus !== expected) {
+        toast(`当前状态不能${actionText}，请刷新工单后重试`);
+        return false;
+      }
+      return true;
+    }
+
+    function applyAfterSaleResult(result) {
+      if (result && result.status) {
+        state.selectedAfterSaleStatus = result.status;
+        $('selectedAfterSaleStatus').value = statusText(result.status);
+        syncAfterSaleActions();
+      }
+    }
+
+    async function acceptAfterSale() {
+      if (!beginAfterSaleAction('OPEN', '受理')) return;
       try {
-        await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/process`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            resolution,
-            warrantyDeductionAmount: amount ? Number(amount) : null,
-          }),
-        });
-        toast('售后已处理');
+        let result;
+        try {
+          result = await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/accept`, {
+            method: 'PUT',
+          });
+        } catch (error) {
+          toast(`受理失败：${error.message}`);
+          return;
+        }
+        applyAfterSaleResult(result);
+        await reportAfterSaleRefresh(
+          '售后工单已受理，可回复双方或提交解决方案',
+          [loadDashboard, loadAfterSales],
+        );
+      } finally {
+        finishAfterSaleAction();
+      }
+    }
+
+    async function replyAfterSale() {
+      if (!beginAfterSaleAction('PLATFORM_PROCESSING', '回复')) return;
+      const content = $('afterSaleReply').value.trim();
+      if (!content) {
+        finishAfterSaleAction();
+        return toast('请填写平台回复内容');
+      }
+      try {
+        try {
+          await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/events`, {
+            method: 'POST',
+            body: JSON.stringify({ content, evidenceUrls: [] }),
+          });
+        } catch (error) {
+          toast(`回复失败：${error.message}`);
+          return;
+        }
+        $('afterSaleReply').value = '';
+        await reportAfterSaleRefresh('平台回复已发送给双方', [loadAfterSales]);
+      } finally {
+        finishAfterSaleAction();
+      }
+    }
+
+    async function resolveAfterSale() {
+      if (!beginAfterSaleAction('PLATFORM_PROCESSING', '解决')) return;
+      const resolution = $('resolution').value.trim();
+      if (!resolution) {
+        finishAfterSaleAction();
+        return toast('请填写解决方案');
+      }
+      const amount = $('deduction').value.trim();
+      const deductionAmount = amount ? Number(amount) : null;
+      if (deductionAmount !== null
+          && (!Number.isFinite(deductionAmount) || deductionAmount <= 0)) {
+        finishAfterSaleAction();
+        return toast('质保金扣减金额必须大于 0');
+      }
+      if (amount && !/^\d+(?:\.\d{1,2})?$/.test(amount)) {
+        finishAfterSaleAction();
+        return toast('质保金扣减金额最多保留 2 位小数');
+      }
+      try {
+        let result;
+        try {
+          result = await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/resolve`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              resolution,
+              warrantyDeductionAmount: deductionAmount,
+            }),
+          });
+        } catch (error) {
+          toast(`解决失败：${error.message}`);
+          return;
+        }
+        applyAfterSaleResult(result);
         $('resolution').value = '';
         $('deduction').value = '';
-        await Promise.all([loadDashboard(), loadAfterSales(), loadRetentions()]);
-      } catch (error) {
-        toast(`处理失败：${error.message}`);
+        await reportAfterSaleRefresh(
+          '解决方案已提交，待确认后关闭工单',
+          [loadDashboard, loadAfterSales, loadRetentions],
+        );
+      } finally {
+        finishAfterSaleAction();
+      }
+    }
+
+    async function closeAfterSale() {
+      if (!beginAfterSaleAction('RESOLVED', '关闭')) return;
+      const content = $('afterSaleCloseContent').value.trim();
+      if (!content) {
+        finishAfterSaleAction();
+        return toast('请填写关闭说明');
+      }
+      try {
+        let result;
+        try {
+          result = await api(`/api/v1/admin/after-sales/${state.selectedAfterSaleId}/close`, {
+            method: 'PUT',
+            body: JSON.stringify({ content }),
+          });
+        } catch (error) {
+          toast(`关闭失败：${error.message}`);
+          return;
+        }
+        applyAfterSaleResult(result);
+        $('afterSaleCloseContent').value = '';
+        await reportAfterSaleRefresh('售后工单已关闭', [loadDashboard, loadAfterSales]);
+      } finally {
+        finishAfterSaleAction();
       }
     }
 
@@ -790,7 +1003,12 @@
     function shortId(id) { return id ? String(id).slice(0, 8) : '—'; }
     function money(value) { return Number(value || 0).toFixed(2); }
     function statusText(status) {
-      return { OPEN: '待处理', PLATFORM_PROCESSING: '平台处理中', RESOLVED: '已解决', CLOSED: '已关闭' }[status] || status;
+      return {
+        OPEN: '待平台受理',
+        PLATFORM_PROCESSING: '平台处理中',
+        RESOLVED: '已解决 · 待关闭',
+        CLOSED: '已关闭',
+      }[status] || status;
     }
     function retentionText(status) {
       return { HELD: '冻结中', RELEASED: '已释放', DEDUCTED: '已扣减' }[status] || status;

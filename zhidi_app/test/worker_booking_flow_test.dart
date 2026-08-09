@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/app/worker_app_scope.dart';
+import 'package:zhidi_app/app/worker_app_state.dart';
+import 'package:zhidi_app/models/house_info.dart';
 import 'package:zhidi_app/pages/home/worker/worker_detail_page.dart';
 import 'package:zhidi_app/pages/order/create_order_page.dart';
+import 'package:zhidi_app/pages/worker/worker_home_page.dart';
+import 'package:zhidi_app/services/worker_booking_api_client.dart';
 
 void main() {
-  testWidgets('local worker detail opens form and creates local appointment', (
+  testWidgets('legacy worker detail cannot create a local appointment', (
     tester,
   ) async {
     final state = await OwnerAppState.memory(store: MemoryOwnerStore());
@@ -25,21 +30,85 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('预约拆除师傅'));
+    await tester.tap(find.text('立即预约'));
     await tester.pumpAndSettle();
 
-    expect(find.byType(CreateOrderPage), findsOneWidget);
-    final fields = find.byType(TextFormField);
-    await tester.enterText(fields.at(0), '刘先生');
-    await tester.enterText(fields.at(1), '13800138000');
-    await tester.enterText(fields.at(2), '成都市高新区 1 号');
-    await tester.enterText(fields.at(3), '89');
-    await tester.enterText(fields.at(4), '拆除旧墙体');
-    await tester.tap(find.text('提交预约'));
-    await tester.pumpAndSettle();
-
-    expect(state.appointments, hasLength(1));
-    expect(state.appointments.single.workerName, '李师傅');
-    expect(state.appointments.single.customerName, '刘先生');
+    expect(find.byType(CreateOrderPage), findsNothing);
+    expect(state.appointments, isEmpty);
+    expect(find.text('请从“找师傅”选择真实师傅后预约'), findsOneWidget);
   });
+
+  testWidgets('pending worker card shows canonical house summary', (
+    tester,
+  ) async {
+    final state = await WorkerAppState.memory();
+    state.loginWithToken('worker-jwt');
+    final now = DateTime.utc(2026, 8, 9);
+    state.initBookingApi(
+      api: _SingleBookingApi(
+        RemoteWorkerBooking(
+          id: 'booking-house',
+          ownerUserId: 'owner-1',
+          ownerName: '林业主',
+          ownerPhone: '13800000000',
+          serviceRequestId: 'request-1',
+          workerUserId: 'worker-1',
+          workerName: '周师傅',
+          trade: 'painting',
+          serviceCity: '成都市',
+          houseInfo: const HouseInfo(
+            areaSqm: 98.5,
+            bedroomCount: 3,
+            livingRoomCount: 2,
+            kitchenCount: 1,
+            bathroomCount: 2,
+          ),
+          status: 'PENDING',
+          createdAt: now,
+          updatedAt: now,
+        ),
+      ),
+      accessToken: 'worker-jwt',
+    );
+    await state.fetchRemoteBookings();
+
+    await tester.pumpWidget(
+      WorkerAppScope(
+        state: state,
+        child: const MaterialApp(home: WorkerHomePage()),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('98.5㎡ · 3室2厅1厨2卫'), findsOneWidget);
+  });
+}
+
+final class _SingleBookingApi implements WorkerBookingApi {
+  const _SingleBookingApi(this.booking);
+  final RemoteWorkerBooking booking;
+
+  @override
+  Future<List<RemoteWorkerBooking>> listWorkerBookings(
+    String accessToken,
+  ) async => [booking];
+
+  @override
+  Future<RemoteWorkerBooking> acceptBooking(
+    String accessToken,
+    String bookingId,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<RemoteWorkerBooking> cancelBooking(
+    String accessToken,
+    String bookingId,
+    String reason,
+  ) => throw UnimplementedError();
+
+  @override
+  Future<RemoteWorkerBooking> rejectBooking(
+    String accessToken,
+    String bookingId,
+  ) => throw UnimplementedError();
 }

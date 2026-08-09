@@ -7,6 +7,9 @@ import '../../design/tokens.dart';
 import '../../services/worker_quote_api_client.dart';
 import '../../services/auth_api_client.dart';
 
+double _platformFeeFor(double quoteTotal) =>
+    double.parse((quoteTotal * 0.10).toStringAsFixed(2));
+
 class OwnerQuoteComparePage extends StatefulWidget {
   const OwnerQuoteComparePage({
     super.key,
@@ -29,18 +32,17 @@ class _OwnerQuoteComparePageState extends State<OwnerQuoteComparePage> {
   String? _error;
   bool _accepting = false;
   bool _loaded = false;
-  bool _escrowAcknowledged = false;
+  bool _selectionAcknowledged = false;
 
-  WorkerQuoteApiClient get _api =>
-      widget.quoteApi ?? WorkerQuoteApiClient();
+  WorkerQuoteApiClient get _api => widget.quoteApi ?? WorkerQuoteApiClient();
 
   Future<String?> _getToken() async {
     final state = OwnerAppScope.of(context);
     final token = await state.getAccessToken();
     if (token == null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('登录已过期，请重新登录')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('登录已过期，请重新登录')));
     }
     return token;
   }
@@ -107,18 +109,16 @@ class _OwnerQuoteComparePageState extends State<OwnerQuoteComparePage> {
       if (token == null) return;
       await _api.acceptQuote(token, quote.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('已选定 $workerName 师傅'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已选定 $workerName 师傅')));
         Navigator.pop(context, true);
       }
     } on AuthApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } finally {
       if (mounted) setState(() => _accepting = false);
@@ -151,63 +151,62 @@ class _OwnerQuoteComparePageState extends State<OwnerQuoteComparePage> {
       body: _accepting
           ? const Center(child: CircularProgressIndicator())
           : _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _error != null
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(_error!,
-                              style: const TextStyle(color: Colors.red)),
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: _loadQuotes,
-                            child: const Text('重试'),
-                          ),
-                        ],
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: _loadQuotes,
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            )
+          : _quotes.isEmpty
+          ? const Center(child: Text('暂无报价'))
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+              children: [
+                if (_quotes.length > 1)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: ZdColors.warningSoft,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      '多位师傅已报价，你可以逐张核对清单后再最终选人。',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: ZdColors.primaryDark,
+                        fontWeight: FontWeight.w700,
                       ),
-                    )
-                  : _quotes.isEmpty
-                      ? const Center(child: Text('暂无报价'))
-                      : ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-                          children: [
-                            if (_quotes.length > 1)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 12),
-                                padding: const EdgeInsets.all(14),
-                                decoration: BoxDecoration(
-                                  color: ZdColors.warningSoft,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  '多位师傅已报价，你可以逐张核对清单后再最终选人。',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: ZdColors.primaryDark,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                            ..._quotes.map((quote) {
-                              final isLowest = quote.totalPrice == lowest &&
-                                  _quotes.length > 1;
-                              return _QuoteCard(
-                                quote: quote,
-                                workerName: _displayWorkerName(quote),
-                                isLowest: isLowest,
-                                canSelect: _escrowAcknowledged,
-                                onSelect: () => _acceptQuote(quote),
-                              );
-                            }),
-                            _EscrowAgreementCard(
-                              value: _escrowAcknowledged,
-                              onChanged: (value) {
-                                setState(() => _escrowAcknowledged = value);
-                              },
-                            ),
-                          ],
-                        ),
+                    ),
+                  ),
+                ..._quotes.map((quote) {
+                  final isLowest =
+                      quote.totalPrice == lowest && _quotes.length > 1;
+                  return _QuoteCard(
+                    quote: quote,
+                    workerName: _displayWorkerName(quote),
+                    isLowest: isLowest,
+                    canSelect: _selectionAcknowledged,
+                    onSelect: () => _acceptQuote(quote),
+                  );
+                }),
+                _SelectionAgreementCard(
+                  value: _selectionAcknowledged,
+                  onChanged: (value) {
+                    setState(() => _selectionAcknowledged = value);
+                  },
+                ),
+              ],
+            ),
     );
   }
 }
@@ -256,6 +255,8 @@ class _QuoteSelectionConfirmationDialogState
 
   @override
   Widget build(BuildContext context) {
+    final platformFee = _platformFeeFor(widget.totalPrice);
+    final payableTotal = widget.totalPrice + platformFee;
     return AlertDialog(
       title: const Text('确认选人'),
       content: Column(
@@ -264,11 +265,22 @@ class _QuoteSelectionConfirmationDialogState
         children: [
           Text('师傅：${widget.workerName}'),
           const SizedBox(height: 6),
-          Text(
-            '报价：¥${widget.totalPrice.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.w700),
-          ),
+          _AmountRow(label: '报价总价', amount: widget.totalPrice),
+          const SizedBox(height: 6),
+          _AmountRow(label: '平台服务费（10%）', amount: platformFee),
+          const Divider(height: 18),
+          _AmountRow(label: '业主应付', amount: payableTotal, emphasized: true),
           const SizedBox(height: 12),
+          const Text(
+            '平台服务费在师傅报价之外另行收取，不从师傅报价中扣除。',
+            style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '本次操作只选择师傅和报价，不会发起付款或划转资金。',
+            style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+          ),
+          const SizedBox(height: 8),
           const Text(
             '选定后，其他候选预约和待处理报价将关闭。',
             style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
@@ -302,7 +314,7 @@ class _QuoteSelectionConfirmationDialogState
               backgroundColor: ZdColors.primary,
               foregroundColor: Colors.white,
             ),
-            child: Text(_holding ? '继续按住…' : '按住 2 秒确认'),
+            child: Text(_holding ? '继续按住…' : '按住 2 秒确认选择'),
           ),
         ),
       ],
@@ -327,6 +339,10 @@ class _QuoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final laborItems = quote.items.where((item) => !item.isMaterial).toList();
+    final materialItems = quote.items.where((item) => item.isMaterial).toList();
+    final platformFee = _platformFeeFor(quote.totalPrice);
+    final payableTotal = quote.totalPrice + platformFee;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -354,12 +370,9 @@ class _QuoteCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor:
-                    ZdColors.primary.withValues(alpha: 0.12),
+                backgroundColor: ZdColors.primary.withValues(alpha: 0.12),
                 child: Text(
-                  workerName.isNotEmpty
-                      ? workerName[0]
-                      : '师',
+                  workerName.isNotEmpty ? workerName[0] : '师',
                   style: const TextStyle(
                     color: ZdColors.primary,
                     fontWeight: FontWeight.w700,
@@ -396,8 +409,7 @@ class _QuoteCard extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color:
-                              ZdColors.success.withValues(alpha: 0.1),
+                          color: ZdColors.success.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: const Text(
@@ -417,9 +429,7 @@ class _QuoteCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                    color: isLowest
-                        ? ZdColors.success
-                        : ZdColors.textPrimary,
+                  color: isLowest ? ZdColors.success : ZdColors.textPrimary,
                 ),
               ),
             ],
@@ -428,141 +438,22 @@ class _QuoteCard extends StatelessWidget {
           const Divider(height: 1),
           const SizedBox(height: 10),
           if (quote.items.isNotEmpty) ...[
-            Table(
-              columnWidths: const {
-                0: FlexColumnWidth(3),
-                1: FlexColumnWidth(1),
-                2: FlexColumnWidth(1),
-                3: FlexColumnWidth(1.5),
-              },
-              defaultVerticalAlignment:
-                  TableCellVerticalAlignment.middle,
-              children: [
-                TableRow(
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: Colors.grey.shade200,
-                      ),
-                    ),
-                  ),
-                  children: const [
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Text('项目',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: ZdColors.textSecondary,
-                          )),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Text('单价',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: ZdColors.textSecondary,
-                          )),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Text('数量',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: ZdColors.textSecondary,
-                          )),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.only(bottom: 6),
-                      child: Text('小计',
-                          textAlign: TextAlign.end,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: ZdColors.textSecondary,
-                          )),
-                    ),
-                  ],
-                ),
-                ...quote.items.map(
-                  (item) => TableRow(
-                    children: [
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          item.name ?? '',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: ZdColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '¥${(item.unitPrice ?? 0).toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: ZdColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '${(item.quantity ?? 0).toStringAsFixed(0)}${item.unit ?? ''}',
-                          style: const TextStyle(
-                            fontSize: 13,
-                            color: ZdColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(
-                          '¥${(item.subtotal ?? 0).toStringAsFixed(2)}',
-                          textAlign: TextAlign.end,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: ZdColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            if (laborItems.isNotEmpty)
+              _QuoteItemsSection(title: '人工明细', items: laborItems),
+            if (materialItems.isNotEmpty) ...[
+              if (laborItems.isNotEmpty) const SizedBox(height: 12),
+              _QuoteItemsSection(title: '材料明细', items: materialItems),
+            ],
             const Divider(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const Text(
-                  '合计 ',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: ZdColors.textSecondary,
-                  ),
-                ),
-                Text(
-                  '¥${quote.totalPrice.toStringAsFixed(2)}',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: isLowest
-                        ? ZdColors.success
-                        : ZdColors.textPrimary,
-                  ),
-                ),
-              ],
+            _AmountRow(label: '报价总价', amount: quote.totalPrice),
+            const SizedBox(height: 6),
+            _AmountRow(label: '平台服务费（10%）', amount: platformFee),
+            const Divider(height: 16),
+            _AmountRow(
+              label: '业主应付',
+              amount: payableTotal,
+              emphasized: true,
+              amountColor: isLowest ? ZdColors.success : ZdColors.primary,
             ),
           ],
           const SizedBox(height: 12),
@@ -571,22 +462,16 @@ class _QuoteCard extends StatelessWidget {
             child: ElevatedButton(
               onPressed: canSelect ? onSelect : null,
               style: ElevatedButton.styleFrom(
-                backgroundColor: isLowest
-                    ? ZdColors.success
-                    : ZdColors.primary,
+                backgroundColor: isLowest ? ZdColors.success : ZdColors.primary,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               child: const Text(
-                '确认下单并托管',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+                '确认选择该师傅',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ),
           ),
@@ -596,11 +481,158 @@ class _QuoteCard extends StatelessWidget {
   }
 }
 
-class _EscrowAgreementCard extends StatelessWidget {
-  const _EscrowAgreementCard({
-    required this.value,
-    required this.onChanged,
+class _QuoteItemsSection extends StatelessWidget {
+  const _QuoteItemsSection({required this.title, required this.items});
+
+  final String title;
+  final List<RemoteQuoteItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            color: ZdColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Table(
+          columnWidths: const {
+            0: FlexColumnWidth(2.5),
+            1: FlexColumnWidth(1.25),
+            2: FlexColumnWidth(1.25),
+            3: FlexColumnWidth(1.5),
+          },
+          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+          children: [
+            const TableRow(
+              children: [
+                _QuoteTableHeader('项目'),
+                _QuoteTableHeader('单价'),
+                _QuoteTableHeader('数量'),
+                _QuoteTableHeader('小计', alignEnd: true),
+              ],
+            ),
+            ...items.map(
+              (item) => TableRow(
+                children: [
+                  _QuoteTableCell(item.name ?? ''),
+                  _QuoteTableCell(
+                    '¥${(item.unitPrice ?? 0).toStringAsFixed(0)}',
+                    secondary: true,
+                  ),
+                  _QuoteTableCell(
+                    '${(item.quantity ?? 0).toStringAsFixed(0)}${item.unit ?? ''}',
+                  ),
+                  _QuoteTableCell(
+                    '¥${(item.subtotal ?? 0).toStringAsFixed(2)}',
+                    alignEnd: true,
+                    bold: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _QuoteTableHeader extends StatelessWidget {
+  const _QuoteTableHeader(this.text, {this.alignEnd = false});
+
+  final String text;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Text(
+      text,
+      textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+      style: const TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: ZdColors.textSecondary,
+      ),
+    ),
+  );
+}
+
+class _QuoteTableCell extends StatelessWidget {
+  const _QuoteTableCell(
+    this.text, {
+    this.secondary = false,
+    this.alignEnd = false,
+    this.bold = false,
   });
+
+  final String text;
+  final bool secondary;
+  final bool alignEnd;
+  final bool bold;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Text(
+      text,
+      textAlign: alignEnd ? TextAlign.end : TextAlign.start,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: bold ? FontWeight.w600 : FontWeight.w400,
+        color: secondary ? ZdColors.textSecondary : ZdColors.textPrimary,
+      ),
+    ),
+  );
+}
+
+class _AmountRow extends StatelessWidget {
+  const _AmountRow({
+    required this.label,
+    required this.amount,
+    this.emphasized = false,
+    this.amountColor,
+  });
+
+  final String label;
+  final double amount;
+  final bool emphasized;
+  final Color? amountColor;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: emphasized ? 15 : 13,
+            fontWeight: emphasized ? FontWeight.w800 : FontWeight.w500,
+            color: emphasized ? ZdColors.textPrimary : ZdColors.textSecondary,
+          ),
+        ),
+      ),
+      Text(
+        '¥${amount.toStringAsFixed(2)}',
+        style: TextStyle(
+          fontSize: emphasized ? 19 : 14,
+          fontWeight: emphasized ? FontWeight.w800 : FontWeight.w600,
+          color: amountColor ?? ZdColors.textPrimary,
+        ),
+      ),
+    ],
+  );
+}
+
+class _SelectionAgreementCard extends StatelessWidget {
+  const _SelectionAgreementCard({required this.value, required this.onChanged});
 
   final bool value;
   final ValueChanged<bool> onChanged;
@@ -619,7 +651,7 @@ class _EscrowAgreementCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '托管方式',
+            '选人确认',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w800,
@@ -628,7 +660,7 @@ class _EscrowAgreementCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '平台托管（验收通过后再付款）',
+            '确认后将选定该师傅和对应报价。此操作不会发起付款或划转资金。',
             style: TextStyle(fontSize: 14, color: ZdColors.textSecondary),
           ),
           const SizedBox(height: 10),
@@ -639,7 +671,7 @@ class _EscrowAgreementCard extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               controlAffinity: ListTileControlAffinity.leading,
               title: const Text(
-                '已阅读并同意《平台服务协议》',
+                '我已核对师傅、报价明细和总价',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,

@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/house_info.dart';
+
 import 'auth_api_client.dart';
 
 abstract interface class OwnerBookingApi {
@@ -53,7 +55,10 @@ final class OwnerBookingApiClient implements OwnerBookingApi {
 
   @override
   Future<RemoteOwnerBooking> cancelBooking(
-      String accessToken, String bookingId, String reason) async {
+    String accessToken,
+    String bookingId,
+    String reason,
+  ) async {
     final response = await _post(
       '/api/v1/owners/me/bookings/$bookingId/cancel',
       accessToken,
@@ -62,10 +67,7 @@ final class OwnerBookingApiClient implements OwnerBookingApi {
     return _parseBooking(response);
   }
 
-  Future<http.Response> _get(
-    String path,
-    String accessToken,
-  ) async {
+  Future<http.Response> _get(String path, String accessToken) async {
     final request = http.Request('GET', baseUrl.resolve(path))
       ..headers.addAll({
         'accept': 'application/json',
@@ -125,6 +127,7 @@ final class OwnerBookingApiClient implements OwnerBookingApi {
 final class OwnerBookingCreateRequest {
   const OwnerBookingCreateRequest({
     required this.workerUserId,
+    required this.houseInfo,
     this.trade,
     this.serviceCity,
     this.serviceAddress,
@@ -132,6 +135,7 @@ final class OwnerBookingCreateRequest {
   });
 
   final String workerUserId;
+  final HouseInfo houseInfo;
   final String? trade;
   final String? serviceCity;
   final String? serviceAddress;
@@ -139,6 +143,7 @@ final class OwnerBookingCreateRequest {
 
   Map<String, dynamic> toJson() => {
     'workerUserId': workerUserId,
+    ...houseInfo.toJson(),
     'trade': trade,
     'serviceCity': serviceCity,
     'serviceAddress': serviceAddress,
@@ -157,10 +162,15 @@ final class RemoteOwnerBooking {
     required this.serviceCity,
     required this.serviceAddress,
     required this.remark,
+    this.houseInfo,
     required this.status,
     this.cancelledBy,
     this.cancelReason,
     this.cancelledAt,
+    this.proposedTime,
+    this.scheduledVisitAt,
+    this.onSiteAt,
+    this.actualOnSiteAt,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -176,11 +186,29 @@ final class RemoteOwnerBooking {
       serviceCity: _requiredString(json, 'serviceCity'),
       serviceAddress: _nullableString(json, 'serviceAddress'),
       remark: _nullableString(json, 'remark'),
+      houseInfo: HouseInfo.tryFromJson(json),
       status: _requiredString(json, 'status'),
       cancelledBy: _nullableString(json, 'cancelledBy'),
       cancelReason: _nullableString(json, 'cancelReason'),
       cancelledAt: json['cancelledAt'] != null
           ? DateTime.parse(json['cancelledAt']).toUtc()
+          : null,
+      proposedTime: json['proposedTime'] != null
+          ? DateTime.parse(json['proposedTime']).toUtc()
+          : null,
+      scheduledVisitAt: json['scheduledVisitAt'] != null
+          ? DateTime.parse(json['scheduledVisitAt']).toUtc()
+          : _hasAgreedVisitTime(_requiredString(json, 'status')) &&
+                json['proposedTime'] != null
+          ? DateTime.parse(json['proposedTime']).toUtc()
+          : null,
+      onSiteAt: json['onSiteAt'] != null
+          ? DateTime.parse(json['onSiteAt']).toUtc()
+          : null,
+      actualOnSiteAt: json['actualOnSiteAt'] != null
+          ? DateTime.parse(json['actualOnSiteAt']).toUtc()
+          : json['onSiteAt'] != null
+          ? DateTime.parse(json['onSiteAt']).toUtc()
           : null,
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
@@ -196,10 +224,15 @@ final class RemoteOwnerBooking {
   final String serviceCity;
   final String? serviceAddress;
   final String? remark;
+  final HouseInfo? houseInfo;
   final String status;
   final String? cancelledBy;
   final String? cancelReason;
   final DateTime? cancelledAt;
+  final DateTime? proposedTime;
+  final DateTime? scheduledVisitAt;
+  final DateTime? onSiteAt;
+  final DateTime? actualOnSiteAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 }
@@ -243,9 +276,10 @@ List<RemoteOwnerBooking> _parseBookingList(http.Response response) {
   }
   try {
     return data
-        .map((e) => RemoteOwnerBooking.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ))
+        .map(
+          (e) =>
+              RemoteOwnerBooking.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
         .toList();
   } on FormatException {
     throw AuthApiException(
@@ -310,3 +344,14 @@ String? _nullableString(Map<String, dynamic> json, String key) {
   }
   return value as String?;
 }
+
+bool _hasAgreedVisitTime(String status) => switch (status) {
+  'VISIT_SCHEDULED' ||
+  'ARRIVAL_PENDING' ||
+  'ON_SITE' ||
+  'QUOTE_PENDING' ||
+  'READY_TO_START' ||
+  'HIRED' ||
+  'COMPLETED' => true,
+  _ => false,
+};

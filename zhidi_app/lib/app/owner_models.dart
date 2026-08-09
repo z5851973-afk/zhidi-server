@@ -5,6 +5,8 @@ class OwnerProfile {
     required this.name,
     required this.city,
     this.phone = '',
+    this.avatarUrl,
+    this.gender,
     this.decorationType,
     this.address,
     this.area,
@@ -12,39 +14,46 @@ class OwnerProfile {
   final String name;
   final String city;
   final String phone;
+  final String? avatarUrl;
+  final String? gender;
   final String? decorationType;
   final String? address;
   final double? area;
 
   bool get isProfileComplete =>
-      name.isNotEmpty &&
-      (decorationType != null && decorationType!.isNotEmpty) &&
-      (address != null && address!.isNotEmpty) &&
-      area != null;
+      name.trim().isNotEmpty && city.trim().isNotEmpty;
 
   OwnerProfile copyWith({
     String? name,
     String? city,
     String? phone,
+    Object? avatarUrl = _notProvided,
+    Object? gender = _notProvided,
     Object? decorationType = _notProvided,
     Object? address = _notProvided,
     Object? area = _notProvided,
-  }) =>
-      OwnerProfile(
-        name: name ?? this.name,
-        city: city ?? this.city,
-        phone: phone ?? this.phone,
-        decorationType: identical(decorationType, _notProvided)
-            ? this.decorationType
-            : decorationType as String?,
-        address:
-            identical(address, _notProvided) ? this.address : address as String?,
-        area: identical(area, _notProvided) ? this.area : area as double?,
-      );
+  }) => OwnerProfile(
+    name: name ?? this.name,
+    city: city ?? this.city,
+    phone: phone ?? this.phone,
+    avatarUrl: identical(avatarUrl, _notProvided)
+        ? this.avatarUrl
+        : avatarUrl as String?,
+    gender: identical(gender, _notProvided) ? this.gender : gender as String?,
+    decorationType: identical(decorationType, _notProvided)
+        ? this.decorationType
+        : decorationType as String?,
+    address: identical(address, _notProvided)
+        ? this.address
+        : address as String?,
+    area: identical(area, _notProvided) ? this.area : area as double?,
+  );
   Map<String, dynamic> toJson() => {
     'name': name,
     'city': city,
     'phone': phone,
+    if (avatarUrl != null) 'avatarUrl': avatarUrl,
+    if (gender != null) 'gender': gender,
     if (decorationType != null) 'decorationType': decorationType,
     if (address != null) 'address': address,
     if (area != null) 'area': area,
@@ -53,6 +62,8 @@ class OwnerProfile {
     name: json['name'] as String,
     city: json['city'] as String,
     phone: json['phone'] as String? ?? '',
+    avatarUrl: json['avatarUrl'] as String?,
+    gender: json['gender'] as String?,
     decorationType: json['decorationType'] as String?,
     address: json['address'] as String?,
     area: (json['area'] as num?)?.toDouble(),
@@ -64,47 +75,78 @@ class OwnerAddress {
     required this.id,
     required this.recipient,
     required this.phone,
+    this.province = '',
     required this.city,
     required this.district,
     required this.detail,
     this.isDefault = false,
+    this.createdAt,
+    this.updatedAt,
   });
-  final String id, recipient, phone, city, district, detail;
+  final String id, recipient, phone, province, city, district, detail;
   final bool isDefault;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  String get fullAddress => [
+    province,
+    city,
+    district,
+    detail,
+  ].map((part) => part.trim()).where((part) => part.isNotEmpty).join();
   OwnerAddress copyWith({
     String? id,
     String? recipient,
     String? phone,
+    String? province,
     String? city,
     String? district,
     String? detail,
     bool? isDefault,
+    Object? createdAt = _notProvided,
+    Object? updatedAt = _notProvided,
   }) => OwnerAddress(
     id: id ?? this.id,
     recipient: recipient ?? this.recipient,
     phone: phone ?? this.phone,
+    province: province ?? this.province,
     city: city ?? this.city,
     district: district ?? this.district,
     detail: detail ?? this.detail,
     isDefault: isDefault ?? this.isDefault,
+    createdAt: identical(createdAt, _notProvided)
+        ? this.createdAt
+        : createdAt as DateTime?,
+    updatedAt: identical(updatedAt, _notProvided)
+        ? this.updatedAt
+        : updatedAt as DateTime?,
   );
   Map<String, dynamic> toJson() => {
     'id': id,
     'recipient': recipient,
     'phone': phone,
+    'province': province,
     'city': city,
     'district': district,
     'detail': detail,
     'isDefault': isDefault,
+    if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
+    if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
   };
   factory OwnerAddress.fromJson(Map<String, dynamic> j) => OwnerAddress(
     id: j['id'] as String,
     recipient: j['recipient'] as String,
     phone: j['phone'] as String,
+    province: j['province'] as String? ?? '',
     city: j['city'] as String,
     district: j['district'] as String,
     detail: j['detail'] as String,
     isDefault: j['isDefault'] as bool? ?? false,
+    createdAt: j['createdAt'] == null
+        ? null
+        : DateTime.parse(j['createdAt'] as String),
+    updatedAt: j['updatedAt'] == null
+        ? null
+        : DateTime.parse(j['updatedAt'] as String),
   );
 }
 
@@ -203,10 +245,26 @@ class OwnerMessage {
     required this.category,
     required this.createdAt,
     this.isRead = false,
+    this.eventType,
+    this.bookingId,
+    this.serviceRequestId,
+    this.paymentOrderId,
+    this.targetAction,
+    this.serverEventId,
+    this.aggregateType,
+    this.aggregateId,
   });
   final String id, title, content, category;
   final DateTime createdAt;
   final bool isRead;
+  final String? eventType;
+  final String? bookingId;
+  final String? serviceRequestId;
+  final String? paymentOrderId;
+  final String? targetAction;
+  final String? serverEventId;
+  final String? aggregateType;
+  final String? aggregateId;
   OwnerMessage copyWith({
     String? id,
     String? title,
@@ -214,6 +272,14 @@ class OwnerMessage {
     String? category,
     DateTime? createdAt,
     bool? isRead,
+    String? eventType,
+    String? bookingId,
+    String? serviceRequestId,
+    String? paymentOrderId,
+    String? targetAction,
+    String? serverEventId,
+    String? aggregateType,
+    String? aggregateId,
   }) => OwnerMessage(
     id: id ?? this.id,
     title: title ?? this.title,
@@ -221,6 +287,14 @@ class OwnerMessage {
     category: category ?? this.category,
     createdAt: createdAt ?? this.createdAt,
     isRead: isRead ?? this.isRead,
+    eventType: eventType ?? this.eventType,
+    bookingId: bookingId ?? this.bookingId,
+    serviceRequestId: serviceRequestId ?? this.serviceRequestId,
+    paymentOrderId: paymentOrderId ?? this.paymentOrderId,
+    targetAction: targetAction ?? this.targetAction,
+    serverEventId: serverEventId ?? this.serverEventId,
+    aggregateType: aggregateType ?? this.aggregateType,
+    aggregateId: aggregateId ?? this.aggregateId,
   );
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -229,6 +303,14 @@ class OwnerMessage {
     'category': category,
     'createdAt': createdAt.toIso8601String(),
     'isRead': isRead,
+    if (eventType != null) 'eventType': eventType,
+    if (bookingId != null) 'bookingId': bookingId,
+    if (serviceRequestId != null) 'serviceRequestId': serviceRequestId,
+    if (paymentOrderId != null) 'paymentOrderId': paymentOrderId,
+    if (targetAction != null) 'targetAction': targetAction,
+    if (serverEventId != null) 'serverEventId': serverEventId,
+    if (aggregateType != null) 'aggregateType': aggregateType,
+    if (aggregateId != null) 'aggregateId': aggregateId,
   };
   factory OwnerMessage.fromJson(Map<String, dynamic> j) => OwnerMessage(
     id: j['id'] as String,
@@ -237,6 +319,14 @@ class OwnerMessage {
     category: j['category'] as String,
     createdAt: DateTime.parse(j['createdAt'] as String),
     isRead: j['isRead'] as bool? ?? false,
+    eventType: j['eventType'] as String?,
+    bookingId: j['bookingId'] as String?,
+    serviceRequestId: j['serviceRequestId'] as String?,
+    paymentOrderId: j['paymentOrderId'] as String?,
+    targetAction: j['targetAction'] as String?,
+    serverEventId: j['serverEventId'] as String?,
+    aggregateType: j['aggregateType'] as String?,
+    aggregateId: j['aggregateId'] as String?,
   );
 }
 
@@ -292,8 +382,11 @@ class QuoteLineItem {
   double get subtotal => unitPrice * quantity;
 
   Map<String, dynamic> toJson() => {
-    'name': name, 'categoryName': categoryName,
-    'unitPrice': unitPrice, 'unit': unit, 'quantity': quantity,
+    'name': name,
+    'categoryName': categoryName,
+    'unitPrice': unitPrice,
+    'unit': unit,
+    'quantity': quantity,
   };
   factory QuoteLineItem.fromJson(Map<String, dynamic> j) => QuoteLineItem(
     name: j['name'] as String,
@@ -320,7 +413,9 @@ class SavedQuote {
   final DateTime savedAt;
 
   Map<String, dynamic> toJson() => {
-    'id': id, 'workerName': workerName, 'tradeName': tradeName,
+    'id': id,
+    'workerName': workerName,
+    'tradeName': tradeName,
     'items': items.map((e) => e.toJson()).toList(),
     'grandTotal': grandTotal,
     'savedAt': savedAt.toIso8601String(),
@@ -444,15 +539,14 @@ class ChatMessage {
     String? text,
     bool? isMe,
     DateTime? createdAt,
-  }) =>
-      ChatMessage(
-        id: id ?? this.id,
-        workerId: workerId ?? this.workerId,
-        workerName: workerName ?? this.workerName,
-        text: text ?? this.text,
-        isMe: isMe ?? this.isMe,
-        createdAt: createdAt ?? this.createdAt,
-      );
+  }) => ChatMessage(
+    id: id ?? this.id,
+    workerId: workerId ?? this.workerId,
+    workerName: workerName ?? this.workerName,
+    text: text ?? this.text,
+    isMe: isMe ?? this.isMe,
+    createdAt: createdAt ?? this.createdAt,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -551,22 +645,21 @@ class BookedWorker {
     String? status,
     DateTime? bookedAt,
     double? distance,
-  }) =>
-      BookedWorker(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        trade: trade ?? this.trade,
-        phaseName: phaseName ?? this.phaseName,
-        phaseIndex: phaseIndex ?? this.phaseIndex,
-        rating: rating ?? this.rating,
-        completedOrders: completedOrders ?? this.completedOrders,
-        years: years ?? this.years,
-        avatarEmoji: avatarEmoji ?? this.avatarEmoji,
-        skills: skills ?? this.skills,
-        status: status ?? this.status,
-        bookedAt: bookedAt ?? this.bookedAt,
-        distance: distance ?? this.distance,
-      );
+  }) => BookedWorker(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    trade: trade ?? this.trade,
+    phaseName: phaseName ?? this.phaseName,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    rating: rating ?? this.rating,
+    completedOrders: completedOrders ?? this.completedOrders,
+    years: years ?? this.years,
+    avatarEmoji: avatarEmoji ?? this.avatarEmoji,
+    skills: skills ?? this.skills,
+    status: status ?? this.status,
+    bookedAt: bookedAt ?? this.bookedAt,
+    distance: distance ?? this.distance,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -596,7 +689,9 @@ class BookedWorker {
     avatarEmoji: j['avatarEmoji'] as String,
     skills: List<String>.from(j['skills'] as List),
     status: j['status'] as String? ?? '已接单待上门',
-    bookedAt: j['bookedAt'] != null ? DateTime.parse(j['bookedAt'] as String) : null,
+    bookedAt: j['bookedAt'] != null
+        ? DateTime.parse(j['bookedAt'] as String)
+        : null,
     distance: (j['distance'] as num?)?.toDouble() ?? 0,
   );
 }
@@ -627,15 +722,14 @@ class DailyReport {
     List<String>? imagePaths,
     String? note,
     int? phaseIndex,
-  }) =>
-      DailyReport(
-        id: id ?? this.id,
-        workerId: workerId ?? this.workerId,
-        date: clearDate ? null : (date ?? this.date),
-        imagePaths: imagePaths ?? this.imagePaths,
-        note: note ?? this.note,
-        phaseIndex: phaseIndex ?? this.phaseIndex,
-      );
+  }) => DailyReport(
+    id: id ?? this.id,
+    workerId: workerId ?? this.workerId,
+    date: clearDate ? null : (date ?? this.date),
+    imagePaths: imagePaths ?? this.imagePaths,
+    note: note ?? this.note,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -690,17 +784,18 @@ class InspectionRequest {
     InspectionStatus? status,
     bool clearInspectorNote = false,
     String? inspectorNote,
-  }) =>
-      InspectionRequest(
-        id: id ?? this.id,
-        workerId: workerId ?? this.workerId,
-        workerName: workerName ?? this.workerName,
-        phaseName: phaseName ?? this.phaseName,
-        phaseIndex: phaseIndex ?? this.phaseIndex,
-        requestedAt: requestedAt ?? this.requestedAt,
-        status: status ?? this.status,
-        inspectorNote: clearInspectorNote ? null : (inspectorNote ?? this.inspectorNote),
-      );
+  }) => InspectionRequest(
+    id: id ?? this.id,
+    workerId: workerId ?? this.workerId,
+    workerName: workerName ?? this.workerName,
+    phaseName: phaseName ?? this.phaseName,
+    phaseIndex: phaseIndex ?? this.phaseIndex,
+    requestedAt: requestedAt ?? this.requestedAt,
+    status: status ?? this.status,
+    inspectorNote: clearInspectorNote
+        ? null
+        : (inspectorNote ?? this.inspectorNote),
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -713,19 +808,20 @@ class InspectionRequest {
     'inspectorNote': inspectorNote,
   };
 
-  factory InspectionRequest.fromJson(Map<String, dynamic> j) => InspectionRequest(
-    id: j['id'] as String,
-    workerId: j['workerId'] as String,
-    workerName: j['workerName'] as String,
-    phaseName: j['phaseName'] as String,
-    phaseIndex: j['phaseIndex'] as int,
-    requestedAt: DateTime.parse(j['requestedAt'] as String),
-    status: InspectionStatus.values.firstWhere(
-      (s) => s.name == j['status'],
-      orElse: () => InspectionStatus.pending,
-    ),
-    inspectorNote: j['inspectorNote'] as String?,
-  );
+  factory InspectionRequest.fromJson(Map<String, dynamic> j) =>
+      InspectionRequest(
+        id: j['id'] as String,
+        workerId: j['workerId'] as String,
+        workerName: j['workerName'] as String,
+        phaseName: j['phaseName'] as String,
+        phaseIndex: j['phaseIndex'] as int,
+        requestedAt: DateTime.parse(j['requestedAt'] as String),
+        status: InspectionStatus.values.firstWhere(
+          (s) => s.name == j['status'],
+          orElse: () => InspectionStatus.pending,
+        ),
+        inspectorNote: j['inspectorNote'] as String?,
+      );
 }
 
 // ── 装修档案 ──
@@ -776,21 +872,26 @@ class RenovationArchive {
     'avatarEmoji': avatarEmoji,
   };
 
-  factory RenovationArchive.fromJson(Map<String, dynamic> j) => RenovationArchive(
-    id: j['id'] as String,
-    phaseName: j['phaseName'] as String,
-    phaseIndex: j['phaseIndex'] as int,
-    workerName: j['workerName'] as String,
-    trade: j['trade'] as String,
-    completedAt: DateTime.parse(j['completedAt'] as String),
-    startedAt: j['startedAt'] != null ? DateTime.parse(j['startedAt'] as String) : null,
-    rating: (j['rating'] as num?)?.toDouble(),
-    skills: List<String>.from((j['skills'] as List<dynamic>?) ?? []),
-    photoUrls: List<String>.from((j['photoUrls'] as List<dynamic>?) ?? []),
-    dailyNotes: List<String>.from((j['dailyNotes'] as List<dynamic>?) ?? []),
-    inspectionNote: j['inspectionNote'] as String?,
-    avatarEmoji: j['avatarEmoji'] as String?,
-  );
+  factory RenovationArchive.fromJson(Map<String, dynamic> j) =>
+      RenovationArchive(
+        id: j['id'] as String,
+        phaseName: j['phaseName'] as String,
+        phaseIndex: j['phaseIndex'] as int,
+        workerName: j['workerName'] as String,
+        trade: j['trade'] as String,
+        completedAt: DateTime.parse(j['completedAt'] as String),
+        startedAt: j['startedAt'] != null
+            ? DateTime.parse(j['startedAt'] as String)
+            : null,
+        rating: (j['rating'] as num?)?.toDouble(),
+        skills: List<String>.from((j['skills'] as List<dynamic>?) ?? []),
+        photoUrls: List<String>.from((j['photoUrls'] as List<dynamic>?) ?? []),
+        dailyNotes: List<String>.from(
+          (j['dailyNotes'] as List<dynamic>?) ?? [],
+        ),
+        inspectionNote: j['inspectionNote'] as String?,
+        avatarEmoji: j['avatarEmoji'] as String?,
+      );
 }
 
 // ============================================================
@@ -828,7 +929,8 @@ class MaterialItem {
 
   double get totalPrice => quantity * unitPrice;
 
-  String get categoryLabel => category == MaterialCategory.auxiliary ? '辅料' : '主材';
+  String get categoryLabel =>
+      category == MaterialCategory.auxiliary ? '辅料' : '主材';
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -964,7 +1066,8 @@ class MaterialEstimate {
     'status': status.name,
     'selectedItemIds': selectedItemIds.toList(),
     if (orderedAt != null) 'orderedAt': orderedAt!.toIso8601String(),
-    if (estimatedDelivery != null) 'estimatedDelivery': estimatedDelivery!.toIso8601String(),
+    if (estimatedDelivery != null)
+      'estimatedDelivery': estimatedDelivery!.toIso8601String(),
   };
 
   factory MaterialEstimate.fromJson(Map<String, dynamic> j) => MaterialEstimate(
@@ -982,7 +1085,9 @@ class MaterialEstimate {
     selectedItemIds: Set<String>.from(
       (j['selectedItemIds'] as List<dynamic>?)?.map((e) => e as String) ?? [],
     ),
-    orderedAt: j['orderedAt'] != null ? DateTime.parse(j['orderedAt'] as String) : null,
+    orderedAt: j['orderedAt'] != null
+        ? DateTime.parse(j['orderedAt'] as String)
+        : null,
     estimatedDelivery: j['estimatedDelivery'] != null
         ? DateTime.parse(j['estimatedDelivery'] as String)
         : null,

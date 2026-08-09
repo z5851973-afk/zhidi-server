@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -50,9 +52,11 @@ public class InspectionController {
 	@PreAuthorize("hasRole('WORKER')")
 	public ApiResponse<InspectionNodeResponse> requestInspection(
 			@PathVariable UUID nodeId,
-			@AuthenticationPrincipal CurrentUserPrincipal principal) {
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@RequestBody(required = false) InspectionSubmissionRequest request) {
 		return ApiResponse.ok(
-			inspectionService.requestInspection(principal.userId(), nodeId),
+			inspectionService.requestInspection(principal.userId(), nodeId,
+				request == null ? InspectionSubmissionRequest.empty() : request),
 			traceId());
 	}
 
@@ -73,6 +77,25 @@ public class InspectionController {
 			@PathVariable UUID nodeId) {
 		return ApiResponse.ok(
 			inspectionService.getRecords(principal.userId(), nodeId), traceId());
+	}
+
+	@GetMapping("/inspection-nodes/{nodeId}/timeline")
+	public ApiResponse<List<InspectionTimelineResponse>> getTimeline(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID nodeId) {
+		return ApiResponse.ok(
+			inspectionService.getTimeline(principal.userId(), nodeId), traceId());
+	}
+
+	@PostMapping(value = "/inspection-nodes/{nodeId}/evidence",
+		consumes = "multipart/form-data")
+	@PreAuthorize("hasAnyRole('OWNER', 'WORKER')")
+	public ApiResponse<InspectionEvidenceUploadResponse> uploadEvidence(
+			@PathVariable UUID nodeId,
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@RequestParam("file") MultipartFile file) {
+		return ApiResponse.ok(inspectionService.uploadEvidence(
+			principal.userId(), nodeId, file), traceId());
 	}
 
 	private String traceId() {

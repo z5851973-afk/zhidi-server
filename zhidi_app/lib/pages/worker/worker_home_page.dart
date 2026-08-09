@@ -14,13 +14,19 @@ import '../../design/components.dart';
 import '../../models/chat_models.dart';
 import '../../services/auth_api_client.dart';
 import '../../services/chat_api_client.dart';
+import '../../services/payment_api_client.dart';
+import '../../services/inspection_api_client.dart';
+import '../../services/upload_api_client.dart';
+import '../../services/worker_quote_api_client.dart';
 import '../chat/chat_detail_page.dart';
+import '../home/owner_after_sale_page.dart';
 import 'order_detail_page.dart';
 import 'daily_report_page.dart';
 import 'inspection_page.dart';
 import 'worker_profile_page.dart';
-import 'worker_earnings_page.dart';
 import 'worker_login_page.dart';
+import 'worker_settlement_page.dart';
+import 'worker_after_sale_page.dart';
 
 // ── 设计常量 ──
 const _primary = ZdColors.primary;
@@ -32,10 +38,31 @@ const _bg = ZdColors.background;
 const _cardBg = Colors.white;
 const _success = ZdColors.success;
 
+enum _PaymentTargetAvailability {
+  available,
+  unavailable,
+  temporarilyUnavailable,
+}
+
+enum _BusinessTargetAvailability {
+  available,
+  unavailable,
+  temporarilyUnavailable,
+}
+
 class WorkerHomePage extends StatefulWidget {
-  const WorkerHomePage({super.key, this.chatApi});
+  const WorkerHomePage({
+    super.key,
+    this.chatApi,
+    this.paymentApi,
+    this.quoteApi,
+    this.inspectionApi,
+  });
 
   final ChatApi? chatApi;
+  final PaymentApiClient? paymentApi;
+  final WorkerQuoteApiClient? quoteApi;
+  final InspectionApi? inspectionApi;
 
   @override
   State<WorkerHomePage> createState() => _WorkerHomePageState();
@@ -60,14 +87,16 @@ class _WorkerHomePageState extends State<WorkerHomePage>
     super.didChangeDependencies();
     if (_fetched) return;
     _fetched = true;
-    unawaited(WorkerAppScope.of(context).connectBackend());
+    final state = WorkerAppScope.of(context);
+    state.initInspectionApi(widget.inspectionApi ?? InspectionApiClient());
+    unawaited(state.connectBackend());
     _startRemoteRefreshTimer();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      unawaited(WorkerAppScope.of(context).fetchRemoteBookings());
+      unawaited(WorkerAppScope.of(context).refreshRemoteData());
     }
   }
 
@@ -83,7 +112,7 @@ class _WorkerHomePageState extends State<WorkerHomePage>
       if (!mounted) return;
       final state = WorkerAppScope.of(context);
       if (state.isLoggedIn) {
-        unawaited(state.fetchRemoteBookings());
+        unawaited(state.refreshRemoteData());
       }
     });
   }
@@ -91,10 +120,8 @@ class _WorkerHomePageState extends State<WorkerHomePage>
   @override
   Widget build(BuildContext context) {
     final state = WorkerAppScope.of(context);
-    final earnings = state.totalEarnings;
-    final pendingAmount = state.earnings
-        .where((e) => e.status == EarningSettlementStatus.pending)
-        .fold<double>(0, (s, e) => s + e.amount);
+    final settleableAmount = state.remoteSettleableAmount;
+    final warrantyAmount = state.remoteWarrantyRetentionAmount;
 
     return Scaffold(
       backgroundColor: _bg,
@@ -102,7 +129,11 @@ class _WorkerHomePageState extends State<WorkerHomePage>
         child: Column(
           children: [
             // 顶部收入概览卡片
-            _buildEarningsBar(earnings, pendingAmount),
+            _buildEarningsBar(
+              settleableAmount,
+              warrantyAmount,
+              independentWarrantyAccount: state.hasRemoteWorkerWarrantyAccount,
+            ),
             Expanded(
               child: IndexedStack(
                 index: _tabIndex,
@@ -111,8 +142,15 @@ class _WorkerHomePageState extends State<WorkerHomePage>
                   _MessagesTab(
                     state: state,
                     chatApi: widget.chatApi ?? ChatApiClient(),
+                    paymentApi: widget.paymentApi,
+                    quoteApi: widget.quoteApi,
+                    inspectionApi: widget.inspectionApi,
                   ),
-                  _ProfileTab(state: state),
+                  _ProfileTab(
+                    state: state,
+                    onOpenSettlement: _openSettlement,
+                    paymentApi: widget.paymentApi,
+                  ),
                 ],
               ),
             ),
@@ -213,60 +251,96 @@ class _WorkerHomePageState extends State<WorkerHomePage>
     );
   }
 
-  Widget _buildEarningsBar(double total, double pending) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZdSpacing.lg,
-        vertical: ZdSpacing.md,
+  Future<void> _openSettlement() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WorkerSettlementPage(
+          paymentApi: widget.paymentApi,
+          quoteApi: widget.quoteApi,
+        ),
       ),
-      decoration: const BoxDecoration(color: _cardBg),
-      child: Row(
-        children: [
-          Expanded(
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    gradient: ZdColors.gradientPrimary,
-                    borderRadius: BorderRadius.circular(ZdRadius.sm),
-                  ),
-                  child: const Icon(
-                    Icons.account_balance_wallet,
-                    color: Colors.white,
-                    size: 18,
-                  ),
-                ),
-                const SizedBox(width: ZdSpacing.md),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    );
+    if (mounted) {
+      await WorkerAppScope.of(context).fetchRemotePayments();
+    }
+  }
+
+  Widget _buildEarningsBar(
+    double settleable,
+    double warranty, {
+    required bool independentWarrantyAccount,
+  }) {
+    return Material(
+      color: _cardBg,
+      child: InkWell(
+        onTap: _openSettlement,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: ZdSpacing.lg,
+            vertical: ZdSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Row(
                   children: [
-                    Text('今日收入', style: ZdText.tiny),
-                    Text(
-                      '¥${total.toStringAsFixed(0)}',
-                      style: ZdText.title.copyWith(color: _primary),
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        gradient: ZdColors.gradientPrimary,
+                        borderRadius: BorderRadius.circular(ZdRadius.sm),
+                      ),
+                      child: const Icon(
+                        Icons.account_balance_wallet,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: ZdSpacing.md),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('可结算', style: ZdText.tiny),
+                        Text(
+                          '¥${settleable.toStringAsFixed(0)}',
+                          style: ZdText.title.copyWith(color: _primary),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
-            ),
-          ),
-          Container(width: 1, height: 32, color: _divider),
-          const SizedBox(width: ZdSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('待结算', style: ZdText.tiny),
-                Text(
-                  '¥${pending.toStringAsFixed(0)}',
-                  style: ZdText.subtitle.copyWith(color: _textDark),
+              ),
+              Container(width: 1, height: 32, color: _divider),
+              const SizedBox(width: ZdSpacing.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      independentWarrantyAccount ? '履约质保金' : '质保金',
+                      style: ZdText.tiny,
+                    ),
+                    Text(
+                      '¥${warranty.toStringAsFixed(0)}',
+                      style: ZdText.subtitle.copyWith(color: _textDark),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: ZdSpacing.sm),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('收入明细', style: ZdText.tiny.copyWith(color: _textMid)),
+                  const SizedBox(width: 2),
+                  const Icon(Icons.chevron_right, size: 16, color: _textLight),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -429,10 +503,9 @@ class _PendingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _infoRow(
-                  Icons.home_outlined,
-                  '${order.requirement}（${order.area}）',
-                ),
+                _infoRow(Icons.home_outlined, _formatRequirement(order)),
+                const SizedBox(height: 6),
+                _infoRow(Icons.square_foot, order.houseSummary),
                 const SizedBox(height: 6),
                 _infoRow(Icons.location_on_outlined, order.ownerAddress),
               ],
@@ -488,13 +561,26 @@ class _PendingCard extends StatelessWidget {
                       if (state.isRemoteOrder(order.id)) {
                         final ok = await state.acceptRemoteBooking(order.id);
                         if (!context.mounted) return;
+                        final errorMessage = state.remoteBookingError;
+                        final warrantyBlocked =
+                            !ok && errorMessage?.contains('履约质保金待补足') == true;
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              ok
-                                  ? '接单成功，请提出上门时间'
-                                  : state.remoteBookingError ?? '接单失败，请重试',
+                              ok ? '接单成功，请提出上门时间' : errorMessage ?? '接单失败，请重试',
                             ),
+                            action: warrantyBlocked
+                                ? SnackBarAction(
+                                    label: '去补充',
+                                    onPressed: () => Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            const WorkerSettlementPage(),
+                                      ),
+                                    ),
+                                  )
+                                : null,
                           ),
                         );
                       } else {
@@ -657,6 +743,11 @@ class _PendingCard extends StatelessWidget {
         Expanded(child: Text(text, style: ZdText.caption)),
       ],
     );
+  }
+
+  static String _formatRequirement(WorkerOrder order) {
+    final requirement = order.requirement.trim();
+    return requirement.startsWith('需要') ? requirement : '需要$requirement';
   }
 
   static String _formatTime(DateTime? t) {
@@ -843,50 +934,118 @@ class _CompletedList extends StatelessWidget {
       itemCount: orders.length,
       itemBuilder: (context, i) {
         final o = orders[i];
-        // 查找对应收入
-        final earning = state.earnings
-            .where((e) => e.orderId == o.id)
-            .fold<double>(0, (s, e) => s + e.amount);
+        final settleable = state.remoteSettleableAmountForBooking(o.id);
+        final warranty = state.remoteWarrantyRetentionAmountForBooking(o.id);
+        final payment = state.remotePaymentOrderForBooking(o.id);
+        final isSplit = payment?.isSplitOfflineV2 == true;
+        final displayedIncome = isSplit ? payment!.quoteAmount : settleable;
         return ZdCard(
+          padding: EdgeInsets.zero,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => OrderDetailPage(orderId: o.id)),
+            );
+          },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              Padding(
+                padding: const EdgeInsets.all(ZdSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        Text(o.requirement, style: ZdText.subtitle),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${o.ownerName} · ${o.ownerAddress}',
-                          style: ZdText.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(o.requirement, style: ZdText.subtitle),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${o.ownerName} · ${o.ownerAddress}',
+                                style: ZdText.caption,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.chevron_right,
+                          size: 20,
+                          color: _textLight,
                         ),
                       ],
                     ),
-                  ),
-                  if (earning > 0)
-                    Text(
-                      '¥${earning.toStringAsFixed(0)}',
-                      style: ZdText.subtitle.copyWith(color: _primary),
+                    const SizedBox(height: ZdSpacing.md),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _success.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(ZdRadius.pill),
+                          ),
+                          child: Text(
+                            '已完成',
+                            style: ZdText.tiny.copyWith(color: _success),
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '查看完工档案',
+                          style: ZdText.caption.copyWith(color: _primary),
+                        ),
+                      ],
                     ),
-                ],
-              ),
-              const SizedBox(height: ZdSpacing.sm),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _success.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(ZdRadius.pill),
-                ),
-                child: Text(
-                  '已完成',
-                  style: ZdText.tiny.copyWith(color: _success),
+                  ],
                 ),
               ),
+              if (displayedIncome > 0 || warranty > 0)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: ZdSpacing.lg,
+                    vertical: ZdSpacing.sm,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFFFF8F3),
+                    borderRadius: BorderRadius.vertical(
+                      bottom: Radius.circular(ZdRadius.card),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        isSplit
+                            ? '本单工程款 ¥${displayedIncome.toStringAsFixed(0)}'
+                            : '本单可结算 ¥${displayedIncome.toStringAsFixed(0)}',
+                        style: ZdText.tiny.copyWith(color: _primary),
+                      ),
+                      if (isSplit && state.hasRemoteWorkerWarrantyAccount) ...[
+                        const SizedBox(width: ZdSpacing.lg),
+                        Flexible(
+                          child: Text(
+                            '履约质保账户 ¥${state.remoteWarrantyRetentionAmount.toStringAsFixed(0)}',
+                            style: ZdText.tiny.copyWith(color: _textMid),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ] else if (warranty > 0) ...[
+                        const SizedBox(width: ZdSpacing.lg),
+                        Text(
+                          '质保金 ¥${warranty.toStringAsFixed(0)}',
+                          style: ZdText.tiny.copyWith(color: _textMid),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
             ],
           ),
         );
@@ -916,9 +1075,18 @@ Widget _emptyView(String text) {
 // 消息 Tab
 // ═══════════════════════════════════════════
 class _MessagesTab extends StatefulWidget {
-  const _MessagesTab({required this.state, required this.chatApi});
+  const _MessagesTab({
+    required this.state,
+    required this.chatApi,
+    this.paymentApi,
+    this.quoteApi,
+    this.inspectionApi,
+  });
   final WorkerAppState state;
   final ChatApi chatApi;
+  final PaymentApiClient? paymentApi;
+  final WorkerQuoteApiClient? quoteApi;
+  final InspectionApi? inspectionApi;
 
   @override
   State<_MessagesTab> createState() => _MessagesTabState();
@@ -1173,8 +1341,253 @@ class _MessagesTabState extends State<_MessagesTab> {
       title: m.title,
       subtitle: m.content,
       trailing: Text(_formatMsgTime(m.createdAt), style: ZdText.tiny),
-      onTap: () => widget.state.markMessageRead(m.id),
+      onTap: () => _openNotification(m),
     );
+  }
+
+  Future<void> _openNotification(WorkerMessage message) async {
+    await widget.state.markMessageRead(message.id);
+    if (!mounted) return;
+    final bookingId = message.bookingId ?? message.orderId;
+    final targetAction =
+        message.targetAction ??
+        (message.paymentOrderId != null ? 'WORKER_PAYMENT' : null);
+    if (bookingId == null || targetAction == null) return;
+
+    if (targetAction == 'WORKER_PAYMENT') {
+      final paymentOrderId = message.paymentOrderId;
+      if (paymentOrderId == null) {
+        _showUnavailable();
+        return;
+      }
+      final availability = await _paymentTargetAvailability(
+        paymentOrderId,
+        bookingId,
+      );
+      if (availability != _PaymentTargetAvailability.available) {
+        if (mounted) {
+          if (availability == _PaymentTargetAvailability.unavailable) {
+            _showUnavailable();
+          } else {
+            _showTemporarilyUnavailable();
+          }
+        }
+        return;
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WorkerSettlementPage(
+            paymentApi: widget.paymentApi,
+            quoteApi: widget.quoteApi,
+            initialPaymentOrderId: paymentOrderId,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await widget.state.fetchRemoteBookings();
+    if (!mounted) return;
+    if (widget.state.remoteBookingError != null) {
+      _showTemporarilyUnavailable();
+      return;
+    }
+    final matches = widget.state.orders.where((item) => item.id == bookingId);
+    if (matches.isEmpty) {
+      _showUnavailable();
+      return;
+    }
+    final order = matches.first;
+    if (targetAction == 'WORKER_AFTER_SALE') {
+      final afterSaleId = _aggregateIdFor(message, 'AFTER_SALE');
+      if (afterSaleId == null) {
+        _showUnavailable();
+        return;
+      }
+      final availability = await _afterSaleTargetAvailability(
+        afterSaleId,
+        bookingId,
+      );
+      if (!mounted) return;
+      if (availability != _BusinessTargetAvailability.available) {
+        if (availability == _BusinessTargetAvailability.unavailable) {
+          _showUnavailable();
+        } else {
+          _showTemporarilyUnavailable();
+        }
+        return;
+      }
+      final token = widget.state.getAccessToken();
+      final userId = widget.state.sessionUserId;
+      if (token == null || userId == null) {
+        _showTemporarilyUnavailable();
+        return;
+      }
+      final api = widget.paymentApi ?? PaymentApiClient();
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AfterSaleDetailPage(
+            afterSaleId: afterSaleId,
+            paymentApi: api,
+            uploadApi: UploadApiClient(),
+            initialToken: token,
+            initialUserId: userId,
+            tokenProvider: () async => widget.state.getAccessToken(),
+            userProvider: () async => widget.state.sessionUserId,
+            sessionListenable: widget.state,
+            currentUserProvider: () => widget.state.sessionUserId,
+          ),
+        ),
+      );
+      return;
+    }
+    if (targetAction == 'WORKER_INSPECTION') {
+      final nodeId = _aggregateIdFor(message, 'INSPECTION_NODE');
+      if (nodeId == null) {
+        _showUnavailable();
+        return;
+      }
+      final token = widget.state.getAccessToken();
+      if (token == null) {
+        _showTemporarilyUnavailable();
+        return;
+      }
+      final api = widget.inspectionApi ?? InspectionApiClient();
+      try {
+        final nodes = await api.getNodes(token, bookingId);
+        if (!mounted) return;
+        if (!inspectionNodesForTrade(
+          nodes,
+          order.trade,
+        ).any((node) => node.id == nodeId && node.bookingId == bookingId)) {
+          _showUnavailable();
+          return;
+        }
+      } on AuthApiException catch (error) {
+        if (mounted) {
+          if (error.statusCode == 404) {
+            _showUnavailable();
+          } else {
+            _showTemporarilyUnavailable();
+          }
+        }
+        return;
+      } catch (_) {
+        if (mounted) _showTemporarilyUnavailable();
+        return;
+      }
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => InspectionPage(
+            orderId: bookingId,
+            tradeLabel: order.trade,
+            readOnly: true,
+            initialNodeId: nodeId,
+            api: api,
+          ),
+        ),
+      );
+      return;
+    }
+    if (targetAction == 'WORKER_ORDER') {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              OrderDetailPage(orderId: bookingId, quoteApi: widget.quoteApi),
+        ),
+      );
+    }
+  }
+
+  Future<_PaymentTargetAvailability> _paymentTargetAvailability(
+    String paymentOrderId,
+    String bookingId,
+  ) async {
+    final api = widget.paymentApi ?? PaymentApiClient();
+    final token = widget.state.getAccessToken();
+    if (token == null) return _PaymentTargetAvailability.temporarilyUnavailable;
+    var detailNotFound = false;
+    try {
+      final order = await api.getOrder(token, paymentOrderId);
+      return order.id == paymentOrderId && order.bookingId == bookingId
+          ? _PaymentTargetAvailability.available
+          : _PaymentTargetAvailability.unavailable;
+    } on PaymentApiException catch (error) {
+      detailNotFound = error.isNotFound;
+      // A deployment without the detail route can still prove the target
+      // through the authenticated paginated feed.
+    } catch (_) {
+      // Compatibility fallback for older/mock servers without the detail route.
+    }
+    try {
+      const pageSize = 100;
+      final seen = <String>{};
+      for (var page = 0; ; page += 1) {
+        final orders = await api.listOrders(token, page: page, size: pageSize);
+        if (orders.any(
+          (order) => order.id == paymentOrderId && order.bookingId == bookingId,
+        )) {
+          return _PaymentTargetAvailability.available;
+        }
+        final added = orders.where((order) => seen.add(order.id)).length;
+        if (orders.length < pageSize || added == 0) {
+          return _PaymentTargetAvailability.unavailable;
+        }
+      }
+    } catch (_) {
+      return detailNotFound
+          ? _PaymentTargetAvailability.unavailable
+          : _PaymentTargetAvailability.temporarilyUnavailable;
+    }
+  }
+
+  Future<_BusinessTargetAvailability> _afterSaleTargetAvailability(
+    String afterSaleId,
+    String bookingId,
+  ) async {
+    final token = widget.state.getAccessToken();
+    if (token == null) {
+      return _BusinessTargetAvailability.temporarilyUnavailable;
+    }
+    try {
+      final detail = await (widget.paymentApi ?? PaymentApiClient())
+          .getAfterSale(token, afterSaleId);
+      return detail.ticket.id == afterSaleId &&
+              detail.ticket.bookingId == bookingId &&
+              detail.context.bookingId == bookingId
+          ? _BusinessTargetAvailability.available
+          : _BusinessTargetAvailability.unavailable;
+    } on PaymentApiException catch (error) {
+      return error.isNotFound
+          ? _BusinessTargetAvailability.unavailable
+          : _BusinessTargetAvailability.temporarilyUnavailable;
+    } catch (_) {
+      return _BusinessTargetAvailability.temporarilyUnavailable;
+    }
+  }
+
+  String? _aggregateIdFor(WorkerMessage message, String aggregateType) {
+    if (message.aggregateType?.trim() != aggregateType) return null;
+    final aggregateId = message.aggregateId?.trim();
+    return aggregateId == null || aggregateId.isEmpty ? null : aggregateId;
+  }
+
+  void _showUnavailable() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('该记录已更新或不再可用')));
+  }
+
+  void _showTemporarilyUnavailable() {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('暂时无法打开，请稍后重试')));
   }
 
   Future<void> _openChat(ChatRoomModel room) async {
@@ -1221,8 +1634,14 @@ class _MessagesTabState extends State<_MessagesTab> {
 // 我的 Tab
 // ═══════════════════════════════════════════
 class _ProfileTab extends StatelessWidget {
-  const _ProfileTab({required this.state});
+  const _ProfileTab({
+    required this.state,
+    required this.onOpenSettlement,
+    this.paymentApi,
+  });
   final WorkerAppState state;
+  final VoidCallback onOpenSettlement;
+  final PaymentApiClient? paymentApi;
 
   @override
   Widget build(BuildContext context) {
@@ -1294,9 +1713,14 @@ class _ProfileTab extends StatelessWidget {
           );
         }),
         _menuItem(Icons.account_balance_wallet_outlined, '收入明细', () {
+          onOpenSettlement();
+        }),
+        _menuItem(Icons.support_agent_outlined, '售后协作', () {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (_) => const WorkerEarningsPage()),
+            MaterialPageRoute(
+              builder: (_) => WorkerAfterSalePage(paymentApi: paymentApi),
+            ),
           );
         }),
         _menuItem(Icons.article_outlined, '施工标准', () {}),

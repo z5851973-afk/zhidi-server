@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../app/owner_app_scope.dart';
@@ -9,12 +11,25 @@ import 'profile_components.dart';
 import 'settings_page.dart';
 import 'support_page.dart';
 import '../order/my_orders_page.dart';
-import '../chat/chat_page.dart';
+import '../home/my_home_page.dart';
 import 'favorites_page.dart';
 import '../../design/tokens.dart';
+import '../../services/auth_api_client.dart';
 
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
+class ProfilePage extends StatefulWidget {
+  const ProfilePage({
+    super.key,
+    this.projectsPageBuilder,
+    this.projectRefresh,
+    this.refreshEpoch = 0,
+  });
+
+  final WidgetBuilder? projectsPageBuilder;
+  final Future<void> Function()? projectRefresh;
+  final int refreshEpoch;
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
 
   static const _services = [
     (Icons.event_available_rounded, '我的预约'),
@@ -28,8 +43,44 @@ class ProfilePage extends StatelessWidget {
     (Icons.help_outline_rounded, '帮助与反馈'),
     (Icons.settings_outlined, '设置'),
   ];
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String? _projectRefreshError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _refreshProjects());
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshEpoch != oldWidget.refreshEpoch) {
+      unawaited(_refreshProjects());
+    }
+  }
+
+  Future<void> _refreshProjects() async {
+    try {
+      final state = OwnerAppScope.of(context);
+      await (widget.projectRefresh?.call() ??
+          state.fetchRemoteServiceRequests());
+      if (!mounted) return;
+      setState(() => _projectRefreshError = state.remoteServiceRequestError);
+    } catch (_) {
+      if (mounted) setState(() => _projectRefreshError = '项目加载失败，请重试');
+    }
+  }
 
   void _open(BuildContext context, String title) {
+    if (title == '在线咨询') {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('平台咨询暂未开放')));
+      return;
+    }
     final destination = switch (title) {
       '地址管理' => const AddressPage(),
       '保障与售后' || '平台客服' => const SupportPage(),
@@ -37,7 +88,6 @@ class ProfilePage extends StatelessWidget {
       '设置' => const SettingsPage(),
       '我的预约' => const MyOrdersPage(),
       '我的收藏' => const FavoritesPage(),
-      '在线咨询' => const ChatPage(workerName: '平台客服'),
       _ => ProfilePlaceholderPage(title: title),
     };
     Navigator.push(context, MaterialPageRoute(builder: (_) => destination));
@@ -61,13 +111,29 @@ class ProfilePage extends StatelessWidget {
             child: _ProfileHeader(
               name: state.profile.name,
               city: state.profile.city,
-              projectCount: state.projects.length,
+              avatarUrl: state.profile.avatarUrl,
+              projectCount: state.remoteProjectCount,
+              onProjects: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (routeContext) =>
+                      widget.projectsPageBuilder?.call(routeContext) ??
+                      const MyHomePage(),
+                ),
+              ),
               onEdit: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const EditProfilePage()),
               ),
             ),
           ),
+          if (_projectRefreshError != null) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _refreshProjects,
+              child: Text('$_projectRefreshError · 重试'),
+            ),
+          ],
           const SizedBox(height: 20),
           const Text(
             '我的服务',
@@ -77,7 +143,7 @@ class ProfilePage extends StatelessWidget {
           ProfileSectionCard(
             child: Column(
               children: [
-                for (final item in _services)
+                for (final item in ProfilePage._services)
                   ProfileMenuTile(
                     icon: item.$1,
                     label: item.$2,
@@ -98,11 +164,16 @@ class ProfilePage extends StatelessWidget {
           ProfileSectionCard(
             child: Column(
               children: [
-                for (final item in _management)
+                for (final item in ProfilePage._management)
                   ProfileMenuTile(
                     icon: item.$1,
                     label: item.$2,
                     onTap: () => _open(context, item.$2),
+                    subtitle: item.$2 == '地址管理'
+                        ? (state.addresses.isEmpty
+                              ? '还未添加常用地址'
+                              : '${state.addresses.length} 个常用地址')
+                        : null,
                   ),
               ],
             ),
@@ -117,26 +188,55 @@ class _ProfileHeader extends StatelessWidget {
   const _ProfileHeader({
     required this.name,
     required this.city,
+    required this.avatarUrl,
     required this.projectCount,
+    required this.onProjects,
     required this.onEdit,
   });
 
   final String name;
   final String city;
+  final String? avatarUrl;
   final int projectCount;
+  final VoidCallback onProjects;
   final VoidCallback onEdit;
 
-  Widget get _avatar => const CircleAvatar(
-    radius: 30,
-    backgroundColor: Color(0x33FFFFFF),
-    child: Icon(Icons.person_rounded, color: Colors.white, size: 36),
-  );
+  Widget get _avatar {
+    final raw = avatarUrl?.trim();
+    final resolved = raw == null || raw.isEmpty
+        ? null
+        : (Uri.parse(raw).hasScheme
+              ? raw
+              : Uri.parse(
+                  AuthApiClient.configuredBaseUrl,
+                ).resolve(raw).toString());
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: const BoxDecoration(
+        color: Color(0x33FFFFFF),
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: resolved == null
+          ? const Icon(Icons.person_rounded, color: Colors.white, size: 36)
+          : Image.network(
+              resolved,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => const Icon(
+                Icons.person_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
+            ),
+    );
+  }
 
   Widget _identity({int nameLines = 1}) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Text(
-        name,
+        name.trim().isEmpty ? '完善个人资料' : name,
         maxLines: nameLines,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
@@ -146,11 +246,18 @@ class _ProfileHeader extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 5),
-      const Text(
-        '已实名认证',
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(color: Colors.white),
+      const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.verified_rounded, color: Colors.white, size: 16),
+          SizedBox(width: 4),
+          Text(
+            '手机号已验证',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: Colors.white),
+          ),
+        ],
       ),
     ],
   );
@@ -158,6 +265,22 @@ class _ProfileHeader extends StatelessWidget {
   Widget get _editButton => TextButton(
     onPressed: onEdit,
     child: const Text('编辑资料', style: TextStyle(color: Colors.white)),
+  );
+
+  Widget get _projectCountLabel => Semantics(
+    button: true,
+    label: '查看 $projectCount 个项目',
+    child: InkWell(
+      onTap: onProjects,
+      borderRadius: BorderRadius.circular(ZdRadius.pill),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        child: Text(
+          '$projectCount 个项目',
+          style: const TextStyle(color: Color(0xE6FFFFFF)),
+        ),
+      ),
+    ),
   );
 
   @override
@@ -178,15 +301,12 @@ class _ProfileHeader extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            city,
+            city.trim().isEmpty ? '未设置城市' : city,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: Color(0xE6FFFFFF)),
           ),
-          Text(
-            '$projectCount 个项目',
-            style: const TextStyle(color: Color(0xE6FFFFFF)),
-          ),
+          Align(alignment: Alignment.centerLeft, child: _projectCountLabel),
           Align(alignment: Alignment.centerRight, child: _editButton),
         ],
       );
@@ -205,7 +325,7 @@ class _ProfileHeader extends StatelessWidget {
                 children: [
                   Flexible(
                     child: Text(
-                      city,
+                      city.trim().isEmpty ? '未设置城市' : city,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Color(0xE6FFFFFF)),
@@ -215,10 +335,7 @@ class _ProfileHeader extends StatelessWidget {
                     '  ·  ',
                     style: TextStyle(color: Color(0xE6FFFFFF)),
                   ),
-                  Text(
-                    '$projectCount 个项目',
-                    style: const TextStyle(color: Color(0xE6FFFFFF)),
-                  ),
+                  _projectCountLabel,
                 ],
               ),
             ],
@@ -236,7 +353,7 @@ class _FavoritesBadge extends StatelessWidget {
   final OwnerAppState state;
   @override
   Widget build(BuildContext context) {
-    final count = state.savedQuotes.length + state.favoriteWorkers.length;
+    final count = state.savedQuotes.length;
     if (count == 0) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),

@@ -9,6 +9,7 @@ import '../../design/tokens.dart';
 import '../../app/worker_app_scope.dart';
 import '../../services/auth_api_client.dart';
 import '../../services/worker_booking_api_client.dart';
+import '../../services/payment_api_client.dart';
 
 class WorkerLoginPage extends StatefulWidget {
   const WorkerLoginPage({super.key, this.api});
@@ -129,6 +130,10 @@ class _WorkerLoginPageState extends State<WorkerLoginPage> {
       await scope.loginOnline(loginResp, remoteProfile: remoteProfile);
       scope.initBookingApi(
         api: WorkerBookingApiClient(),
+        accessToken: loginResp.accessToken,
+      );
+      scope.initPaymentApi(
+        api: PaymentApiClient(),
         accessToken: loginResp.accessToken,
       );
       if (!mounted) return;

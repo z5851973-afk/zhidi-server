@@ -85,6 +85,8 @@ final class RemoteOwnerProfile {
     required this.phone,
     required this.name,
     required this.city,
+    this.avatarUrl,
+    this.gender,
     required this.decorationType,
     required this.address,
     required this.area,
@@ -97,6 +99,8 @@ final class RemoteOwnerProfile {
       phone: _requiredString(json, 'phone'),
       name: _nullableString(json, 'name'),
       city: _requiredString(json, 'city'),
+      avatarUrl: _nullableString(json, 'avatarUrl'),
+      gender: _nullableString(json, 'gender'),
       decorationType: _nullableString(json, 'decorationType'),
       address: _nullableString(json, 'address'),
       area: _nullableDouble(json, 'area'),
@@ -108,6 +112,8 @@ final class RemoteOwnerProfile {
   final String phone;
   final String? name;
   final String city;
+  final String? avatarUrl;
+  final String? gender;
   final String? decorationType;
   final String? address;
   final double? area;
@@ -118,6 +124,8 @@ final class OwnerProfileUpdate {
   const OwnerProfileUpdate({
     required this.name,
     required this.city,
+    this.avatarUrl,
+    this.gender,
     required this.decorationType,
     required this.address,
     required this.area,
@@ -125,6 +133,8 @@ final class OwnerProfileUpdate {
 
   final String? name;
   final String city;
+  final String? avatarUrl;
+  final String? gender;
   final String? decorationType;
   final String? address;
   final double? area;
@@ -132,6 +142,8 @@ final class OwnerProfileUpdate {
   Map<String, dynamic> toJson() => {
     'name': name,
     'city': city,
+    'avatarUrl': avatarUrl,
+    'gender': gender,
     'decorationType': decorationType,
     'address': address,
     'area': area,

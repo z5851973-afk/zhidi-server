@@ -10,6 +10,8 @@ public record WorkerDirectoryResponse(
 	String primaryTrade,
 	Integer experienceYears,
 	BigDecimal dailyRate,
-	String bio
+	String bio,
+	int caseCount,
+	int hiredCount
 ) {
 }

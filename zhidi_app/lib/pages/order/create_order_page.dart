@@ -109,11 +109,8 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
           builder: (_) => BookingSuccessPage(
             workerName: order.workerName,
             workerJob: _serviceType,
-            rating: 4.98,
-            renovationStage: '预约上门',
             tradeType: _serviceType,
             serviceAddress: order.address,
-            estimatedTime: order.visitTime,
           ),
         ),
       );
@@ -143,7 +140,10 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 120),
         children: [
-          _WorkerInfoCard(workerName: widget.workerName, serviceType: _serviceType),
+          _WorkerInfoCard(
+            workerName: widget.workerName,
+            serviceType: _serviceType,
+          ),
           const SizedBox(height: 18),
           Form(
             key: _formKey,
@@ -248,7 +248,10 @@ class _CreateOrderPageState extends State<CreateOrderPage> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(time),
                     trailing: _selectedTime == time
-                        ? const Icon(Icons.check_circle, color: ZdColors.primary)
+                        ? const Icon(
+                            Icons.check_circle,
+                            color: ZdColors.primary,
+                          )
                         : null,
                     onTap: () {
                       setState(() => _selectedTime = time);

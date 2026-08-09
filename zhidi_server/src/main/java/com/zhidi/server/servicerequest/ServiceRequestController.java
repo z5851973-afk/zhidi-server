@@ -55,6 +55,39 @@ public class ServiceRequestController {
 			traceId());
 	}
 
+	@PostMapping("/api/v1/owners/me/service-requests/{requestId}/candidates/{bookingId}/remove")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "从装修需求中移除候选师傅")
+	public ApiResponse<ServiceRequestResponse> removeCandidate(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID requestId,
+			@PathVariable UUID bookingId) {
+		return ApiResponse.ok(service.removeCandidate(principal.userId(), requestId,
+			bookingId), traceId());
+	}
+
+	@PostMapping("/api/v1/owners/me/service-requests/{requestId}/candidates/{bookingId}/replace")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "原子更换装修需求候选师傅")
+	public ApiResponse<ServiceRequestResponse> replaceCandidate(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID requestId,
+			@PathVariable UUID bookingId,
+			@Valid @RequestBody CandidateCreateRequest request) {
+		return ApiResponse.ok(service.replaceCandidate(principal.userId(), requestId,
+			bookingId, request), traceId());
+	}
+
+	@PostMapping("/api/v1/owners/me/service-requests/{requestId}/reopen")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "复制已取消装修需求并重新找师傅")
+	public ApiResponse<ServiceRequestResponse> reopen(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID requestId) {
+		return ApiResponse.ok(service.reopenRequest(principal.userId(), requestId),
+			traceId());
+	}
+
 	@PostMapping("/api/v1/owners/me/service-requests/{requestId}/cancel")
 	@PreAuthorize("hasRole('OWNER')")
 	@Operation(summary = "业主取消装修需求")

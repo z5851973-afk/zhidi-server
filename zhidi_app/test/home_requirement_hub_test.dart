@@ -47,12 +47,18 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('工人知底'), findsOneWidget);
+    expect(find.text('工价知底'), findsOneWidget);
     expect(find.text('平台托底'), findsOneWidget);
+    expect(find.text('99%'), findsOneWidget);
+    expect(find.text('100%'), findsOneWidget);
+    expect(find.textContaining('银行监管'), findsWidgets);
+    expect(find.textContaining('超期赔付'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('bottom navigation stays above Android system navigation inset',
-      (tester) async {
+  testWidgets('bottom navigation stays above Android system navigation inset', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(390, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -76,9 +82,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final navigation = find.byKey(
-      const Key('owner-bottom-navigation-content'),
-    );
+    final navigation = find.byKey(const Key('owner-bottom-navigation-content'));
     expect(navigation, findsOneWidget);
     expect(tester.getBottomRight(navigation).dy, 752);
   });
@@ -91,7 +95,10 @@ void main() {
           await _pumpHome(tester, width: width, textScale: textScale);
 
           expect(find.text('立即找师傅'), findsOneWidget);
+          expect(find.text('12,368+'), findsOneWidget);
           expect(find.text('平均30分钟'), findsOneWidget);
+          expect(find.text('99%'), findsOneWidget);
+          expect(find.text('100%'), findsOneWidget);
           expect(find.text('装修找师傅，先知底再下单'), findsOneWidget);
           expect(find.text('看预算'), findsOneWidget);
           expect(find.text('托管下单'), findsOneWidget);
@@ -113,93 +120,38 @@ void main() {
     }
   }
 
-  testWidgets('renovation scenario entries open their dedicated flows', (
+  testWidgets('five renovation services are marked unavailable and stay put', (
     tester,
   ) async {
     await _pumpHome(tester, width: 390, textScale: 1);
 
-    const scenarios = <String, String>{
-      '新房装修': '新房装修流程',
-      '老房翻新': '旧改流程',
-      '局部改造': '局改需求',
-      '找设计师': '设计师匹配',
-      '验房收房': '验房服务',
-    };
+    expect(find.text('暂未开放'), findsNWidgets(5));
 
-    for (final entry in scenarios.entries) {
-      await tester.ensureVisible(find.text(entry.key));
+    for (final service in const ['新房装修', '老房翻新', '局部改造', '找设计师', '验房收房']) {
+      final card = find.ancestor(
+        of: find.text(service).first,
+        matching: find.byType(InkWell),
+      );
+      await tester.ensureVisible(card.first);
       await tester.pumpAndSettle();
-      await tester.tap(find.text(entry.key));
-      await tester.pumpAndSettle();
-
-      expect(find.text(entry.value), findsOneWidget);
-
-      await tester.pageBack();
-      await tester.pumpAndSettle();
+      await tester.tap(card.first);
+      await tester.pump();
+      expect(find.text('该服务暂未开放，请先按工种查看资料完整师傅'), findsOneWidget);
+      expect(find.byType(HomeRequirementHub), findsOneWidget);
+      await tester.pump(const Duration(seconds: 4));
     }
   });
 
-  testWidgets(
-    'new home renovation flow collects demand and opens budget result',
-    (tester) async {
-      await _pumpHome(tester, width: 390, textScale: 1);
-
-      await tester.ensureVisible(find.text('新房装修'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('新房装修').first);
-      await tester.pumpAndSettle();
-
-      expect(find.text('新房装修流程'), findsOneWidget);
-      expect(find.text('从毛坯到入住，一站式施工服务'), findsOneWidget);
-      expect(find.text('第一步：房屋信息'), findsOneWidget);
-      expect(find.text('请输入您的房屋情况'), findsOneWidget);
-      expect(find.text('房屋面积：'), findsOneWidget);
-      expect(find.text('50㎡以下'), findsOneWidget);
-      expect(find.text('50-90㎡'), findsOneWidget);
-      expect(find.text('90-120㎡'), findsOneWidget);
-      expect(find.text('120㎡以上'), findsOneWidget);
-      expect(find.text('房屋类型：'), findsOneWidget);
-      expect(find.text('普通住宅'), findsOneWidget);
-      expect(find.text('公寓'), findsOneWidget);
-      expect(find.text('别墅'), findsOneWidget);
-
-      await tester.ensureVisible(find.text('第二步：装修情况'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('第二步：装修情况'), findsOneWidget);
-      expect(find.text('装修阶段：'), findsOneWidget);
-      expect(find.text('毛坯房'), findsOneWidget);
-      expect(find.text('精装改造'), findsOneWidget);
-      expect(find.text('装修档次：'), findsOneWidget);
-      expect(find.text('简约实用'), findsOneWidget);
-      expect(find.text('品质装修'), findsOneWidget);
-      expect(find.text('高端装修'), findsOneWidget);
-      expect(find.text('生成装修预算'), findsOneWidget);
-
-      await tester.tap(find.text('90-120㎡'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('品质装修'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('生成装修预算'));
-      await tester.pumpAndSettle();
-
-      expect(find.text('知底装修预算报告'), findsOneWidget);
-      expect(find.text('89㎡'), findsOneWidget);
-      expect(find.text('毛坯房'), findsOneWidget);
-      expect(find.text('¥58,260'), findsOneWidget);
-    },
-  );
-
-  testWidgets('service consultant action opens AI consultant chat', (
+  testWidgets('service consultant action reports unavailable truth', (
     tester,
   ) async {
     await _pumpHome(tester, width: 390, textScale: 1);
 
     await tester.tap(find.text('帮我选服务'));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
-    expect(find.text('AI装修顾问'), findsWidgets);
-    expect(find.textContaining('您好，我是知底AI装修顾问'), findsOneWidget);
+    expect(find.text('平台咨询暂未开放'), findsOneWidget);
+    expect(find.textContaining('您好，我是知底AI装修顾问'), findsNothing);
   });
 
   testWidgets('trust flow card appears before service scenarios', (
@@ -225,11 +177,11 @@ void main() {
     final trustFlow = find.byKey(const Key('home-trust-flow-card'));
 
     const routes = <String, String>{
-      '看预算': '新房装修流程',
+      '看预算': '找师傅',
       '看工价': '工价透明',
       '看标准': '施工标准',
       '找师傅': '找师傅',
-      '托管下单': '资金银行托管',
+      '托管下单': '线下付款与人工确认',
     };
 
     for (final route in routes.entries) {

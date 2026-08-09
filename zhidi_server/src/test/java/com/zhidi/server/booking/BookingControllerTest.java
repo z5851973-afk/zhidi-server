@@ -22,17 +22,21 @@ import com.zhidi.server.audit.OperationLogRepository;
 import com.zhidi.server.dailyreport.DailyReportRepository;
 import com.zhidi.server.owner.OwnerProfileRepository;
 import com.zhidi.server.owner.OwnerProfileService;
+import com.zhidi.server.payment.WarrantyRetentionRepository;
 import com.zhidi.server.quote.QuoteRepository;
 import com.zhidi.server.servicerequest.ServiceRequestRepository;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import com.zhidi.server.worker.WorkerProfileService;
 import com.zhidi.server.workercase.WorkerCaseRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -109,6 +113,9 @@ class BookingControllerTest {
 	@MockitoBean
 	VisitProposalRepository visitProposals;
 
+	@MockitoBean
+	WarrantyRetentionRepository warrantyRetentions;
+
 	@Test
 	void ownerCreatesBookingUsingPrincipalIdentity() throws Exception {
 		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
@@ -120,6 +127,8 @@ class BookingControllerTest {
 				.content("""
 					{"workerUserId":"01904f24-3f5b-7000-8000-000000000202",
 					 "trade":"泥工","serviceCity":"杭州","serviceAddress":"西湖区",
+					 "areaSqm":98.5,"bedroomCount":3,"livingRoomCount":2,
+					 "kitchenCount":1,"bathroomCount":2,
 					 "remark":"厨房墙砖铺贴"}
 					"""))
 			.andExpect(status().isOk())
@@ -128,10 +137,16 @@ class BookingControllerTest {
 			.andExpect(jsonPath("$.data.status").value("PENDING"))
 			.andExpect(jsonPath("$.data.ownerName").value("林业主"))
 			.andExpect(jsonPath("$.data.ownerPhone").value("16600000001"))
-			.andExpect(jsonPath("$.data.workerName").value("周师傅"));
+			.andExpect(jsonPath("$.data.workerName").value("周师傅"))
+			.andExpect(jsonPath("$.data.areaSqm").value(98.5))
+			.andExpect(jsonPath("$.data.bedroomCount").value(3))
+			.andExpect(jsonPath("$.data.livingRoomCount").value(2))
+			.andExpect(jsonPath("$.data.kitchenCount").value(1))
+			.andExpect(jsonPath("$.data.bathroomCount").value(2));
 
 		verify(bookingService).create(OWNER_ID, new BookingRequest(WORKER_ID,
-			"泥工", "杭州", "西湖区", "厨房墙砖铺贴"));
+			"泥工", "杭州", "西湖区", new BigDecimal("98.5"),
+			(short) 3, (short) 2, (short) 1, (short) 2, "厨房墙砖铺贴"));
 	}
 
 	@Test
@@ -141,7 +156,10 @@ class BookingControllerTest {
 		mvc.perform(post("/api/v1/bookings")
 				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER))
 				.contentType(APPLICATION_JSON)
-				.content("{\"workerUserId\":\"" + WORKER_ID + "\"}"))
+				.content("""
+					{"workerUserId":"%s","areaSqm":98.5,"bedroomCount":3,
+					 "livingRoomCount":2,"kitchenCount":1,"bathroomCount":2}
+					""".formatted(WORKER_ID)))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
@@ -189,6 +207,35 @@ class BookingControllerTest {
 				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
 				.contentType(APPLICATION_JSON)
 				.content("{\"workerUserId\":null,\"remark\":\"" + "x".repeat(501) + "\"}"))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		verify(bookingService, never()).create(any(), any());
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":0,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":10000,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.555,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":0,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":11,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":11,\"bathroomCount\":2}",
+		"{\"workerUserId\":\"01904f24-3f5b-7000-8000-000000000202\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":0}"
+	})
+	void directBookingRejectsIncompleteOrOutOfRangeHouseInfo(String body)
+			throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+
+		mvc.perform(post("/api/v1/bookings")
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
+				.contentType(APPLICATION_JSON)
+				.content(body))
 			.andExpect(status().isBadRequest())
 			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
 
@@ -328,9 +375,11 @@ class BookingControllerTest {
 		return new BookingResponse(BOOKING_ID, BOOKING_ID,
 			OWNER_ID, "林业主", "16600000001",
 			WORKER_ID, "周师傅",
-			"泥工", "杭州", "西湖区", "厨房墙砖铺贴", status,
+			"泥工", "杭州", "西湖区", "厨房墙砖铺贴",
+			new BigDecimal("98.5"), (short) 3, (short) 2, (short) 1, (short) 2,
+			status,
 			null, null, null,
-			false, false, null, null,
-			now, now);
+			false, false, null, null, null, null,
+			now, now, false, false);
 	}
 }

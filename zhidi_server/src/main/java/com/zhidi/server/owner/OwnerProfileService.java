@@ -35,22 +35,22 @@ public class OwnerProfileService {
 		String city = requestedCity == null ? DEFAULT_CITY : requestedCity;
 		String decorationType = normalizeNullable(request.decorationType());
 		String address = normalizeNullable(request.address());
+		String avatarUrl = normalizeNullable(request.avatarUrl());
+		String gender = normalizeNullable(request.gender());
 
 		OwnerProfile profile = repository.findByUserId(userId)
 			.orElseGet(() -> OwnerProfile.create(
-				userId, name, city, decorationType, address, request.area()));
-		profile.update(name, city, decorationType, address, request.area());
+				userId, name, city, decorationType, address, request.area(), avatarUrl, gender));
+		profile.update(name, city, decorationType, address, request.area(), avatarUrl, gender);
 		return toResponse(repository.save(profile), phone);
 	}
 
 	private OwnerProfileResponse toResponse(OwnerProfile profile, String phone) {
 		boolean complete = profile.getName() != null
-			&& profile.getDecorationType() != null
-			&& profile.getAddress() != null
-			&& profile.getArea() != null;
+			&& StringUtils.hasText(profile.getCity());
 		return new OwnerProfileResponse(profile.getUserId(), phone, profile.getName(),
 			profile.getCity(), profile.getDecorationType(), profile.getAddress(),
-			profile.getArea(), complete);
+			profile.getArea(), profile.getAvatarUrl(), profile.getGender(), complete);
 	}
 
 	private String normalizeNullable(String value) {

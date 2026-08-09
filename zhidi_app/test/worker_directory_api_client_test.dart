@@ -29,6 +29,8 @@ void main() {
                 'experienceYears': 12,
                 'dailyRate': 680.5,
                 'bio': '擅长瓷砖铺贴和厨卫防水',
+                'caseCount': 4,
+                'hiredCount': 7,
               },
             ],
           }),
@@ -52,6 +54,8 @@ void main() {
     expect(workers.single.experienceYears, 12);
     expect(workers.single.dailyRate, 680.5);
     expect(workers.single.bio, '擅长瓷砖铺贴和厨卫防水');
+    expect(workers.single.caseCount, 4);
+    expect(workers.single.hiredCount, 7);
   });
 
   test('GET detail sends user id path and parses nullable city and bio', () async {
@@ -91,6 +95,8 @@ void main() {
     expect(worker.serviceCity, isNull);
     expect(worker.bio, isNull);
     expect(worker.dailyRate, 520.0);
+    expect(worker.caseCount, 0);
+    expect(worker.hiredCount, 0);
   });
 
   test('preserves backend error code message and HTTP status', () async {

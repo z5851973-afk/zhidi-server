@@ -13,6 +13,7 @@ import com.zhidi.server.common.api.TraceIdFilter;
 import com.zhidi.server.common.error.BusinessException;
 import com.zhidi.server.common.security.CurrentUserPrincipal;
 import com.zhidi.server.payment.AfterSaleResponse;
+import com.zhidi.server.payment.AfterSaleEventResponse;
 import com.zhidi.server.payment.AfterSaleRepository;
 import com.zhidi.server.payment.AfterSaleService;
 import com.zhidi.server.payment.AfterSaleStatus;
@@ -47,6 +48,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -253,8 +255,9 @@ public class AdminController {
 			@PathVariable UUID id,
 			@Valid @org.springframework.web.bind.annotation.RequestBody
 				ProcessAfterSaleRequest request) {
-		AfterSaleResponse response = afterSaleService.process(
-			id, request.resolution(), request.warrantyDeductionAmount());
+		AfterSaleResponse response = afterSaleService.adminResolve(
+			principal.userId(), id, request.resolution(),
+			request.warrantyDeductionAmount());
 		operationLogRepository.save(OperationLog.success(
 			principal.userId(), "ADMIN_AFTER_SALE_PROCESS", "AFTER_SALE",
 			id.toString(), traceId(),
@@ -264,6 +267,61 @@ public class AdminController {
 					: request.warrantyDeductionAmount()
 						.setScale(2, RoundingMode.HALF_UP).toPlainString())
 				+ "\"}"));
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@PutMapping("/after-sales/{id}/accept")
+	@Transactional
+	ResponseEntity<ApiResponse<AfterSaleResponse>> acceptAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id) {
+		AfterSaleResponse response = afterSaleService.adminAccept(
+			principal.userId(), id);
+		writeAfterSaleAudit(principal.userId(), id,
+			"ADMIN_AFTER_SALE_ACCEPT", "{}");
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@PostMapping("/after-sales/{id}/events")
+	@Transactional
+	ResponseEntity<ApiResponse<AfterSaleEventResponse>> replyAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @org.springframework.web.bind.annotation.RequestBody
+				AfterSaleEventRequest request) {
+		AfterSaleEventResponse response = afterSaleService.appendAdminReply(
+			principal.userId(), id, request.content(), request.evidenceUrls());
+		writeAfterSaleAudit(principal.userId(), id,
+			"ADMIN_AFTER_SALE_REPLY", "{}");
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@PutMapping("/after-sales/{id}/resolve")
+	@Transactional
+	ResponseEntity<ApiResponse<AfterSaleResponse>> resolveAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @org.springframework.web.bind.annotation.RequestBody
+				ResolveAfterSaleRequest request) {
+		AfterSaleResponse response = afterSaleService.adminResolve(
+			principal.userId(), id, request.resolution(),
+			request.warrantyDeductionAmount());
+		writeAfterSaleAudit(principal.userId(), id,
+			"ADMIN_AFTER_SALE_RESOLVE", "{}");
+		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
+	}
+
+	@PutMapping("/after-sales/{id}/close")
+	@Transactional
+	ResponseEntity<ApiResponse<AfterSaleResponse>> closeAfterSale(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID id,
+			@Valid @org.springframework.web.bind.annotation.RequestBody
+				CloseAfterSaleRequest request) {
+		AfterSaleResponse response = afterSaleService.adminClose(
+			principal.userId(), id, request.content());
+		writeAfterSaleAudit(principal.userId(), id,
+			"ADMIN_AFTER_SALE_CLOSE", "{}");
 		return ResponseEntity.ok(ApiResponse.ok(response, traceId()));
 	}
 
@@ -377,8 +435,26 @@ public class AdminController {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
 
+	private void writeAfterSaleAudit(UUID actorUserId, UUID afterSaleId,
+			String action, String detailJson) {
+		operationLogRepository.save(OperationLog.success(actorUserId, action,
+			"AFTER_SALE", afterSaleId.toString(), traceId(), detailJson));
+	}
+
 	public record ProcessAfterSaleRequest(
 		@NotBlank String resolution,
 		@DecimalMin(value = "0.01") BigDecimal warrantyDeductionAmount
 	) {}
+
+	public record AfterSaleEventRequest(
+		String content,
+		List<String> evidenceUrls
+	) {}
+
+	public record ResolveAfterSaleRequest(
+		@NotBlank String resolution,
+		@DecimalMin(value = "0.01") BigDecimal warrantyDeductionAmount
+	) {}
+
+	public record CloseAfterSaleRequest(@NotBlank String content) {}
 }

@@ -34,22 +34,37 @@ public class OwnerProfile extends BaseEntity {
 	@Column(precision = 7, scale = 2)
 	private BigDecimal area;
 
+	@Column(name = "avatar_url", length = 500)
+	private String avatarUrl;
+
+	@Column(length = 20)
+	private String gender;
+
 	protected OwnerProfile() {
 	}
 
 	private OwnerProfile(UUID userId, String name, String city, String decorationType,
-			String address, BigDecimal area) {
+			String address, BigDecimal area, String avatarUrl, String gender) {
 		this.userId = Objects.requireNonNull(userId);
 		this.name = name;
 		this.city = Objects.requireNonNull(city);
 		this.decorationType = decorationType;
 		this.address = address;
 		this.area = area;
+		this.avatarUrl = avatarUrl;
+		this.gender = gender;
 	}
 
 	public static OwnerProfile create(UUID userId, String name, String city,
 			String decorationType, String address, BigDecimal area) {
-		return new OwnerProfile(userId, name, city, decorationType, address, area);
+		return create(userId, name, city, decorationType, address, area, null, null);
+	}
+
+	public static OwnerProfile create(UUID userId, String name, String city,
+			String decorationType, String address, BigDecimal area,
+			String avatarUrl, String gender) {
+		return new OwnerProfile(userId, name, city, decorationType, address, area,
+			avatarUrl, gender);
 	}
 
 	public UUID getUserId() {
@@ -76,12 +91,22 @@ public class OwnerProfile extends BaseEntity {
 		return area;
 	}
 
+	public String getAvatarUrl() {
+		return avatarUrl;
+	}
+
+	public String getGender() {
+		return gender;
+	}
+
 	public void update(String name, String city, String decorationType, String address,
-			BigDecimal area) {
+			BigDecimal area, String avatarUrl, String gender) {
 		this.name = name;
 		this.city = Objects.requireNonNull(city);
 		this.decorationType = decorationType;
 		this.address = address;
 		this.area = area;
+		this.avatarUrl = avatarUrl;
+		this.gender = gender;
 	}
 }

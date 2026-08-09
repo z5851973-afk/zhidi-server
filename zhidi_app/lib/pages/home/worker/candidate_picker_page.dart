@@ -3,6 +3,7 @@ import '../../../design/tokens.dart';
 import '../../../services/auth_api_client.dart';
 import '../../../services/service_request_api_client.dart';
 import '../../../services/worker_directory_api_client.dart';
+import '../../../models/house_info.dart';
 import '../../renovation/worker_detail_page.dart';
 
 class CandidatePickerResult {
@@ -29,6 +30,7 @@ class CandidatePickerPage extends StatefulWidget {
     required this.accessToken,
     required this.trade,
     required this.serviceCity,
+    this.houseInfo,
     this.serviceRequestApi,
     this.workerDirectoryApi,
   });
@@ -37,6 +39,7 @@ class CandidatePickerPage extends StatefulWidget {
   final String accessToken;
   final String trade;
   final String serviceCity;
+  final HouseInfo? houseInfo;
   final ServiceRequestApi? serviceRequestApi;
   final WorkerDirectoryApi? workerDirectoryApi;
 
@@ -52,7 +55,11 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
 
   List<RemoteWorkerDirectoryProfile> _workers = const [];
   Set<String> _candidateIds = {}; // workerUserId of already-added candidates
+  Map<String, RemoteCandidateBooking> _activeCandidatesByWorkerId = const {};
+  Set<String> _cooperatedWorkerIds = const {};
   Set<String> _addingIds = {}; // in-flight add calls
+  RemoteServiceRequest? _request;
+  RemoteCandidateBooking? _replacementCandidate;
   _CandidateSort _sort = _CandidateSort.comprehensive;
   String? _error;
   bool _loadingWorkers = true;
@@ -61,7 +68,14 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   void initState() {
     super.initState();
     _loadWorkers();
+    _loadCooperationHistory();
   }
+
+  static const _cooperatedBookingStatuses = {
+    'READY_TO_START',
+    'HIRED',
+    'COMPLETED',
+  };
 
   Future<void> _loadWorkers() async {
     try {
@@ -78,6 +92,33 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         _loadingWorkers = false;
         _error = '加载工人列表失败';
       });
+    }
+  }
+
+  Future<void> _loadCooperationHistory() async {
+    try {
+      final requests = await _api.listOwnerRequests(widget.accessToken);
+      final cooperatedWorkerIds = <String>{};
+      RemoteServiceRequest? currentRequest;
+      for (final request in requests) {
+        if (request.id == widget.requestId) {
+          currentRequest = request;
+          continue;
+        }
+        for (final candidate in request.candidates) {
+          final status = candidate.status.trim().toUpperCase();
+          if (_cooperatedBookingStatuses.contains(status)) {
+            cooperatedWorkerIds.add(candidate.workerUserId);
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _cooperatedWorkerIds = cooperatedWorkerIds;
+        if (currentRequest != null) _applyRequest(currentRequest);
+      });
+    } catch (_) {
+      // 合作历史仅用于展示，不影响师傅目录或候选操作。
     }
   }
 
@@ -109,6 +150,23 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   bool _isCandidate(String userId) => _candidateIds.contains(userId);
 
   bool _isAdding(String userId) => _addingIds.contains(userId);
+
+  bool get _canAddCandidates =>
+      _request?.canAddCandidates ?? _candidateIds.length < 3;
+
+  void _applyRequest(RemoteServiceRequest request) {
+    final active = {
+      for (final candidate in request.candidates)
+        if (candidate.isActiveCandidate) candidate.workerUserId: candidate,
+    };
+    _request = request;
+    _activeCandidatesByWorkerId = active;
+    _candidateIds = active.keys.toSet();
+    final replacing = _replacementCandidate;
+    if (replacing != null && !active.containsKey(replacing.workerUserId)) {
+      _replacementCandidate = null;
+    }
+  }
 
   List<RemoteWorkerDirectoryProfile> get _visibleWorkers {
     final sorted = [..._workers];
@@ -149,17 +207,21 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
   Future<bool> _addCandidate(RemoteWorkerDirectoryProfile worker) async {
     final uid = worker.userId;
     if (_candidateIds.contains(uid)) return true;
-    if (_candidateIds.length >= 3) {
+    if (!_canAddCandidates) {
       _showError('最多选择 3 位候选师傅');
       return false;
     }
     if (_addingIds.contains(uid)) return false;
     setState(() => _addingIds = {..._addingIds, uid});
     try {
-      await _api.addCandidate(widget.accessToken, widget.requestId, uid);
+      final updated = await _api.addCandidate(
+        widget.accessToken,
+        widget.requestId,
+        uid,
+      );
       if (!mounted) return false;
       setState(() {
-        _candidateIds = {..._candidateIds, uid};
+        _applyRequest(updated);
         _addingIds = _addingIds.difference({uid});
       });
       return true;
@@ -176,6 +238,71 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
       _showError('添加失败: ${e is AuthApiException ? e.message : '请重试'}');
       return false;
     }
+  }
+
+  Future<void> _removeCandidate(RemoteCandidateBooking candidate) async {
+    if (!candidate.canRemove || _addingIds.contains(candidate.workerUserId)) {
+      return;
+    }
+    setState(() => _addingIds = {..._addingIds, candidate.workerUserId});
+    try {
+      final updated = await _api.removeCandidate(
+        widget.accessToken,
+        widget.requestId,
+        candidate.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _applyRequest(updated);
+        _addingIds = _addingIds.difference({candidate.workerUserId});
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(
+        () => _addingIds = _addingIds.difference({candidate.workerUserId}),
+      );
+      _showError('移除失败: ${e is AuthApiException ? e.message : '请重试'}');
+    }
+  }
+
+  void _startReplacement(RemoteCandidateBooking candidate) {
+    if (!candidate.canReplace) return;
+    setState(() => _replacementCandidate = candidate);
+  }
+
+  Future<bool> _replaceCandidate(
+    RemoteWorkerDirectoryProfile replacement,
+  ) async {
+    final oldCandidate = _replacementCandidate;
+    if (oldCandidate == null) return false;
+    if (_addingIds.contains(replacement.userId)) return false;
+    setState(() => _addingIds = {..._addingIds, replacement.userId});
+    try {
+      final updated = await _api.replaceCandidate(
+        widget.accessToken,
+        widget.requestId,
+        oldCandidate.id,
+        replacement.userId,
+      );
+      if (!mounted) return false;
+      setState(() {
+        _replacementCandidate = null;
+        _applyRequest(updated);
+        _addingIds = _addingIds.difference({replacement.userId});
+      });
+      return true;
+    } catch (e) {
+      if (!mounted) return false;
+      setState(() => _addingIds = _addingIds.difference({replacement.userId}));
+      _showError('更换失败: ${e is AuthApiException ? e.message : '请重试'}');
+      return false;
+    }
+  }
+
+  Future<bool> _selectWorker(RemoteWorkerDirectoryProfile worker) {
+    return _replacementCandidate == null
+        ? _addCandidate(worker)
+        : _replaceCandidate(worker);
   }
 
   bool _isAlreadyCandidateError(Object error) {
@@ -195,7 +322,7 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
           workerName: worker.name,
           remoteProfile: worker,
           candidateSelected: _isCandidate(worker.userId),
-          onAddCandidate: () => _addCandidate(worker),
+          onAddCandidate: () => _selectWorker(worker),
         ),
       ),
     );
@@ -256,10 +383,25 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          child: FilledButton(
-            key: const Key('candidate-complete'),
-            onPressed: _candidateIds.isEmpty ? null : _completeSelection,
-            child: Text('完成选择（已选 ${_candidateIds.length}/3）'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_candidateIds.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _request != null && !_request!.canAddCandidates
+                        ? '需求已进入后续流程，不能调整候选师傅'
+                        : '请先加入至少 1 位候选师傅',
+                    style: ZdText.caption,
+                  ),
+                ),
+              FilledButton(
+                key: const Key('candidate-complete'),
+                onPressed: _candidateIds.isEmpty ? null : _completeSelection,
+                child: Text('完成选择（已选 ${_candidateIds.length}/3）'),
+              ),
+            ],
           ),
         ),
       ),
@@ -291,10 +433,15 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
         _RequestHeader(
           trade: widget.trade,
           cityName: widget.serviceCity,
+          houseInfo: _request?.houseInfo ?? widget.houseInfo,
           candidateCount: _candidateIds.length,
           matchedCount: _workers.length,
           selectedSort: _sort,
           onSortChanged: (sort) => setState(() => _sort = sort),
+          replacementWorkerName: _replacementCandidate?.workerName,
+          onCancelReplacement: _replacementCandidate == null
+              ? null
+              : () => setState(() => _replacementCandidate = null),
         ),
         Expanded(
           child: _workers.isEmpty
@@ -305,13 +452,28 @@ class _CandidatePickerPageState extends State<CandidatePickerPage> {
                   itemCount: _visibleWorkers.length,
                   itemBuilder: (_, i) {
                     final worker = _visibleWorkers[i];
+                    final candidate =
+                        _activeCandidatesByWorkerId[worker.userId];
                     return _CandidateItem(
                       worker: worker,
+                      hasCooperated: _cooperatedWorkerIds.contains(
+                        worker.userId,
+                      ),
                       isCandidate: _isCandidate(worker.userId),
                       isAdding: _isAdding(worker.userId),
-                      canAdd: _candidateIds.length < 3,
+                      canAdd: _canAddCandidates,
+                      candidate: candidate,
+                      replacementMode: _replacementCandidate != null,
+                      isReplacementSource:
+                          _replacementCandidate?.id == candidate?.id,
                       onView: () => _openWorker(worker),
-                      onAdd: () => _addCandidate(worker),
+                      onAdd: () => _selectWorker(worker),
+                      onRemove: candidate == null
+                          ? null
+                          : () => _removeCandidate(candidate),
+                      onReplace: candidate == null
+                          ? null
+                          : () => _startReplacement(candidate),
                     );
                   },
                 ),
@@ -328,90 +490,87 @@ class _RequestHeader extends StatelessWidget {
   const _RequestHeader({
     required this.trade,
     required this.cityName,
+    this.houseInfo,
     required this.candidateCount,
     required this.matchedCount,
     required this.selectedSort,
     required this.onSortChanged,
+    this.replacementWorkerName,
+    this.onCancelReplacement,
   });
 
   final String trade;
   final String cityName;
+  final HouseInfo? houseInfo;
   final int candidateCount;
   final int matchedCount;
   final _CandidateSort selectedSort;
   final ValueChanged<_CandidateSort> onSortChanged;
+  final String? replacementWorkerName;
+  final VoidCallback? onCancelReplacement;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-      decoration: BoxDecoration(
-        color: ZdColors.surfaceWarm,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: ZdColors.primary.withAlpha(30)),
-      ),
+      margin: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF0E5),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.engineering_rounded,
-                  color: ZdColors.primary,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${_tradeLabel(trade)}师傅 · $cityName',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: ZdColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      candidateCount > 0
-                          ? '已选 $candidateCount 位候选人'
-                          : '已找到 $matchedCount 位可接单师傅，最多可选 3 位候选',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: ZdColors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              if (candidateCount > 0)
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: ZdColors.successSoft,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.check_rounded,
-                    size: 18,
-                    color: ZdColors.success,
-                  ),
-                ),
-            ],
+          Text(
+            '${_tradeLabel(trade)}师傅 · $cityName',
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+              color: ZdColors.textPrimary,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
+          Text(
+            houseInfo?.summaryLabel ?? missingHouseInfoLabel,
+            style: const TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+          ),
+          if (replacementWorkerName != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              key: const Key('candidate-replacement-banner'),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF0E5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '正在更换 $replacementWorkerName，请选择替代师傅',
+                      style: const TextStyle(
+                        color: ZdColors.primaryDark,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onCancelReplacement,
+                    child: const Text('取消更换'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+          Text(
+            candidateCount > 0
+                ? '已选 $candidateCount 位候选人'
+                : '可选 $matchedCount 位师傅，最多加入 3 位候选',
+            style: const TextStyle(
+              fontSize: 12,
+              height: 1.35,
+              color: ZdColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -429,14 +588,12 @@ class _RequestHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _SortChip(
-                  label: '资料完整',
+                  label: '看案例',
                   selected: selectedSort == _CandidateSort.profile,
                   onTap: () => onSortChanged(_CandidateSort.profile),
                 ),
                 const SizedBox(width: 8),
-                const _FilterPill(label: '同城服务'),
-                const SizedBox(width: 8),
-                const _FilterPill(label: '可预约'),
+                const _FilterPill(label: '资料完整'),
               ],
             ),
           ),
@@ -464,13 +621,13 @@ class _SortChip extends StatelessWidget {
       selected: selected,
       onSelected: (_) => onTap(),
       showCheckmark: false,
-      selectedColor: ZdColors.primary,
-      backgroundColor: Colors.white,
+      selectedColor: const Color(0xFFFFEEE3),
+      backgroundColor: const Color(0xFFFAF7F4),
       side: BorderSide(
         color: selected ? ZdColors.primary : const Color(0xFFEDE3DA),
       ),
       labelStyle: TextStyle(
-        color: selected ? Colors.white : ZdColors.textSecondary,
+        color: selected ? ZdColors.primaryDark : ZdColors.textSecondary,
         fontSize: 12,
         fontWeight: FontWeight.w700,
       ),
@@ -492,7 +649,7 @@ class _FilterPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFFAF7F4),
         borderRadius: BorderRadius.circular(ZdRadius.pill),
         border: Border.all(color: const Color(0xFFEDE3DA)),
       ),
@@ -512,19 +669,31 @@ class _FilterPill extends StatelessWidget {
 class _CandidateItem extends StatelessWidget {
   const _CandidateItem({
     required this.worker,
+    required this.hasCooperated,
     required this.isCandidate,
     required this.isAdding,
     required this.canAdd,
     required this.onView,
     required this.onAdd,
+    required this.candidate,
+    required this.replacementMode,
+    required this.isReplacementSource,
+    this.onRemove,
+    this.onReplace,
   });
 
   final RemoteWorkerDirectoryProfile worker;
+  final bool hasCooperated;
   final bool isCandidate;
   final bool isAdding;
   final bool canAdd;
   final VoidCallback onView;
   final VoidCallback onAdd;
+  final RemoteCandidateBooking? candidate;
+  final bool replacementMode;
+  final bool isReplacementSource;
+  final VoidCallback? onRemove;
+  final VoidCallback? onReplace;
 
   String get _avatarLabel => worker.name.isNotEmpty ? worker.name[0] : '工';
 
@@ -532,55 +701,43 @@ class _CandidateItem extends StatelessWidget {
 
   String get _cityLabel {
     final city = worker.serviceCity?.trim();
-    return city == null || city.isEmpty ? '服务区域待完善' : '$city服务';
+    return city == null || city.isEmpty ? '服务区域待完善' : city;
   }
+
+  String get _commonServicesText => _tradeCommonServices(worker.primaryTrade);
 
   String get _bioSummary {
     final bio = worker.bio?.trim();
     if (bio == null || bio.isEmpty) return '师傅暂未填写自我介绍，可进入详情查看完整资料。';
-    return bio.length > 18 ? '${bio.substring(0, 18)}…' : bio;
+    return bio.length > 24 ? '${bio.substring(0, 24)}…' : bio;
   }
+
+  String get _casePillLabel =>
+      worker.caseCount > 0 ? '${worker.caseCount}个案例' : '暂无案例';
+
+  String get _hiredPillLabel => '${worker.hiredCount}次被选中';
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
+      key: Key('candidate-worker-${worker.userId}'),
       onTap: onView,
       borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(20),
           border: isCandidate
-              ? Border.all(color: ZdColors.success.withAlpha(120), width: 1.2)
+              ? Border.all(color: ZdColors.success.withAlpha(140), width: 1.2)
               : Border.all(color: const Color(0xFFF1E8DF)),
           boxShadow: ZdShadow.cardSoft,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Container(
-              width: 56,
-              height: 68,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFFFFEEE3), Color(0xFFF3ECE6)],
-                ),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                _avatarLabel,
-                style: const TextStyle(
-                  fontSize: 23,
-                  fontWeight: FontWeight.w900,
-                  color: ZdColors.primaryDark,
-                ),
-              ),
-            ),
-            const SizedBox(width: 11),
+            _WorkerAvatar(label: _avatarLabel),
+            const SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -595,20 +752,16 @@ class _CandidateItem extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontWeight: FontWeight.w800,
-                            fontSize: 17,
+                            fontSize: 18,
                             color: ZdColors.textPrimary,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 7),
                       _TinyBadge(
-                        text: isCandidate ? '已选' : '资料完整',
-                        color: isCandidate
-                            ? ZdColors.success
-                            : ZdColors.primaryDark,
-                        background: isCandidate
-                            ? ZdColors.successSoft
-                            : const Color(0xFFFFF0E5),
+                        text: '资料已完善',
+                        color: ZdColors.primaryDark,
+                        background: const Color(0xFFFFF0E5),
                       ),
                     ],
                   ),
@@ -624,19 +777,19 @@ class _CandidateItem extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 5),
-                  const Text(
-                    '已认证 · 可预约 · 详情看案例',
+                  Text(
+                    '该工种常见服务：$_commonServicesText',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: ZdColors.textSecondary,
-                      fontSize: 11,
+                    style: const TextStyle(
+                      color: ZdColors.textPrimary,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 5),
                   Text(
-                    _bioSummary,
+                    '简介：$_bioSummary',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -645,23 +798,36 @@ class _CandidateItem extends StatelessWidget {
                       height: 1.25,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 5,
+                    runSpacing: 4,
+                    children: [
+                      _TrustPill(label: _casePillLabel),
+                      _TrustPill(label: _hiredPillLabel),
+                      if (hasCooperated)
+                        const _TrustPill(label: '已合作', success: true),
+                      const _TrustPill(label: '资料完整'),
+                    ],
+                  ),
                 ],
               ),
             ),
-            const SizedBox(width: 9),
+            const SizedBox(width: 10),
             SizedBox(
               width: 88,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  FilledButton(
+                  OutlinedButton(
                     onPressed: onView,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: ZdColors.primary,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: ZdColors.textPrimary,
+                      side: const BorderSide(color: Color(0xFFEEDFD4)),
+                      backgroundColor: const Color(0xFFFFFCFA),
                       minimumSize: const Size(0, 34),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       textStyle: const TextStyle(
                         fontSize: 12,
@@ -674,28 +840,30 @@ class _CandidateItem extends StatelessWidget {
                     child: const Text('查看详情'),
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton(
-                    onPressed: isCandidate || !canAdd || isAdding
+                  FilledButton(
+                    onPressed:
+                        isCandidate || (!canAdd && !replacementMode) || isAdding
                         ? null
                         : onAdd,
-                    style: OutlinedButton.styleFrom(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: isCandidate
+                          ? ZdColors.successSoft
+                          : ZdColors.primary,
                       foregroundColor: isCandidate
                           ? ZdColors.success
-                          : ZdColors.primaryDark,
+                          : Colors.white,
+                      disabledBackgroundColor: isCandidate
+                          ? ZdColors.successSoft
+                          : const Color(0xFFE5DED9),
                       disabledForegroundColor: isCandidate
                           ? ZdColors.success
                           : ZdColors.textHint,
-                      side: BorderSide(
-                        color: isCandidate
-                            ? ZdColors.success.withAlpha(120)
-                            : const Color(0xFFFFC7A3),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
                       minimumSize: const Size(0, 34),
+                      padding: const EdgeInsets.symmetric(vertical: 8),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       textStyle: const TextStyle(
                         fontSize: 12,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(ZdRadius.pill),
@@ -709,12 +877,54 @@ class _CandidateItem extends StatelessWidget {
                           )
                         : Text(
                             isCandidate
-                                ? '已选'
+                                ? '已加入'
+                                : replacementMode
+                                ? '替换为此师傅'
                                 : canAdd
                                 ? '加入候选'
                                 : '已满',
                           ),
                   ),
+                  if (isCandidate && candidate != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        if (candidate!.canRemove)
+                          InkWell(
+                            key: Key('candidate-remove-${candidate!.id}'),
+                            onTap: isAdding ? null : onRemove,
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                '移除',
+                                style: TextStyle(
+                                  color: ZdColors.error,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (candidate!.canReplace)
+                          InkWell(
+                            key: Key('candidate-replace-${candidate!.id}'),
+                            onTap: isAdding ? null : onReplace,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Text(
+                                isReplacementSource ? '更换中' : '更换',
+                                style: const TextStyle(
+                                  color: ZdColors.primary,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -756,6 +966,70 @@ class _TinyBadge extends StatelessWidget {
   }
 }
 
+class _WorkerAvatar extends StatelessWidget {
+  const _WorkerAvatar({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 60,
+      height: 68,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFF2EA), Color(0xFFFFE4D4)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFFFE2D1)),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 27,
+            fontWeight: FontWeight.w900,
+            color: ZdColors.primaryDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TrustPill extends StatelessWidget {
+  const _TrustPill({required this.label, this.success = false});
+
+  final String label;
+  final bool success;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: success ? ZdColors.successSoft : const Color(0xFFFAF7F4),
+        borderRadius: BorderRadius.circular(ZdRadius.pill),
+        border: Border.all(
+          color: success
+              ? ZdColors.success.withAlpha(80)
+              : const Color(0xFFF0E5DD),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: success ? ZdColors.success : ZdColors.textSecondary,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
 String _tradeLabel(String apiTrade) {
   return switch (apiTrade.trim()) {
     'demolition' => '拆除',
@@ -767,5 +1041,19 @@ String _tradeLabel(String apiTrade) {
     'installation' => '安装',
     'cleaning' => '保洁',
     final value => value,
+  };
+}
+
+String _tradeCommonServices(String apiTrade) {
+  return switch (_tradeLabel(apiTrade)) {
+    '拆除' => '拆旧 / 拆墙 / 垃圾清运',
+    '水电' => '水电改造 / 线路排查 / 管道安装',
+    '泥瓦' => '贴砖 / 找平 / 修补',
+    '防水' => '厨卫防水 / 阳台防水 / 堵漏',
+    '木工' => '吊顶 / 柜体 / 木作修补',
+    '油漆' => '墙面修复 / 喷涂 / 翻新',
+    '安装' => '灯具安装 / 五金安装 / 维修',
+    '保洁' => '开荒保洁 / 深度清洁 / 收尾',
+    final value => '$value施工 / 现场沟通 / 收尾处理',
   };
 }

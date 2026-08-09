@@ -3,16 +3,22 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/house_info.dart';
+
 import 'auth_api_client.dart';
 
 abstract interface class WorkerBookingApi {
   Future<List<RemoteWorkerBooking>> listWorkerBookings(String accessToken);
 
   Future<RemoteWorkerBooking> acceptBooking(
-      String accessToken, String bookingId);
+    String accessToken,
+    String bookingId,
+  );
 
   Future<RemoteWorkerBooking> rejectBooking(
-      String accessToken, String bookingId);
+    String accessToken,
+    String bookingId,
+  );
 
   Future<RemoteWorkerBooking> cancelBooking(
     String accessToken,
@@ -22,7 +28,7 @@ abstract interface class WorkerBookingApi {
 }
 
 final class RemoteWorkerBooking {
-  const RemoteWorkerBooking({
+  RemoteWorkerBooking({
     required this.id,
     required this.ownerUserId,
     required this.ownerName,
@@ -34,6 +40,7 @@ final class RemoteWorkerBooking {
     required this.serviceCity,
     this.serviceAddress,
     this.remark,
+    this.houseInfo,
     required this.status,
     this.cancelledBy,
     this.cancelReason,
@@ -42,9 +49,14 @@ final class RemoteWorkerBooking {
     this.arrivalConfirmedByWorker = false,
     this.onSiteAt,
     this.proposedTime,
+    DateTime? scheduledVisitAt,
+    DateTime? actualOnSiteAt,
     required this.createdAt,
     required this.updatedAt,
-  });
+  }) : scheduledVisitAt =
+           scheduledVisitAt ??
+           (_hasFixedVisitTime(status) ? proposedTime : null),
+       actualOnSiteAt = actualOnSiteAt ?? onSiteAt;
 
   factory RemoteWorkerBooking.fromJson(Map<String, dynamic> json) {
     return RemoteWorkerBooking(
@@ -59,6 +71,7 @@ final class RemoteWorkerBooking {
       serviceCity: _requiredString(json, 'serviceCity'),
       serviceAddress: _nullableString(json, 'serviceAddress'),
       remark: _nullableString(json, 'remark'),
+      houseInfo: HouseInfo.tryFromJson(json),
       status: _requiredString(json, 'status'),
       cancelledBy: _nullableString(json, 'cancelledBy'),
       cancelReason: _nullableString(json, 'cancelReason'),
@@ -72,6 +85,12 @@ final class RemoteWorkerBooking {
           : null,
       proposedTime: json['proposedTime'] != null
           ? DateTime.parse(json['proposedTime']).toUtc()
+          : null,
+      scheduledVisitAt: json['scheduledVisitAt'] != null
+          ? DateTime.parse(json['scheduledVisitAt']).toUtc()
+          : null,
+      actualOnSiteAt: json['actualOnSiteAt'] != null
+          ? DateTime.parse(json['actualOnSiteAt']).toUtc()
           : null,
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
@@ -90,10 +109,17 @@ final class RemoteWorkerBooking {
     'serviceCity': serviceCity,
     'serviceAddress': serviceAddress,
     'remark': remark,
+    ...?houseInfo?.toJson(),
     'status': status,
     'cancelledBy': cancelledBy,
     'cancelReason': cancelReason,
     'cancelledAt': cancelledAt?.toUtc().toIso8601String(),
+    'arrivalConfirmedByOwner': arrivalConfirmedByOwner,
+    'arrivalConfirmedByWorker': arrivalConfirmedByWorker,
+    'onSiteAt': onSiteAt?.toUtc().toIso8601String(),
+    'proposedTime': proposedTime?.toUtc().toIso8601String(),
+    'scheduledVisitAt': scheduledVisitAt?.toUtc().toIso8601String(),
+    'actualOnSiteAt': actualOnSiteAt?.toUtc().toIso8601String(),
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
@@ -110,6 +136,7 @@ final class RemoteWorkerBooking {
     String? serviceCity,
     String? serviceAddress,
     String? remark,
+    HouseInfo? houseInfo,
     String? status,
     String? cancelledBy,
     String? cancelReason,
@@ -118,6 +145,8 @@ final class RemoteWorkerBooking {
     bool? arrivalConfirmedByWorker,
     DateTime? onSiteAt,
     DateTime? proposedTime,
+    DateTime? scheduledVisitAt,
+    DateTime? actualOnSiteAt,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -133,6 +162,7 @@ final class RemoteWorkerBooking {
       serviceCity: serviceCity ?? this.serviceCity,
       serviceAddress: serviceAddress ?? this.serviceAddress,
       remark: remark ?? this.remark,
+      houseInfo: houseInfo ?? this.houseInfo,
       status: status ?? this.status,
       cancelledBy: cancelledBy ?? this.cancelledBy,
       cancelReason: cancelReason ?? this.cancelReason,
@@ -143,6 +173,8 @@ final class RemoteWorkerBooking {
           arrivalConfirmedByWorker ?? this.arrivalConfirmedByWorker,
       onSiteAt: onSiteAt ?? this.onSiteAt,
       proposedTime: proposedTime ?? this.proposedTime,
+      scheduledVisitAt: scheduledVisitAt ?? this.scheduledVisitAt,
+      actualOnSiteAt: actualOnSiteAt ?? this.actualOnSiteAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -159,6 +191,7 @@ final class RemoteWorkerBooking {
   final String serviceCity;
   final String? serviceAddress;
   final String? remark;
+  final HouseInfo? houseInfo;
   final String status;
   final String? cancelledBy;
   final String? cancelReason;
@@ -167,9 +200,22 @@ final class RemoteWorkerBooking {
   final bool arrivalConfirmedByWorker;
   final DateTime? onSiteAt;
   final DateTime? proposedTime;
+  final DateTime? scheduledVisitAt;
+  final DateTime? actualOnSiteAt;
   final DateTime createdAt;
   final DateTime updatedAt;
 }
+
+bool _hasFixedVisitTime(String status) => switch (status) {
+  'VISIT_SCHEDULED' ||
+  'ARRIVAL_PENDING' ||
+  'ON_SITE' ||
+  'QUOTE_PENDING' ||
+  'HIRED' ||
+  'READY_TO_START' ||
+  'COMPLETED' => true,
+  _ => false,
+};
 
 final class WorkerBookingApiClient implements WorkerBookingApi {
   WorkerBookingApiClient({
@@ -281,7 +327,10 @@ final class WorkerBookingApiClient implements WorkerBookingApi {
   }
 
   Future<http.Response> _postJson(
-      String path, String accessToken, String body) async {
+    String path,
+    String accessToken,
+    String body,
+  ) async {
     final request = http.Request('POST', baseUrl.resolve(path))
       ..headers.addAll({
         'accept': 'application/json',
@@ -321,9 +370,10 @@ List<RemoteWorkerBooking> _parseBookingList(http.Response response) {
   }
   try {
     return data
-        .map((e) => RemoteWorkerBooking.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ))
+        .map(
+          (e) =>
+              RemoteWorkerBooking.fromJson(Map<String, dynamic>.from(e as Map)),
+        )
         .toList();
   } on FormatException {
     throw AuthApiException(

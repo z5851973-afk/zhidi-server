@@ -30,12 +30,15 @@ import com.zhidi.server.quote.QuoteRepository;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import com.zhidi.server.worker.WorkerProfileService;
 import com.zhidi.server.workercase.WorkerCaseRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -62,6 +65,8 @@ class ServiceRequestControllerTest {
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000203");
 	private static final UUID WORKER_USER_ID =
 		UUID.fromString("01904f24-3f5b-7000-8000-000000000204");
+	private static final UUID BOOKING_ID =
+		UUID.fromString("01904f24-3f5b-7000-8000-000000000205");
 
 	@Autowired
 	MockMvc mvc;
@@ -124,16 +129,25 @@ class ServiceRequestControllerTest {
 				.contentType(APPLICATION_JSON)
 				.content("""
 					{"trade":"水电","serviceCity":"成都","serviceAddress":"高新区 1 号",
+					 "areaSqm":98.5,"bedroomCount":3,"livingRoomCount":2,
+					 "kitchenCount":1,"bathroomCount":2,
 					 "remark":"旧房水电改造"}
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.code").value("OK"))
 			.andExpect(jsonPath("$.data.id").value(REQUEST_ID.toString()))
 			.andExpect(jsonPath("$.data.trade").value("水电"))
+			.andExpect(jsonPath("$.data.areaSqm").value(98.5))
+			.andExpect(jsonPath("$.data.bedroomCount").value(3))
+			.andExpect(jsonPath("$.data.livingRoomCount").value(2))
+			.andExpect(jsonPath("$.data.kitchenCount").value(1))
+			.andExpect(jsonPath("$.data.bathroomCount").value(2))
 			.andExpect(jsonPath("$.data.status").value("OPEN"));
 
 		verify(service).createRequest(eq(OWNER_ID),
-			eq(new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号", "旧房水电改造")));
+			eq(new ServiceRequestCreateRequest("水电", "成都", "高新区 1 号",
+				new BigDecimal("98.5"), (short) 3, (short) 2, (short) 1,
+				(short) 2, "旧房水电改造")));
 	}
 
 	@Test
@@ -143,7 +157,11 @@ class ServiceRequestControllerTest {
 		mvc.perform(post("/api/v1/owners/me/service-requests")
 				.header("Authorization", bearerToken(WORKER_ID, UserRole.WORKER))
 				.contentType(APPLICATION_JSON)
-				.content("{\"trade\":\"水电\",\"serviceCity\":\"成都\"}"))
+				.content("""
+					{"trade":"水电","serviceCity":"成都","areaSqm":98.5,
+					 "bedroomCount":3,"livingRoomCount":2,"kitchenCount":1,
+					 "bathroomCount":2}
+					"""))
 			.andExpect(status().isForbidden())
 			.andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
 
@@ -184,6 +202,58 @@ class ServiceRequestControllerTest {
 	}
 
 	@Test
+	void ownerRemovesCandidateFromRequest() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(service.removeCandidate(OWNER_ID, REQUEST_ID, BOOKING_ID))
+			.thenReturn(singleResponse());
+
+		mvc.perform(post(
+				"/api/v1/owners/me/service-requests/{requestId}/candidates/{bookingId}/remove",
+				REQUEST_ID, BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.code").value("OK"))
+			.andExpect(jsonPath("$.data.activeCandidateCount").value(0))
+			.andExpect(jsonPath("$.data.availableCandidateSlots").value(3));
+
+		verify(service).removeCandidate(OWNER_ID, REQUEST_ID, BOOKING_ID);
+	}
+
+	@Test
+	void ownerAtomicallyReplacesCandidate() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(service.replaceCandidate(any(), any(), any(), any()))
+			.thenReturn(responseWithCandidates());
+
+		mvc.perform(post(
+				"/api/v1/owners/me/service-requests/{requestId}/candidates/{bookingId}/replace",
+				REQUEST_ID, BOOKING_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
+				.contentType(APPLICATION_JSON)
+				.content("{\"workerUserId\":\"" + WORKER_USER_ID + "\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.code").value("OK"));
+
+		verify(service).replaceCandidate(eq(OWNER_ID), eq(REQUEST_ID),
+			eq(BOOKING_ID), eq(new CandidateCreateRequest(WORKER_USER_ID)));
+	}
+
+	@Test
+	void ownerReopensCancelledRequestAsNewRequest() throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+		when(service.reopenRequest(OWNER_ID, REQUEST_ID)).thenReturn(singleResponse());
+
+		mvc.perform(post(
+				"/api/v1/owners/me/service-requests/{requestId}/reopen", REQUEST_ID)
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.code").value("OK"))
+			.andExpect(jsonPath("$.data.status").value("OPEN"));
+
+		verify(service).reopenRequest(OWNER_ID, REQUEST_ID);
+	}
+
+	@Test
 	void ownerCancelsServiceRequest() throws Exception {
 		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
 		when(service.cancelRequest(OWNER_ID, REQUEST_ID))
@@ -213,6 +283,36 @@ class ServiceRequestControllerTest {
 		verify(service, never()).createRequest(any(), any());
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":0,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":10000,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.555,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":0,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":21,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":11,\"kitchenCount\":1,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":11,\"bathroomCount\":2}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":0}",
+		"{\"trade\":\"水电\",\"serviceCity\":\"成都\",\"areaSqm\":98.5,\"bedroomCount\":3,\"livingRoomCount\":2,\"kitchenCount\":1,\"bathroomCount\":21}"
+	})
+	void rejectsIncompleteOrOutOfRangeHouseInfo(String body) throws Exception {
+		givenDatabaseUser(OWNER_ID, "16600000001", UserRole.OWNER);
+
+		mvc.perform(post("/api/v1/owners/me/service-requests")
+				.header("Authorization", bearerToken(OWNER_ID, UserRole.OWNER))
+				.contentType(APPLICATION_JSON)
+				.content(body))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		verify(service, never()).createRequest(any(), any());
+	}
+
 	private void givenDatabaseUser(UUID userId, String phone, UserRole role) {
 		User user = Mockito.mock(User.class);
 		when(user.getPhone()).thenReturn(phone);
@@ -233,7 +333,10 @@ class ServiceRequestControllerTest {
 		Instant now = Instant.parse("2026-07-17T10:00:00Z");
 		return new ServiceRequestResponse(REQUEST_ID, OWNER_ID,
 			"水电", "成都", "高新区 1 号", "旧房水电改造",
-			status, List.of(), now, now);
+			new BigDecimal("98.5"), (short) 3, (short) 2, (short) 1, (short) 2,
+			status, List.of(), now, now, 0, 3,
+			status == ServiceRequestStatus.OPEN
+				|| status == ServiceRequestStatus.COMPARING);
 	}
 
 	private ServiceRequestResponse responseWithCandidates() {
@@ -243,10 +346,14 @@ class ServiceRequestControllerTest {
 			OWNER_ID, "林业主", "16600000001",
 			WORKER_USER_ID, "张师傅",
 			"水电", "成都", "高新区 1 号", "旧房水电改造",
+			new BigDecimal("98.5"), (short) 3, (short) 2, (short) 1, (short) 2,
 			BookingStatus.PENDING,
-			null, null, null, false, false, null, null, now, now);
+			null, null, null, false, false, null, null, null, null, now, now,
+			true, true);
 		return new ServiceRequestResponse(REQUEST_ID, OWNER_ID,
 			"水电", "成都", "高新区 1 号", "旧房水电改造",
-			ServiceRequestStatus.COMPARING, List.of(candidate), now, now);
+			new BigDecimal("98.5"), (short) 3, (short) 2, (short) 1, (short) 2,
+			ServiceRequestStatus.COMPARING, List.of(candidate), now, now,
+			1, 2, true);
 	}
 }

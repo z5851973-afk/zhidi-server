@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/house_info.dart';
+
 import 'auth_api_client.dart';
 import 'worker_booking_api_client.dart';
 
@@ -18,6 +20,29 @@ abstract interface class ServiceRequestApi {
     String accessToken,
     String requestId,
     String workerUserId,
+  );
+
+  Future<RemoteServiceRequest> removeCandidate(
+    String accessToken,
+    String requestId,
+    String bookingId,
+  );
+
+  Future<RemoteServiceRequest> replaceCandidate(
+    String accessToken,
+    String requestId,
+    String bookingId,
+    String workerUserId,
+  );
+
+  Future<RemoteServiceRequest> reopenRequest(
+    String accessToken,
+    String requestId,
+  );
+
+  Future<RemoteServiceRequest> cancelRequest(
+    String accessToken,
+    String requestId,
   );
 
   Future<RemoteCandidateBooking> cancelAsOwner(
@@ -99,7 +124,8 @@ final class ServiceRequestApiClient implements ServiceRequestApi {
 
   @override
   Future<List<RemoteServiceRequest>> listOwnerRequests(
-      String accessToken) async {
+    String accessToken,
+  ) async {
     final response = await _get(
       '/api/v1/owners/me/service-requests',
       accessToken,
@@ -117,6 +143,61 @@ final class ServiceRequestApiClient implements ServiceRequestApi {
       '/api/v1/owners/me/service-requests/$requestId/candidates',
       accessToken,
       jsonEncode({'workerUserId': workerUserId}),
+    );
+    return _parseServiceRequest(response);
+  }
+
+  @override
+  Future<RemoteServiceRequest> removeCandidate(
+    String accessToken,
+    String requestId,
+    String bookingId,
+  ) async {
+    final response = await _post(
+      '/api/v1/owners/me/service-requests/$requestId/candidates/$bookingId/remove',
+      accessToken,
+      '',
+    );
+    return _parseServiceRequest(response);
+  }
+
+  @override
+  Future<RemoteServiceRequest> replaceCandidate(
+    String accessToken,
+    String requestId,
+    String bookingId,
+    String workerUserId,
+  ) async {
+    final response = await _post(
+      '/api/v1/owners/me/service-requests/$requestId/candidates/$bookingId/replace',
+      accessToken,
+      jsonEncode({'workerUserId': workerUserId}),
+    );
+    return _parseServiceRequest(response);
+  }
+
+  @override
+  Future<RemoteServiceRequest> reopenRequest(
+    String accessToken,
+    String requestId,
+  ) async {
+    final response = await _post(
+      '/api/v1/owners/me/service-requests/$requestId/reopen',
+      accessToken,
+      '',
+    );
+    return _parseServiceRequest(response);
+  }
+
+  @override
+  Future<RemoteServiceRequest> cancelRequest(
+    String accessToken,
+    String requestId,
+  ) async {
+    final response = await _post(
+      '/api/v1/owners/me/service-requests/$requestId/cancel',
+      accessToken,
+      '',
     );
     return _parseServiceRequest(response);
   }
@@ -343,12 +424,14 @@ final class ServiceRequestDraft {
   const ServiceRequestDraft({
     required this.trade,
     required this.serviceCity,
+    required this.houseInfo,
     this.serviceAddress,
     this.remark,
   });
 
   final String trade;
   final String serviceCity;
+  final HouseInfo houseInfo;
   final String? serviceAddress;
   final String? remark;
 
@@ -356,23 +439,45 @@ final class ServiceRequestDraft {
     'trade': trade,
     'serviceCity': serviceCity,
     'serviceAddress': serviceAddress,
+    ...houseInfo.toJson(),
     'remark': remark,
   };
 }
 
 final class RemoteServiceRequest {
-  const RemoteServiceRequest({
+  RemoteServiceRequest({
     required this.id,
     required this.ownerUserId,
     required this.trade,
     required this.serviceCity,
     this.serviceAddress,
     this.remark,
+    this.houseInfo,
     required this.status,
     required this.candidates,
     required this.createdAt,
     required this.updatedAt,
-  });
+    int? activeCandidateCount,
+    int? availableCandidateSlots,
+    bool? canAddCandidates,
+  }) : activeCandidateCount =
+           activeCandidateCount ??
+           candidates.where((candidate) => candidate.isActiveCandidate).length,
+       availableCandidateSlots =
+           availableCandidateSlots ??
+           (3 -
+                   candidates
+                       .where((candidate) => candidate.isActiveCandidate)
+                       .length)
+               .clamp(0, 3)
+               .toInt(),
+       canAddCandidates =
+           canAddCandidates ??
+           ((status == 'OPEN' || status == 'COMPARING') &&
+               candidates
+                       .where((candidate) => candidate.isActiveCandidate)
+                       .length <
+                   3);
 
   factory RemoteServiceRequest.fromJson(Map<String, dynamic> json) {
     return RemoteServiceRequest(
@@ -382,15 +487,38 @@ final class RemoteServiceRequest {
       serviceCity: _requiredString(json, 'serviceCity'),
       serviceAddress: _nullableString(json, 'serviceAddress'),
       remark: _nullableString(json, 'remark'),
+      houseInfo: HouseInfo.tryFromJson(json),
       status: _requiredString(json, 'status'),
       candidates: (json['candidates'] as List)
-          .map((e) =>
-              RemoteCandidateBooking.fromJson(Map<String, dynamic>.from(e)))
+          .map(
+            (e) =>
+                RemoteCandidateBooking.fromJson(Map<String, dynamic>.from(e)),
+          )
           .toList(),
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
+      activeCandidateCount: _nullableInt(json, 'activeCandidateCount'),
+      availableCandidateSlots: _nullableInt(json, 'availableCandidateSlots'),
+      canAddCandidates: json['canAddCandidates'] as bool?,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'ownerUserId': ownerUserId,
+    'trade': trade,
+    'serviceCity': serviceCity,
+    'serviceAddress': serviceAddress,
+    'remark': remark,
+    ...?houseInfo?.toJson(),
+    'status': status,
+    'candidates': candidates.map((candidate) => candidate.toJson()).toList(),
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+    'activeCandidateCount': activeCandidateCount,
+    'availableCandidateSlots': availableCandidateSlots,
+    'canAddCandidates': canAddCandidates,
+  };
 
   final String id;
   final String ownerUserId;
@@ -398,10 +526,14 @@ final class RemoteServiceRequest {
   final String serviceCity;
   final String? serviceAddress;
   final String? remark;
+  final HouseInfo? houseInfo;
   final String status;
   final List<RemoteCandidateBooking> candidates;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final int activeCandidateCount;
+  final int availableCandidateSlots;
+  final bool canAddCandidates;
 }
 
 final class RemoteCandidateBooking {
@@ -417,6 +549,7 @@ final class RemoteCandidateBooking {
     required this.serviceCity,
     this.serviceAddress,
     this.remark,
+    this.houseInfo,
     required this.status,
     this.cancelledBy,
     this.cancelReason,
@@ -425,8 +558,12 @@ final class RemoteCandidateBooking {
     this.arrivalConfirmedByWorker = false,
     this.onSiteAt,
     this.proposedTime,
+    this.scheduledVisitAt,
+    this.actualOnSiteAt,
     required this.createdAt,
     required this.updatedAt,
+    this.canRemove = false,
+    this.canReplace = false,
   });
 
   factory RemoteCandidateBooking.fromJson(Map<String, dynamic> json) {
@@ -442,6 +579,7 @@ final class RemoteCandidateBooking {
       serviceCity: _requiredString(json, 'serviceCity'),
       serviceAddress: _nullableString(json, 'serviceAddress'),
       remark: _nullableString(json, 'remark'),
+      houseInfo: HouseInfo.tryFromJson(json),
       status: _requiredString(json, 'status'),
       cancelledBy: _nullableString(json, 'cancelledBy'),
       cancelReason: _nullableString(json, 'cancelReason'),
@@ -456,10 +594,58 @@ final class RemoteCandidateBooking {
       proposedTime: json['proposedTime'] != null
           ? DateTime.parse(json['proposedTime']).toUtc()
           : null,
+      scheduledVisitAt: json['scheduledVisitAt'] != null
+          ? DateTime.parse(json['scheduledVisitAt']).toUtc()
+          : _candidateHasAgreedVisitTime(_requiredString(json, 'status')) &&
+                json['proposedTime'] != null
+          ? DateTime.parse(json['proposedTime']).toUtc()
+          : null,
+      actualOnSiteAt: json['actualOnSiteAt'] != null
+          ? DateTime.parse(json['actualOnSiteAt']).toUtc()
+          : json['onSiteAt'] != null
+          ? DateTime.parse(json['onSiteAt']).toUtc()
+          : null,
       createdAt: DateTime.parse(_requiredString(json, 'createdAt')).toUtc(),
       updatedAt: DateTime.parse(_requiredString(json, 'updatedAt')).toUtc(),
+      canRemove:
+          json['canRemove'] == true ||
+          (json['canRemove'] == null &&
+              _candidateCanChange(_requiredString(json, 'status'))),
+      canReplace:
+          json['canReplace'] == true ||
+          (json['canReplace'] == null &&
+              _candidateCanChange(_requiredString(json, 'status'))),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'serviceRequestId': serviceRequestId,
+    'ownerUserId': ownerUserId,
+    'ownerName': ownerName,
+    'ownerPhone': ownerPhone,
+    'workerUserId': workerUserId,
+    'workerName': workerName,
+    'trade': trade,
+    'serviceCity': serviceCity,
+    'serviceAddress': serviceAddress,
+    'remark': remark,
+    ...?houseInfo?.toJson(),
+    'status': status,
+    'cancelledBy': cancelledBy,
+    'cancelReason': cancelReason,
+    'cancelledAt': cancelledAt?.toUtc().toIso8601String(),
+    'arrivalConfirmedByOwner': arrivalConfirmedByOwner,
+    'arrivalConfirmedByWorker': arrivalConfirmedByWorker,
+    'onSiteAt': onSiteAt?.toUtc().toIso8601String(),
+    'proposedTime': proposedTime?.toUtc().toIso8601String(),
+    'scheduledVisitAt': scheduledVisitAt?.toUtc().toIso8601String(),
+    'actualOnSiteAt': actualOnSiteAt?.toUtc().toIso8601String(),
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+    'canRemove': canRemove,
+    'canReplace': canReplace,
+  };
 
   final String id;
   final String serviceRequestId;
@@ -472,6 +658,7 @@ final class RemoteCandidateBooking {
   final String serviceCity;
   final String? serviceAddress;
   final String? remark;
+  final HouseInfo? houseInfo;
   final String status;
   final String? cancelledBy;
   final String? cancelReason;
@@ -480,8 +667,14 @@ final class RemoteCandidateBooking {
   final bool arrivalConfirmedByWorker;
   final DateTime? onSiteAt;
   final DateTime? proposedTime;
+  final DateTime? scheduledVisitAt;
+  final DateTime? actualOnSiteAt;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool canRemove;
+  final bool canReplace;
+
+  bool get isActiveCandidate => !_candidateTerminalStatuses.contains(status);
 
   RemoteWorkerBooking toRemoteWorkerBooking() => RemoteWorkerBooking(
     id: id,
@@ -495,6 +688,7 @@ final class RemoteCandidateBooking {
     serviceCity: serviceCity,
     serviceAddress: serviceAddress,
     remark: remark,
+    houseInfo: houseInfo,
     status: status,
     cancelledBy: cancelledBy,
     cancelReason: cancelReason,
@@ -503,6 +697,8 @@ final class RemoteCandidateBooking {
     arrivalConfirmedByWorker: arrivalConfirmedByWorker,
     onSiteAt: onSiteAt,
     proposedTime: proposedTime,
+    scheduledVisitAt: scheduledVisitAt,
+    actualOnSiteAt: actualOnSiteAt,
     createdAt: createdAt,
     updatedAt: updatedAt,
   );
@@ -547,9 +743,11 @@ List<RemoteServiceRequest> _parseServiceRequestList(http.Response response) {
   }
   try {
     return data
-        .map((e) => RemoteServiceRequest.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ))
+        .map(
+          (e) => RemoteServiceRequest.fromJson(
+            Map<String, dynamic>.from(e as Map),
+          ),
+        )
         .toList();
   } on FormatException {
     throw AuthApiException(
@@ -638,3 +836,37 @@ String? _nullableString(Map<String, dynamic> json, String key) {
   }
   return value as String?;
 }
+
+int? _nullableInt(Map<String, dynamic> json, String key) {
+  final value = json[key];
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  throw FormatException('$key must be a number or null');
+}
+
+const _candidateTerminalStatuses = {
+  'REJECTED',
+  'CANCELLED',
+  'NOT_SELECTED',
+  'HIRED',
+  'COMPLETED',
+};
+
+bool _candidateCanChange(String status) => const {
+  'PENDING',
+  'ACCEPTED',
+  'VISIT_PROPOSED',
+  'VISIT_SCHEDULED',
+  'ARRIVAL_PENDING',
+}.contains(status.trim().toUpperCase());
+
+bool _candidateHasAgreedVisitTime(String status) => switch (status) {
+  'VISIT_SCHEDULED' ||
+  'ARRIVAL_PENDING' ||
+  'ON_SITE' ||
+  'QUOTE_PENDING' ||
+  'READY_TO_START' ||
+  'HIRED' ||
+  'COMPLETED' => true,
+  _ => false,
+};

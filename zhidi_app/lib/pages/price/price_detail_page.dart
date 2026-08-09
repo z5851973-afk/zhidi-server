@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/price_standards.dart';
+import '../renovation/trade_select_page.dart';
 
 /// 项目详情页 — 单个施工项目的详细信息
 /// 通过 [tradeName] + [categoryName] + [project] 参数化
@@ -23,19 +24,30 @@ class PriceDetailPage extends StatelessWidget {
 
   /// 根据项目名生成施工内容说明
   List<String> get _constructionContent {
-    if (project.name.contains('拆除') || project.name.contains('破除') || project.name.contains('撕除')) {
+    if (project.name.contains('拆除') ||
+        project.name.contains('破除') ||
+        project.name.contains('撕除')) {
       return ['现场保护及安全措施布置', '人工+专业工具拆除作业', '拆除后垃圾装袋并清运至指定点'];
     }
-    if (project.name.contains('安装') || project.name.contains('铺贴') || project.name.contains('制作')) {
+    if (project.name.contains('安装') ||
+        project.name.contains('铺贴') ||
+        project.name.contains('制作')) {
       return ['材料验收及预处理', '按标准工艺进行安装/铺贴', '完工后清洁及成品保护'];
     }
-    if (project.name.contains('开槽') || project.name.contains('布线') || project.name.contains('改造')) {
+    if (project.name.contains('开槽') ||
+        project.name.contains('布线') ||
+        project.name.contains('改造')) {
       return ['定位弹线及开槽作业', '管线敷设及固定', '槽口填补及表面恢复'];
     }
-    if (project.name.contains('腻子') || project.name.contains('乳胶漆') || project.name.contains('涂刷') || project.name.contains('打磨')) {
+    if (project.name.contains('腻子') ||
+        project.name.contains('乳胶漆') ||
+        project.name.contains('涂刷') ||
+        project.name.contains('打磨')) {
       return ['基层检查及局部修补', '按工艺标准分层施工', '表面打磨及清理'];
     }
-    if (project.name.contains('保洁') || project.name.contains('清洗') || project.name.contains('清洁')) {
+    if (project.name.contains('保洁') ||
+        project.name.contains('清洗') ||
+        project.name.contains('清洁')) {
       return ['全屋除尘及地面清扫', '专业工具深度清洁', '垃圾集中清运'];
     }
     if (project.name.contains('防水')) {
@@ -67,7 +79,11 @@ class PriceDetailPage extends StatelessWidget {
         ),
         title: const Text(
           '项目详情',
-          style: TextStyle(color: textDark, fontSize: 17, fontWeight: FontWeight.w500),
+          style: TextStyle(
+            color: textDark,
+            fontSize: 17,
+            fontWeight: FontWeight.w500,
+          ),
         ),
         centerTitle: true,
       ),
@@ -96,7 +112,7 @@ class PriceDetailPage extends StatelessWidget {
 
                   const SizedBox(height: 24),
 
-                  // ── 平台保障 ──
+                  // ── 服务与记录 ──
                   _buildGuarantee(),
 
                   const SizedBox(height: 100), // 留出底部按钮空间
@@ -172,7 +188,11 @@ class PriceDetailPage extends StatelessWidget {
           // 项目名
           Text(
             project.name,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: textDark),
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w600,
+              color: textDark,
+            ),
           ),
           const SizedBox(height: 10),
           // 价格行
@@ -181,7 +201,11 @@ class PriceDetailPage extends StatelessWidget {
             children: [
               Text(
                 project.price,
-                style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: brandOrange),
+                style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: brandOrange,
+                ),
               ),
               const SizedBox(width: 4),
               Padding(
@@ -193,14 +217,21 @@ class PriceDetailPage extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: brandOrange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Text(
-                  '平台固定人工价格',
-                  style: TextStyle(fontSize: 11, color: brandOrange, fontWeight: FontWeight.w500),
+                  '本地参考人工价',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: brandOrange,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
               ),
             ],
@@ -230,23 +261,43 @@ class PriceDetailPage extends StatelessWidget {
                 SizedBox(width: 8),
                 Text(
                   '施工内容',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textDark),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: textDark,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            ..._constructionContent.map((item) => Padding(
-                  padding: const EdgeInsets.only(left: 26, bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('· ', style: TextStyle(fontSize: 14, color: textGray, fontWeight: FontWeight.bold)),
-                      Expanded(
-                        child: Text(item, style: const TextStyle(fontSize: 14, color: textDark, height: 1.5)),
+            ..._constructionContent.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(left: 26, bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '· ',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textGray,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: textDark,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
             const SizedBox(height: 12),
             const Divider(height: 1, color: Color(0xFFE8E8E8)),
@@ -259,23 +310,43 @@ class PriceDetailPage extends StatelessWidget {
                 SizedBox(width: 8),
                 Text(
                   '不包含',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textDark),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: textDark,
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 10),
-            ..._notIncluded.map((item) => Padding(
-                  padding: const EdgeInsets.only(left: 26, bottom: 6),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('· ', style: TextStyle(fontSize: 14, color: textGray, fontWeight: FontWeight.bold)),
-                      Expanded(
-                        child: Text(item, style: const TextStyle(fontSize: 14, color: textGray, height: 1.5)),
+            ..._notIncluded.map(
+              (item) => Padding(
+                padding: const EdgeInsets.only(left: 26, bottom: 6),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '· ',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: textGray,
+                        fontWeight: FontWeight.bold,
                       ),
-                    ],
-                  ),
-                )),
+                    ),
+                    Expanded(
+                      child: Text(
+                        item,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: textGray,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -290,7 +361,11 @@ class PriceDetailPage extends StatelessWidget {
         children: [
           const Text(
             '施工流程',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: textDark),
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: textDark,
+            ),
           ),
           const SizedBox(height: 14),
           ..._buildWorkflowSteps(),
@@ -332,7 +407,11 @@ class PriceDetailPage extends StatelessWidget {
                     child: Center(
                       child: Text(
                         '${index + 1}',
-                        style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
                   ),
@@ -356,12 +435,20 @@ class PriceDetailPage extends StatelessWidget {
                   children: [
                     Text(
                       step.$1,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: textDark),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                        color: textDark,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       step.$2,
-                      style: const TextStyle(fontSize: 13, color: textGray, height: 1.4),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: textGray,
+                        height: 1.4,
+                      ),
                     ),
                   ],
                 ),
@@ -380,23 +467,51 @@ class PriceDetailPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '平台保障',
-            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: textDark),
+            '服务与记录',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+              color: textDark,
+            ),
           ),
           const SizedBox(height: 14),
           Row(
             children: [
-              Expanded(child: _buildGuaranteeItem(Icons.verified, '工价统一', '平台统一定价\n杜绝随意加价')),
+              Expanded(
+                child: _buildGuaranteeItem(
+                  Icons.price_check_outlined,
+                  '参考价格',
+                  '本地示例参考\n现场核量确认',
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _buildGuaranteeItem(Icons.description, '标准施工', '规范施工流程\n质量有保障')),
+              Expanded(
+                child: _buildGuaranteeItem(
+                  Icons.receipt_long_outlined,
+                  '报价清单',
+                  '项目单价数量\n逐项留痕',
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           Row(
             children: [
-              Expanded(child: _buildGuaranteeItem(Icons.person_search, '师傅审核', '严选认证师傅\n持证上岗')),
+              Expanded(
+                child: _buildGuaranteeItem(
+                  Icons.person_search,
+                  '服务器资料',
+                  '姓名工种经验\n按接口返回',
+                ),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: _buildGuaranteeItem(Icons.assignment_turned_in, '验收保障', '完工验收\n不满意不付款')),
+              Expanded(
+                child: _buildGuaranteeItem(
+                  Icons.assignment_turned_in,
+                  '验收记录',
+                  '节点与结果\n按订单留存',
+                ),
+              ),
             ],
           ),
         ],
@@ -418,7 +533,11 @@ class PriceDetailPage extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             title,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: textDark),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: textDark,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 4),
@@ -450,24 +569,23 @@ class PriceDetailPage extends StatelessWidget {
           width: double.infinity,
           height: 48,
           child: ElevatedButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('已预约「${project.name}」，师傅将尽快联系您'),
-                  backgroundColor: brandOrange,
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-              );
-            },
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TradeSelectPage()),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: brandOrange,
               foregroundColor: Colors.white,
               elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              textStyle: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            child: const Text('立即预约'),
+            child: const Text('查看资料完整师傅'),
           ),
         ),
       ),

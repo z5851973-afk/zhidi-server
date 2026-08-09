@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import '../../data/price_standards.dart';
 import 'construction_project_detail_page.dart';
 import 'price_item_list_page.dart';
-import '../home/worker/worker_list_page.dart';
+import '../renovation/trade_select_page.dart';
 
 /// 工价标准分类列表页（工种主页面）
 /// 通过 [trade] 参数化区分7个工种，统一模板
-/// 视觉风格：白底 + 橙主色 + 顶部工人作业大图 Banner + 左缩略图右标题卡片 + 底部保障卡
+/// 视觉风格：白底 + 橙主色 + 顶部工人作业大图 Banner + 左缩略图右标题卡片 + 底部记录卡
 
 class PriceListPage extends StatelessWidget {
   final TradePriceData trade;
@@ -68,7 +68,7 @@ class PriceListPage extends StatelessWidget {
 
             const SizedBox(height: 24),
 
-            // ── 平台保障卡 ──
+            // ── 服务与记录卡 ──
             _buildGuarantee(),
 
             const SizedBox(height: 28),
@@ -98,7 +98,7 @@ class PriceListPage extends StatelessWidget {
             ),
             SizedBox(height: 10),
             Text(
-              '页面展示的是平台统一人工参考价，实际结算会按现场工程量、施工难度和验收结果确认。材料、垃圾清运等非人工费用会单独说明。',
+              '页面展示的是本地参考数据，不代表当前服务端目录或最终报价。实际结算会按服务器报价清单、现场工程量、施工难度和验收结果确认。材料、垃圾清运等非人工费用会单独说明。',
               style: TextStyle(fontSize: 14, color: textGray, height: 1.55),
             ),
           ],
@@ -133,7 +133,7 @@ class PriceListPage extends StatelessWidget {
           children: [
             // 大标题
             const Text(
-              '平台统一工价',
+              '本地参考工价',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 26,
@@ -142,7 +142,7 @@ class PriceListPage extends StatelessWidget {
               ),
             ),
             const Text(
-              '透明不加价',
+              '分项可核对',
               style: TextStyle(
                 color: brandOrange,
                 fontSize: 26,
@@ -152,7 +152,7 @@ class PriceListPage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             const Text(
-              '人工固定价格 · 实际工程量结算',
+              '本地参考，不代表当前服务端目录；最终以服务器报价清单和现场工程量为准',
               style: TextStyle(color: Colors.white, fontSize: 13),
             ),
             const SizedBox(height: 12),
@@ -161,26 +161,18 @@ class PriceListPage extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               children: const [
-                _BannerTag(label: '银行监管'),
-                _BannerTag(label: '验收保障'),
+                _BannerTag(label: '目录价格'),
+                _BannerTag(label: '报价留痕'),
               ],
             ),
             const SizedBox(height: 16),
             // 查看可接单师傅按钮
             GestureDetector(
               onTap: () async {
-                final worker = await Navigator.push(
+                await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => WorkerListPage(
-                      trade: trade.trade,
-                      categoryName: trade.tradeName,
-                    ),
-                  ),
+                  MaterialPageRoute(builder: (_) => const TradeSelectPage()),
                 );
-                if (worker != null && context.mounted) {
-                  Navigator.of(context).pop(worker);
-                }
               },
               child: Container(
                 width: double.infinity,
@@ -198,7 +190,7 @@ class PriceListPage extends StatelessWidget {
                 ),
                 child: const Center(
                   child: Text(
-                    '查看可接单师傅',
+                    '查看资料完整师傅',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -211,7 +203,7 @@ class PriceListPage extends StatelessWidget {
             const SizedBox(height: 8),
             const Center(
               child: Text(
-                '已有128位师傅在线 · 平均10分钟响应',
+                '师傅数量以服务器师傅目录当前返回为准',
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
@@ -239,7 +231,7 @@ class PriceListPage extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            '统一工价 · 银行监管',
+            '参考工价 · 现场核量后确认',
             style: TextStyle(fontSize: 13, color: textGray),
           ),
         ],
@@ -369,13 +361,13 @@ class PriceListPage extends StatelessWidget {
     );
   }
 
-  // ──────── 平台保障卡 ────────
+  // ──────── 服务与记录卡 ────────
 
   Widget _buildGuarantee() {
     const items = [
-      _GuaranteeItem(icon: Icons.account_balance_outlined, label: '资金银行托管'),
-      _GuaranteeItem(icon: Icons.fact_check_outlined, label: '验收付款'),
-      _GuaranteeItem(icon: Icons.verified_user_outlined, label: '售后保障'),
+      _GuaranteeItem(icon: Icons.receipt_long_outlined, label: '报价清单'),
+      _GuaranteeItem(icon: Icons.fact_check_outlined, label: '施工验收留痕'),
+      _GuaranteeItem(icon: Icons.support_agent_outlined, label: '售后人工协助'),
     ];
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -388,7 +380,7 @@ class PriceListPage extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '平台保障',
+            '流程记录',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
@@ -428,7 +420,7 @@ class _BannerTag extends StatelessWidget {
   }
 }
 
-/// 保障项
+/// 服务与记录项
 class _GuaranteeItem extends StatelessWidget {
   final IconData icon;
   final String label;

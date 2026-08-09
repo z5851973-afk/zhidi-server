@@ -29,6 +29,7 @@ import com.zhidi.server.auth.SmsVerificationCodeRepository;
 import com.zhidi.server.audit.OperationLogRepository;
 import com.zhidi.server.worker.WorkerProfileService;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -62,6 +63,9 @@ class OwnerProfileControllerTest {
 
 	@MockitoBean
 	OwnerProfileService ownerProfileService;
+
+	@MockitoBean
+	OwnerAddressService ownerAddressService;
 
 	@MockitoBean
 	WorkerProfileService workerProfileService;
@@ -110,6 +114,19 @@ class OwnerProfileControllerTest {
 	}
 
 	@Test
+	void activeOwnerCanOpenAddressBook() throws Exception {
+		givenDatabaseUser(UserRole.OWNER);
+		when(ownerAddressService.list(USER_ID)).thenReturn(List.of());
+
+		mvc.perform(get("/api/v1/owners/me/addresses")
+				.header("Authorization", bearerToken()))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.code").value("OK"))
+			.andExpect(jsonPath("$.data").isArray())
+			.andExpect(jsonPath("$.data").isEmpty());
+	}
+
+	@Test
 	void activeDatabaseOwnerCanGetProfileUsingDatabaseIdentity() throws Exception {
 		givenDatabaseUser(UserRole.OWNER);
 		when(ownerProfileService.get(USER_ID, PHONE)).thenReturn(response());
@@ -147,16 +164,39 @@ class OwnerProfileControllerTest {
 				.content("""
 					{"userId":"00000000-0000-0000-0000-000000000001","phone":"13900000000",
 					 "name":"刘先生","city":"成都","decorationType":"水电",
-					 "address":"成都市高新区天府大道 1 号","area":88.50}
+					 "address":"成都市高新区天府大道 1 号","area":88.50,
+					 "avatarUrl":"/uploads/owner-avatar/2026/08/02/avatar.png",
+					 "gender":"MALE"}
 					"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.code").value("OK"))
 			.andExpect(jsonPath("$.data.name").value("刘先生"))
-			.andExpect(jsonPath("$.data.area").value(88.50));
+			.andExpect(jsonPath("$.data.area").value(88.50))
+			.andExpect(jsonPath("$.data.avatarUrl")
+				.value("/uploads/owner-avatar/2026/08/02/avatar.png"))
+			.andExpect(jsonPath("$.data.gender").value("MALE"));
 
 		verify(ownerProfileService).update(USER_ID, PHONE,
 			new OwnerProfileRequest("刘先生", "成都", "水电", "成都市高新区天府大道 1 号",
-				new BigDecimal("88.50")));
+				new BigDecimal("88.50"),
+				"/uploads/owner-avatar/2026/08/02/avatar.png", "MALE"));
+	}
+
+	@Test
+	void untrustedAvatarAndUnknownGenderReturnValidationError() throws Exception {
+		givenDatabaseUser(UserRole.OWNER);
+
+		mvc.perform(put("/api/v1/owners/me")
+				.header("Authorization", bearerToken())
+				.contentType(APPLICATION_JSON)
+				.content("""
+					{"name":"刘先生","city":"成都",
+					 "avatarUrl":"https://example.com/avatar.png","gender":"UNKNOWN"}
+					"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+		verify(ownerProfileService, never()).update(any(), any(), any());
 	}
 
 	@Test
@@ -202,6 +242,7 @@ class OwnerProfileControllerTest {
 
 	private OwnerProfileResponse response() {
 		return new OwnerProfileResponse(USER_ID, PHONE, "刘先生", "成都", "水电",
-			"成都市高新区天府大道 1 号", new BigDecimal("88.50"), true);
+			"成都市高新区天府大道 1 号", new BigDecimal("88.50"),
+			"/uploads/owner-avatar/2026/08/02/avatar.png", "MALE", true);
 	}
 }

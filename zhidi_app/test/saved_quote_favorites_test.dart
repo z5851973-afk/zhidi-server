@@ -3,13 +3,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_scope.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
 import 'package:zhidi_app/pages/profile/favorites_page.dart';
+import 'package:zhidi_app/services/auth_api_client.dart';
+import 'package:zhidi_app/services/auth_session_store.dart';
+import 'package:zhidi_app/services/owner_profile_api_client.dart';
 
 void main() {
   test(
     'saved quotes persist and latest quote replaces same worker trade',
     () async {
       final store = MemoryOwnerStore();
-      final state = await OwnerAppState.memory(store: store);
+      final sessionStore = MemoryAuthSessionStore(_validSession());
+      const profileApi = _OfflineOwnerProfileApi();
+      final state = await OwnerAppState.memory(
+        store: store,
+        sessionStore: sessionStore,
+        profileApi: profileApi,
+      );
 
       await state.addSavedQuote(_quote(id: 'quote-old', total: 1200));
       await state.addSavedQuote(_quote(id: 'quote-new', total: 1680));
@@ -18,12 +27,24 @@ void main() {
       expect(state.savedQuotes.single.id, 'quote-new');
       expect(state.savedQuotes.single.grandTotal, 1680);
 
-      final restored = await OwnerAppState.memory(store: store);
+      final restored = await OwnerAppState.memory(
+        store: store,
+        sessionStore: sessionStore,
+        profileApi: profileApi,
+      );
       expect(restored.savedQuotes, hasLength(1));
       expect(
         restored.savedQuotes.single.toJson(),
         state.savedQuotes.single.toJson(),
       );
+
+      await sessionStore.clear();
+      final withoutSession = await OwnerAppState.memory(
+        store: store,
+        sessionStore: sessionStore,
+        profileApi: profileApi,
+      );
+      expect(withoutSession.savedQuotes, isEmpty);
     },
   );
 
@@ -69,7 +90,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(state.savedQuotes, isEmpty);
-    expect(find.text('暂无收藏'), findsOneWidget);
+    expect(find.text('暂无报价收藏'), findsOneWidget);
   });
 }
 
@@ -93,3 +114,30 @@ SavedQuote _quote({
   grandTotal: total,
   savedAt: DateTime(2026, 7, 15, 10, 30),
 );
+
+AuthSession _validSession() => AuthSession(
+  accessToken: 'owner-token',
+  tokenType: 'Bearer',
+  expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+  userId: 'owner-id',
+  phone: '13900000000',
+  roles: const ['OWNER'],
+);
+
+final class _OfflineOwnerProfileApi implements OwnerProfileApi {
+  const _OfflineOwnerProfileApi();
+
+  @override
+  Future<RemoteOwnerProfile> getCurrent(String accessToken) async {
+    throw const AuthApiException(
+      code: 'NETWORK_UNAVAILABLE',
+      message: 'offline fixture',
+    );
+  }
+
+  @override
+  Future<RemoteOwnerProfile> updateCurrent(
+    String accessToken,
+    OwnerProfileUpdate request,
+  ) => throw UnsupportedError('not used by favorites tests');
+}

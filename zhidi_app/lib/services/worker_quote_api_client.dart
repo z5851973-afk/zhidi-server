@@ -7,18 +7,12 @@ import 'auth_api_client.dart';
 
 /// 提交报价的单个项目（阶段 3：仅传 name + quantity）
 final class CatalogSubmitItem {
-  const CatalogSubmitItem({
-    required this.name,
-    required this.quantity,
-  });
+  const CatalogSubmitItem({required this.name, required this.quantity});
 
   final String name;
   final double quantity;
 
-  Map<String, dynamic> toJson() => {
-    'name': name,
-    'quantity': quantity,
-  };
+  Map<String, dynamic> toJson() => {'name': name, 'quantity': quantity};
 }
 
 final class RemoteQuoteItem {
@@ -69,6 +63,8 @@ final class RemoteQuoteItem {
   final double laborFee;
   final double auxiliaryFee;
   final double mainMaterialFee;
+
+  bool get isMaterial => auxiliaryFee + mainMaterialFee > laborFee;
 }
 
 final class RemoteQuote {
@@ -89,7 +85,9 @@ final class RemoteQuote {
     final items = <RemoteQuoteItem>[];
     if (rawItems is List) {
       for (final e in rawItems) {
-        items.add(RemoteQuoteItem.fromJson(Map<String, dynamic>.from(e as Map)));
+        items.add(
+          RemoteQuoteItem.fromJson(Map<String, dynamic>.from(e as Map)),
+        );
       }
     }
     return RemoteQuote(
@@ -156,20 +154,20 @@ final class WorkerQuoteApiClient {
     final response = await _post(
       '/api/v1/bookings/$bookingId/quotes',
       accessToken,
-      jsonEncode({
-        'items': items.map((e) => e.toJson()).toList(),
-      }),
+      jsonEncode({'items': items.map((e) => e.toJson()).toList()}),
     );
-    return _parseQuote(response);
+    return _parseQuote(response, expectedBookingId: bookingId);
   }
 
   Future<List<RemoteQuote>> listQuotesForBooking(
     String accessToken,
     String bookingId,
   ) async {
-    final response =
-        await _get('/api/v1/bookings/$bookingId/quotes', accessToken);
-    return _parseQuoteList(response);
+    final response = await _get(
+      '/api/v1/bookings/$bookingId/quotes',
+      accessToken,
+    );
+    return _parseQuoteList(response, expectedBookingId: bookingId);
   }
 
   Future<List<RemoteQuote>> listWorkerQuotes(String accessToken) async {
@@ -177,10 +175,7 @@ final class WorkerQuoteApiClient {
     return _parseQuoteList(response);
   }
 
-  Future<RemoteQuote> acceptQuote(
-    String accessToken,
-    String quoteId,
-  ) async {
+  Future<RemoteQuote> acceptQuote(String accessToken, String quoteId) async {
     final response = await _put(
       '/api/v1/quotes/$quoteId/accept',
       accessToken,
@@ -306,7 +301,7 @@ final class WorkerQuoteApiClient {
   }
 }
 
-RemoteQuote _parseQuote(http.Response response) {
+RemoteQuote _parseQuote(http.Response response, {String? expectedBookingId}) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! Map<String, dynamic>) {
@@ -317,7 +312,13 @@ RemoteQuote _parseQuote(http.Response response) {
     );
   }
   try {
-    return RemoteQuote.fromJson(data);
+    final quote = RemoteQuote.fromJson(data);
+    _validateQuoteBookingIdentity(
+      quote,
+      response.statusCode,
+      expectedBookingId: expectedBookingId,
+    );
+    return quote;
   } on FormatException {
     throw AuthApiException(
       code: 'INVALID_RESPONSE',
@@ -333,7 +334,10 @@ RemoteQuote _parseQuote(http.Response response) {
   }
 }
 
-List<RemoteQuote> _parseQuoteList(http.Response response) {
+List<RemoteQuote> _parseQuoteList(
+  http.Response response, {
+  String? expectedBookingId,
+}) {
   final envelope = _parseEnvelope(response);
   final data = envelope['data'];
   if (data is! List) {
@@ -344,11 +348,17 @@ List<RemoteQuote> _parseQuoteList(http.Response response) {
     );
   }
   try {
-    return data
-        .map((e) => RemoteQuote.fromJson(
-              Map<String, dynamic>.from(e as Map),
-            ))
+    final quotes = data
+        .map((e) => RemoteQuote.fromJson(Map<String, dynamic>.from(e as Map)))
         .toList();
+    for (final quote in quotes) {
+      _validateQuoteBookingIdentity(
+        quote,
+        response.statusCode,
+        expectedBookingId: expectedBookingId,
+      );
+    }
+    return quotes;
   } on FormatException {
     throw AuthApiException(
       code: 'INVALID_RESPONSE',
@@ -360,6 +370,21 @@ List<RemoteQuote> _parseQuoteList(http.Response response) {
       code: 'INVALID_RESPONSE',
       message: '服务器响应格式异常',
       statusCode: response.statusCode,
+    );
+  }
+}
+
+void _validateQuoteBookingIdentity(
+  RemoteQuote quote,
+  int statusCode, {
+  String? expectedBookingId,
+}) {
+  if (quote.bookingId.isEmpty ||
+      (expectedBookingId != null && quote.bookingId != expectedBookingId)) {
+    throw AuthApiException(
+      code: 'INVALID_RESPONSE',
+      message: '服务器响应订单标识不一致',
+      statusCode: statusCode,
     );
   }
 }

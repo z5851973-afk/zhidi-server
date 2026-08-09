@@ -21,13 +21,19 @@ public record QuoteItem(
 
 	public static QuoteItem fromCatalog(ServiceCatalog catalog, BigDecimal quantity) {
 		BigDecimal unitPrice = catalog.getUnitPrice();
+		BigDecimal subtotal = unitPrice.multiply(quantity)
+			.setScale(2, java.math.RoundingMode.HALF_UP);
+		BigDecimal zero = BigDecimal.ZERO.setScale(2);
 		return new QuoteItem(
 			catalog.getName(),
 			quantity,
 			catalog.getUnit(),
 			unitPrice,
 			catalog.getId(),
-			unitPrice.multiply(quantity),
-			null, null, null, null);
+			subtotal,
+			null,
+			catalog.isMaterial() ? zero : subtotal,
+			catalog.isMaterial() ? subtotal : zero,
+			zero);
 	}
 }

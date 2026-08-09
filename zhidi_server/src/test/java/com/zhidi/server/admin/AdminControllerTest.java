@@ -68,6 +68,41 @@ class AdminControllerTest {
 	}
 
 	@Test
+	void adminAfterSaleLifecycleDelegatesEachAuditedActionSeparately() {
+		UserRepository users = mock(UserRepository.class);
+		BookingRepository bookings = mock(BookingRepository.class);
+		OperationLogRepository logs = mock(OperationLogRepository.class);
+		AfterSaleService afterSales = mock(AfterSaleService.class);
+		AdminController controller = new AdminController(users, bookings, logs,
+			afterSales, mock(WarrantyRetentionService.class),
+			mock(AfterSaleRepository.class), mock(WarrantyRetentionRepository.class),
+			mock(PaymentOrderRepository.class));
+		UUID adminId = UUID.randomUUID();
+		UUID afterSaleId = UUID.randomUUID();
+		CurrentUserPrincipal principal = new CurrentUserPrincipal(
+			adminId, "13800138000", Set.of(UserRole.ADMIN));
+
+		controller.acceptAfterSale(principal, afterSaleId);
+		controller.replyAfterSale(principal, afterSaleId,
+			new AdminController.AfterSaleEventRequest("已联系双方", List.of()));
+		controller.resolveAfterSale(principal, afterSaleId,
+			new AdminController.ResolveAfterSaleRequest("安排返修", null));
+		controller.closeAfterSale(principal, afterSaleId,
+			new AdminController.CloseAfterSaleRequest("双方确认完成"));
+
+		verify(afterSales).adminAccept(adminId, afterSaleId);
+		verify(afterSales).appendAdminReply(adminId, afterSaleId,
+			"已联系双方", List.of());
+		verify(afterSales).adminResolve(adminId, afterSaleId, "安排返修", null);
+		verify(afterSales).adminClose(adminId, afterSaleId, "双方确认完成");
+		ArgumentCaptor<OperationLog> captor = ArgumentCaptor.forClass(OperationLog.class);
+		verify(logs, org.mockito.Mockito.times(4)).save(captor.capture());
+		assertThat(captor.getAllValues()).extracting(OperationLog::getAction)
+			.containsExactly("ADMIN_AFTER_SALE_ACCEPT", "ADMIN_AFTER_SALE_REPLY",
+				"ADMIN_AFTER_SALE_RESOLVE", "ADMIN_AFTER_SALE_CLOSE");
+	}
+
+	@Test
 	void afterSaleProcessingWritesAuditLogWithDeductionAmount() {
 		UserRepository users = mock(UserRepository.class);
 		BookingRepository bookings = mock(BookingRepository.class);
@@ -79,7 +114,8 @@ class AdminControllerTest {
 			mock(PaymentOrderRepository.class));
 		UUID adminId = UUID.randomUUID();
 		UUID afterSaleId = UUID.randomUUID();
-		when(afterSales.process(afterSaleId, "返修扣减", new BigDecimal("30.00")))
+		when(afterSales.adminResolve(adminId, afterSaleId, "返修扣减",
+			new BigDecimal("30.00")))
 			.thenReturn(new AfterSaleResponse(afterSaleId, UUID.randomUUID(),
 				UUID.randomUUID(), AfterSaleType.COMPLAINT, "水管返潮", null,
 				AfterSaleStatus.RESOLVED, "返修扣减", UUID.randomUUID(),

@@ -20,6 +20,11 @@ void main() {
     'serviceCity': '杭州',
     'serviceAddress': '西湖区文三路 100 号',
     'remark': '来自安卓业主端',
+    'areaSqm': 98.5,
+    'bedroomCount': 3,
+    'livingRoomCount': 2,
+    'kitchenCount': 1,
+    'bathroomCount': 2,
     'serviceRequestId': 'sr-test-1',
     'cancelledBy': null,
     'cancelReason': null,
@@ -42,6 +47,7 @@ void main() {
       expect(booking.serviceCity, '杭州');
       expect(booking.serviceAddress, '西湖区文三路 100 号');
       expect(booking.remark, '来自安卓业主端');
+      expect(booking.houseInfo?.summaryLabel, '98.5㎡ · 3室2厅1厨2卫');
       expect(booking.status, 'PENDING');
       expect(booking.createdAt, DateTime.utc(2026, 7, 15, 10, 0, 0));
       expect(booking.updatedAt, DateTime.utc(2026, 7, 15, 10, 0, 0));
@@ -55,6 +61,44 @@ void main() {
       expect(booking.serviceAddress, isNull);
       expect(booking.remark, isNull);
     });
+
+    test('prefers explicit scheduled and actual visit timestamps', () {
+      final json = Map<String, dynamic>.from(sampleBookingJson)
+        ..['status'] = 'ON_SITE'
+        ..['scheduledVisitAt'] = '2026-08-10T09:30:00+08:00'
+        ..['actualOnSiteAt'] = '2026-08-10T10:05:00+08:00'
+        ..['proposedTime'] = '2026-08-11T09:30:00+08:00'
+        ..['onSiteAt'] = '2026-08-11T10:05:00+08:00';
+
+      final booking = RemoteWorkerBooking.fromJson(json);
+
+      expect(booking.scheduledVisitAt, DateTime.utc(2026, 8, 10, 1, 30));
+      expect(booking.actualOnSiteAt, DateTime.utc(2026, 8, 10, 2, 5));
+    });
+
+    test(
+      'uses legacy visit timestamps without treating a proposal as fixed',
+      () {
+        final onSiteJson = Map<String, dynamic>.from(sampleBookingJson)
+          ..['status'] = 'ON_SITE'
+          ..['proposedTime'] = '2026-08-10T09:30:00+08:00'
+          ..['onSiteAt'] = '2026-08-10T10:05:00+08:00';
+        final proposedJson = Map<String, dynamic>.from(sampleBookingJson)
+          ..['status'] = 'VISIT_PROPOSED'
+          ..['proposedTime'] = '2026-08-10T09:30:00+08:00';
+
+        final onSiteBooking = RemoteWorkerBooking.fromJson(onSiteJson);
+        final proposedBooking = RemoteWorkerBooking.fromJson(proposedJson);
+
+        expect(
+          onSiteBooking.scheduledVisitAt,
+          DateTime.utc(2026, 8, 10, 1, 30),
+        );
+        expect(onSiteBooking.actualOnSiteAt, DateTime.utc(2026, 8, 10, 2, 5));
+        expect(proposedBooking.scheduledVisitAt, isNull);
+        expect(proposedBooking.proposedTime, DateTime.utc(2026, 8, 10, 1, 30));
+      },
+    );
   });
 
   group('WorkerBookingApiClient.listWorkerBookings', () {
@@ -126,11 +170,7 @@ void main() {
           final accepted = Map<String, dynamic>.from(sampleBookingJson)
             ..['status'] = 'ACCEPTED';
           return http.Response(
-            jsonEncode({
-              'code': 'OK',
-              'message': 'success',
-              'data': accepted,
-            }),
+            jsonEncode({'code': 'OK', 'message': 'success', 'data': accepted}),
             200,
             headers: {'content-type': 'application/json; charset=utf-8'},
           );
@@ -162,11 +202,7 @@ void main() {
           final rejected = Map<String, dynamic>.from(sampleBookingJson)
             ..['status'] = 'REJECTED';
           return http.Response(
-            jsonEncode({
-              'code': 'OK',
-              'message': 'success',
-              'data': rejected,
-            }),
+            jsonEncode({'code': 'OK', 'message': 'success', 'data': rejected}),
             200,
             headers: {'content-type': 'application/json; charset=utf-8'},
           );
@@ -198,8 +234,11 @@ void main() {
       await expectLater(
         client.listWorkerBookings('jwt-token'),
         throwsA(
-          isA<AuthApiException>()
-              .having((e) => e.code, 'code', 'NETWORK_UNAVAILABLE'),
+          isA<AuthApiException>().having(
+            (e) => e.code,
+            'code',
+            'NETWORK_UNAVAILABLE',
+          ),
         ),
       );
     });

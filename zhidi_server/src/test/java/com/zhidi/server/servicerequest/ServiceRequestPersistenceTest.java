@@ -75,6 +75,23 @@ class ServiceRequestPersistenceTest extends MySqlContainerSupport {
 			.containsExactly(firstWorker.getId(), secondWorker.getId());
 	}
 
+	@Test
+	void persistsStructuredHouseInfoWithoutUsingOwnerProfileArea() {
+		ServiceRequest request = requests.saveAndFlush(ServiceRequest.create(
+			owner.getId(), "水电", "成都", "高新区 1 号",
+			new BigDecimal("98.50"), (short) 3, (short) 2, (short) 1,
+			(short) 2, "旧房水电改造"));
+
+		ServiceRequest reloaded = requests.findById(request.getId()).orElseThrow();
+
+		assertThat(reloaded.getAreaSqm()).isEqualByComparingTo("98.50");
+		assertThat(reloaded.getBedroomCount()).isEqualTo((short) 3);
+		assertThat(reloaded.getLivingRoomCount()).isEqualTo((short) 2);
+		assertThat(reloaded.getKitchenCount()).isEqualTo((short) 1);
+		assertThat(reloaded.getBathroomCount()).isEqualTo((short) 2);
+		assertThat(reloaded.getRemark()).isEqualTo("旧房水电改造");
+	}
+
 	private User createUser(String phone, UserRole role) {
 		User user = User.create(phone);
 		user.grantRole(role);

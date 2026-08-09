@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../app/worker_app_scope.dart';
 import '../../app/worker_app_state.dart';
@@ -7,11 +8,7 @@ import '../../services/worker_quote_api_client.dart';
 import '../../services/auth_api_client.dart';
 
 class QuotationFormPage extends StatefulWidget {
-  const QuotationFormPage({
-    super.key,
-    required this.order,
-    this.catalogApi,
-  });
+  const QuotationFormPage({super.key, required this.order, this.catalogApi});
 
   final WorkerOrder order;
   final ServiceCatalogApi? catalogApi;
@@ -28,26 +25,7 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
 
   /// 选中的项：key = catalog item name
   final Map<String, double> _quantities = {};
-
-  // 中文分类映射
-  static final _catLabel = <String, String>{
-    'PLUMBING': '水电',
-    'ELECTRICAL': '水电',
-    'CARPENTRY': '木工',
-    'PAINTING': '油漆',
-    'MASONRY': '泥瓦',
-    'DEMOLITION': '拆除',
-  };
-
-  // 分类图标/颜色
-  static const _catMeta = <String, _CatMeta>{
-    'PLUMBING': _CatMeta(Icons.water_drop_outlined, Colors.blue),
-    'ELECTRICAL': _CatMeta(Icons.bolt_outlined, Colors.amber),
-    'CARPENTRY': _CatMeta(Icons.carpenter_outlined, Colors.brown),
-    'PAINTING': _CatMeta(Icons.format_paint_outlined, Colors.teal),
-    'MASONRY': _CatMeta(Icons.grid_view_outlined, Colors.orange),
-    'DEMOLITION': _CatMeta(Icons.delete_outline, Colors.red),
-  };
+  final Set<String> _selectedItems = {};
 
   WorkerOrder get _order => widget.order;
 
@@ -57,9 +35,29 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _startCatalogLoad();
+  }
+
+  void _startCatalogLoad() {
     if (_catalogLoadStarted) return;
     _catalogLoadStarted = true;
     _loadCatalog();
+  }
+
+  @override
+  void didUpdateWidget(covariant QuotationFormPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.order.id == widget.order.id &&
+        oldWidget.order.trade == widget.order.trade) {
+      return;
+    }
+    _selectedItems.clear();
+    _quantities.clear();
+    _catalog = null;
+    _loading = true;
+    _error = null;
+    _catalogLoadStarted = false;
+    _startCatalogLoad();
   }
 
   Future<void> _loadCatalog() async {
@@ -72,33 +70,28 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
       });
       return;
     }
+    final orderId = _order.id;
+    final trade = _order.trade;
     try {
-      final items = await _catalogApi.getCatalog(token, _order.trade);
+      final items = await _catalogApi.getCatalog(token, trade);
+      if (!mounted || _order.id != orderId || _order.trade != trade) return;
       setState(() {
         _catalog = items;
         _loading = false;
       });
     } on AuthApiException catch (e) {
+      if (!mounted || _order.id != orderId || _order.trade != trade) return;
       setState(() {
         _loading = false;
         _error = e.message;
       });
     } catch (e) {
+      if (!mounted || _order.id != orderId || _order.trade != trade) return;
       setState(() {
         _loading = false;
         _error = '加载价格目录失败：$e';
       });
     }
-  }
-
-  // 按 category 分组
-  Map<String, List<CatalogItem>> _grouped() {
-    final map = <String, List<CatalogItem>>{};
-    if (_catalog == null) return map;
-    for (final item in _catalog!) {
-      map.putIfAbsent(item.category, () => []).add(item);
-    }
-    return map;
   }
 
   double _quantityOf(String name) => _quantities[name] ?? 0;
@@ -132,20 +125,20 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
       await app.submitQuote(_order.id, items);
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('报价已提交')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('报价已提交')));
       Navigator.of(context).pop();
     } on AuthApiException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('提交失败：$e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('提交失败：$e')));
     }
   }
 
@@ -157,34 +150,53 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
       appBar: AppBar(
         title: const Text('提交报价单'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(44),
+          preferredSize: const Size.fromHeight(70),
           child: Container(
             color: cs.surfaceContainerLow,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '${_order.ownerName} - ${_order.requirement}',
-                    style: TextStyle(color: cs.onSurface, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: cs.primaryContainer,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '合计 ¥${_grandTotal.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      color: cs.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_order.ownerName} - ${_order.requirement}',
+                        style: TextStyle(color: cs.onSurface, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: cs.primaryContainer,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '合计 ¥${_grandTotal.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          color: cs.onPrimaryContainer,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  _order.houseSummary,
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  '请按现场实际情况报价',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -237,47 +249,60 @@ class _QuotationFormPageState extends State<QuotationFormPage> {
         ),
       );
     }
-    final grouped = _grouped();
-    if (grouped.isEmpty) {
+    final laborItems = _catalog!.where((item) => !item.isMaterial).toList();
+    final materialItems = _catalog!.where((item) => item.isMaterial).toList();
+    if (laborItems.isEmpty && materialItems.isEmpty) {
       return Center(
-        child: Text(
-          '该工种暂无价格项目',
-          style: TextStyle(color: cs.onSurfaceVariant),
-        ),
+        child: Text('该工种暂无价格项目', style: TextStyle(color: cs.onSurfaceVariant)),
       );
     }
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 80),
-      children: grouped.entries.map((e) {
-        final meta = _catMeta[e.key] ?? _CatMeta(Icons.build_outlined, cs.primary);
-        return _CategoryCard(
-          label: _catLabel[e.key] ?? e.key,
-          icon: meta.icon,
-          color: meta.color,
-          items: e.value,
-          quantityOf: _quantityOf,
-          onQtyChanged: _setQty,
-        );
-      }).toList(),
+      children: [
+        if (laborItems.isNotEmpty)
+          _CategoryCard(
+            label: '人工费用',
+            icon: Icons.engineering_outlined,
+            color: cs.primary,
+            items: laborItems,
+            selectedOf: _selectedItems.contains,
+            quantityOf: _quantityOf,
+            onSelectionChanged: _setSelected,
+            onQtyChanged: _setQty,
+          ),
+        if (materialItems.isNotEmpty)
+          _CategoryCard(
+            label: '材料费用',
+            icon: Icons.inventory_2_outlined,
+            color: Colors.brown,
+            items: materialItems,
+            selectedOf: _selectedItems.contains,
+            quantityOf: _quantityOf,
+            onSelectionChanged: _setSelected,
+            onQtyChanged: _setQty,
+          ),
+      ],
     );
   }
 
   void _setQty(String name, double qty) {
     setState(() {
-      if (qty <= 0) {
-        _quantities.remove(name);
+      _quantities[name] = qty < 0 ? 0 : qty;
+    });
+  }
+
+  void _setSelected(String name, bool selected) {
+    setState(() {
+      if (selected) {
+        _selectedItems.add(name);
+        _quantities[name] = 1;
       } else {
-        _quantities[name] = qty;
+        _selectedItems.remove(name);
+        _quantities.remove(name);
       }
     });
   }
-}
-
-class _CatMeta {
-  const _CatMeta(this.icon, this.color);
-  final IconData icon;
-  final Color color;
 }
 
 // ── 分类卡片 ──
@@ -287,7 +312,9 @@ class _CategoryCard extends StatelessWidget {
     required this.icon,
     required this.color,
     required this.items,
+    required this.selectedOf,
     required this.quantityOf,
+    required this.onSelectionChanged,
     required this.onQtyChanged,
   });
 
@@ -295,7 +322,9 @@ class _CategoryCard extends StatelessWidget {
   final IconData icon;
   final Color color;
   final List<CatalogItem> items;
+  final bool Function(String) selectedOf;
   final double Function(String) quantityOf;
+  final void Function(String, bool) onSelectionChanged;
   final void Function(String, double) onQtyChanged;
 
   double get _catTotal {
@@ -321,20 +350,31 @@ class _CategoryCard extends StatelessWidget {
               children: [
                 Icon(icon, size: 20, color: color),
                 const SizedBox(width: 8),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w600)),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
                 const Spacer(),
-                Text('小计 ¥${_catTotal.toStringAsFixed(0)}',
-                    style: TextStyle(color: cs.primary, fontSize: 13)),
+                Text(
+                  '小计 ¥${_catTotal.toStringAsFixed(0)}',
+                  style: TextStyle(color: cs.primary, fontSize: 13),
+                ),
               ],
             ),
             const SizedBox(height: 10),
-            ...items.map((item) => _CatalogItemRow(
-                  item: item,
-                  quantity: quantityOf(item.name),
-                  onQtyChanged: (q) => onQtyChanged(item.name, q),
-                )),
+            ...items.map(
+              (item) => _CatalogItemRow(
+                item: item,
+                selected: selectedOf(item.name),
+                quantity: quantityOf(item.name),
+                onSelectionChanged: (selected) =>
+                    onSelectionChanged(item.name, selected),
+                onQtyChanged: (q) => onQtyChanged(item.name, q),
+              ),
+            ),
           ],
         ),
       ),
@@ -346,18 +386,21 @@ class _CategoryCard extends StatelessWidget {
 class _CatalogItemRow extends StatelessWidget {
   const _CatalogItemRow({
     required this.item,
+    required this.selected,
     required this.quantity,
+    required this.onSelectionChanged,
     required this.onQtyChanged,
   });
 
   final CatalogItem item;
+  final bool selected;
   final double quantity;
+  final ValueChanged<bool> onSelectionChanged;
   final ValueChanged<double> onQtyChanged;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final selected = quantity > 0;
     final subtotal = item.unitPrice * quantity;
 
     return Padding(
@@ -369,7 +412,7 @@ class _CatalogItemRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: () => onQtyChanged(selected ? 0 : 1),
+          onTap: () => onSelectionChanged(!selected),
           borderRadius: BorderRadius.circular(8),
           splashColor: cs.primary.withValues(alpha: 0.2),
           highlightColor: cs.primary.withValues(alpha: 0.1),
@@ -393,8 +436,8 @@ class _CatalogItemRow extends StatelessWidget {
                         height: 24,
                         child: Checkbox(
                           value: selected,
-                          onChanged: (_) =>
-                              onQtyChanged(selected ? 0 : 1),
+                          onChanged: (checked) =>
+                              onSelectionChanged(checked == true),
                           materialTapTargetSize:
                               MaterialTapTargetSize.shrinkWrap,
                           visualDensity: VisualDensity.compact,
@@ -415,7 +458,9 @@ class _CatalogItemRow extends StatelessWidget {
                       ),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: cs.surfaceContainerHighest,
                           borderRadius: BorderRadius.circular(4),
@@ -438,6 +483,7 @@ class _CatalogItemRow extends StatelessWidget {
                         Expanded(
                           flex: 2,
                           child: _QtyStepper(
+                            itemName: item.name,
                             value: quantity,
                             onChanged: onQtyChanged,
                           ),
@@ -465,11 +511,62 @@ class _CatalogItemRow extends StatelessWidget {
 }
 
 // ── 数量步进器 ──
-class _QtyStepper extends StatelessWidget {
-  const _QtyStepper({required this.value, required this.onChanged});
+class _QtyStepper extends StatefulWidget {
+  const _QtyStepper({
+    required this.itemName,
+    required this.value,
+    required this.onChanged,
+  });
 
+  final String itemName;
   final double value;
   final ValueChanged<double> onChanged;
+
+  @override
+  State<_QtyStepper> createState() => _QtyStepperState();
+}
+
+class _QtyStepperState extends State<_QtyStepper> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _formatQuantity(widget.value));
+    _focusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QtyStepper oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && !_focusNode.hasFocus) {
+      _replaceText(_formatQuantity(widget.value));
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  static String _formatQuantity(double value) => value == value.roundToDouble()
+      ? value.toInt().toString()
+      : value.toStringAsFixed(1);
+
+  void _replaceText(String text) {
+    _controller.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  void _setFromButton(double value) {
+    _replaceText(_formatQuantity(value));
+    widget.onChanged(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -483,32 +580,41 @@ class _QtyStepper extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           _stepBtn(Icons.remove, () {
-            if (value > 0.5) onChanged(value - 1);
+            if (widget.value > 0.5) _setFromButton(widget.value - 1);
           }),
-          Container(
-            constraints: const BoxConstraints(minWidth: 44),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-            child: Text(
-              value == value.roundToDouble()
-                  ? value.toInt().toString()
-                  : value.toStringAsFixed(1),
+          SizedBox(
+            width: 64,
+            child: TextFormField(
+              key: ValueKey('quote-qty-${widget.itemName}'),
+              controller: _controller,
+              focusNode: _focusNode,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+              ],
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w500),
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.symmetric(vertical: 8),
+              ),
+              onChanged: (text) => widget.onChanged(double.tryParse(text) ?? 0),
             ),
           ),
-          _stepBtn(Icons.add, () => onChanged(value + 1)),
+          _stepBtn(Icons.add, () => _setFromButton(widget.value + 1)),
         ],
       ),
     );
   }
 
   Widget _stepBtn(IconData icon, VoidCallback onTap) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 16),
-        ),
-      );
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(6),
+    child: Padding(
+      padding: const EdgeInsets.all(8),
+      child: Icon(icon, size: 16),
+    ),
+  );
 }

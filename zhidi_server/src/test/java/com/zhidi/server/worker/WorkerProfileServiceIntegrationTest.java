@@ -128,7 +128,7 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 
 		assertThat(service.listVisible()).containsExactly(new WorkerDirectoryResponse(
 			complete.getId(), "张师傅", "成都", "水电", 8,
-			new BigDecimal("180.00"), "擅长旧房水电改造"));
+			new BigDecimal("180.00"), "擅长旧房水电改造", 0, 0));
 	}
 
 	@Test
@@ -139,7 +139,7 @@ class WorkerProfileServiceIntegrationTest extends MySqlContainerSupport {
 
 		assertThat(service.getVisible(worker.getId())).isEqualTo(new WorkerDirectoryResponse(
 			worker.getId(), "张师傅", "成都", "水电", 8,
-			new BigDecimal("180.00"), "擅长旧房水电改造"));
+			new BigDecimal("180.00"), "擅长旧房水电改造", 0, 0));
 	}
 
 	@Test

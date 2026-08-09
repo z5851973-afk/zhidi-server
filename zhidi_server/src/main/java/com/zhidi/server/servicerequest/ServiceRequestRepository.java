@@ -1,6 +1,7 @@
 package com.zhidi.server.servicerequest;
 
 import jakarta.persistence.LockModeType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,8 +13,9 @@ public interface ServiceRequestRepository extends JpaRepository<ServiceRequest, 
 
 	List<ServiceRequest> findByOwnerUserIdOrderByCreatedAtDesc(UUID ownerUserId);
 
-	List<ServiceRequest> findByOwnerUserIdAndTradeAndServiceCityAndStatusOrderByCreatedAtDesc(
-			UUID ownerUserId, String trade, String serviceCity, ServiceRequestStatus status);
+	List<ServiceRequest> findByOwnerUserIdAndTradeAndServiceCityAndStatusInOrderByCreatedAtDesc(
+		UUID ownerUserId, String trade, String serviceCity,
+		Collection<ServiceRequestStatus> statuses);
 
 	@Query("""
 		select r from ServiceRequest r

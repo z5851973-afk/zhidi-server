@@ -18,6 +18,8 @@ import 'pages/auth/login_page.dart';
 import 'pages/auth/onboarding_page.dart';
 import 'services/auth_api_client.dart';
 import 'services/auth_session_store.dart';
+import 'services/owner_address_api_client.dart';
+import 'services/payment_api_client.dart';
 import 'services/worker_booking_api_client.dart';
 
 /// 通用入口：根据 --flavor 分流到业主端 / 工人端
@@ -75,7 +77,10 @@ Future<void> _runOwner() async {
   try {
     ownerState = await OwnerAppState.load(sessionStore: sessionStore);
   } catch (_) {
-    ownerState = await OwnerAppState.memory(sessionStore: sessionStore);
+    ownerState = await OwnerAppState.memory(
+      sessionStore: sessionStore,
+      addressApi: OwnerAddressApiClient(),
+    );
   }
   runApp(ZhidiApp(ownerState: ownerState, authApi: AuthApiClient()));
 }
@@ -97,9 +102,14 @@ Future<void> _runWorker() async {
       api: WorkerBookingApiClient(),
       accessToken: token,
     );
+    workerState.initPaymentApi(api: PaymentApiClient(), accessToken: token);
   } else if (await workerState.restoreOnlineSession()) {
     workerState.initBookingApi(
       api: WorkerBookingApiClient(),
+      accessToken: workerState.accessToken!,
+    );
+    workerState.initPaymentApi(
+      api: PaymentApiClient(),
       accessToken: workerState.accessToken!,
     );
   }

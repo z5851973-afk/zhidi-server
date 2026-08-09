@@ -15,6 +15,7 @@ import com.zhidi.server.quote.QuoteRepository;
 import com.zhidi.server.servicerequest.ServiceRequestRepository;
 import com.zhidi.server.workercase.WorkerCaseRepository;
 import com.zhidi.server.owner.OwnerProfileRepository;
+import com.zhidi.server.payment.WarrantyRetentionRepository;
 import com.zhidi.server.worker.WorkerProfileRepository;
 import com.zhidi.server.auth.SmsVerificationCodeRepository;
 import com.zhidi.server.audit.OperationLogRepository;
@@ -83,6 +84,9 @@ class WorkerDirectoryControllerTest {
 	OperationLogRepository operationLogs;
 
 	@MockitoBean
+	WarrantyRetentionRepository warrantyRetentions;
+
+	@MockitoBean
 	UserRepository users;
 
 	@MockitoBean
@@ -97,7 +101,9 @@ class WorkerDirectoryControllerTest {
 			.andExpect(jsonPath("$.code").value("OK"))
 			.andExpect(jsonPath("$.data[0].userId").value(WORKER_ID.toString()))
 			.andExpect(jsonPath("$.data[0].name").value("张师傅"))
-			.andExpect(jsonPath("$.data[0].primaryTrade").value("水电"));
+			.andExpect(jsonPath("$.data[0].primaryTrade").value("水电"))
+			.andExpect(jsonPath("$.data[0].caseCount").value(2))
+			.andExpect(jsonPath("$.data[0].hiredCount").value(1));
 
 		verify(workerProfileService).listVisible();
 	}
@@ -111,13 +117,15 @@ class WorkerDirectoryControllerTest {
 			.andExpect(jsonPath("$.code").value("OK"))
 			.andExpect(jsonPath("$.data.userId").value(WORKER_ID.toString()))
 			.andExpect(jsonPath("$.data.serviceCity").value("成都"))
-			.andExpect(jsonPath("$.data.dailyRate").value(180.00));
+			.andExpect(jsonPath("$.data.dailyRate").value(180.00))
+			.andExpect(jsonPath("$.data.caseCount").value(2))
+			.andExpect(jsonPath("$.data.hiredCount").value(1));
 
 		verify(workerProfileService).getVisible(WORKER_ID);
 	}
 
 	private WorkerDirectoryResponse directoryItem() {
 		return new WorkerDirectoryResponse(WORKER_ID, "张师傅", "成都", "水电",
-			8, new BigDecimal("180.00"), "擅长旧房水电改造");
+			8, new BigDecimal("180.00"), "擅长旧房水电改造", 2, 1);
 	}
 }

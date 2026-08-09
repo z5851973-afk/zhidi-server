@@ -1,5 +1,7 @@
 package com.zhidi.server.booking;
 
+import java.util.Set;
+
 public enum BookingStatus {
 	PENDING,
 	ACCEPTED,
@@ -12,5 +14,13 @@ public enum BookingStatus {
 	REJECTED,
 	CANCELLED,
 	NOT_SELECTED,
-	HIRED
+	HIRED,
+	COMPLETED;
+
+	public static final Set<BookingStatus> CANDIDATE_TERMINAL_STATUSES = Set.of(
+		REJECTED,
+		CANCELLED,
+		NOT_SELECTED,
+		HIRED,
+		COMPLETED);
 }

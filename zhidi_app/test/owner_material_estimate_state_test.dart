@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zhidi_app/app/owner_app_state.dart';
+import 'package:zhidi_app/services/auth_api_client.dart';
+import 'package:zhidi_app/services/auth_session_store.dart';
+import 'package:zhidi_app/services/owner_profile_api_client.dart';
 
 MaterialEstimate _estimate() {
   return MaterialEstimate(
@@ -34,22 +37,31 @@ MaterialEstimate _estimate() {
 void main() {
   test('adds and confirms material estimate with persistence', () async {
     final store = MemoryOwnerStore();
-    final state = await OwnerAppState.memory(store: store);
+    final sessionStore = MemoryAuthSessionStore(_validSession());
+    const profileApi = _OfflineOwnerProfileApi();
+    final state = await OwnerAppState.memory(
+      store: store,
+      sessionStore: sessionStore,
+      profileApi: profileApi,
+    );
 
     await state.addMaterialEstimate(_estimate());
 
     expect(state.materialEstimates, hasLength(1));
     expect(
-      state.materialEstimates.single.items
-          .fold<double>(0, (sum, item) => sum + item.totalPrice),
+      state.materialEstimates.single.items.fold<double>(
+        0,
+        (sum, item) => sum + item.totalPrice,
+      ),
       120,
     );
-    expect(
-      state.materialEstimates.single.status,
-      EstimateStatus.pending,
-    );
+    expect(state.materialEstimates.single.status, EstimateStatus.pending);
 
-    final restored = await OwnerAppState.memory(store: store);
+    final restored = await OwnerAppState.memory(
+      store: store,
+      sessionStore: sessionStore,
+      profileApi: profileApi,
+    );
     expect(restored.materialEstimates.single.items, hasLength(2));
 
     await restored.toggleMaterialItem('estimate-1', 'item-1');
@@ -58,5 +70,41 @@ void main() {
 
     expect(restored.materialEstimates.single.status, EstimateStatus.ordered);
     expect(restored.messages.first.title, '材料已下单');
+
+    await sessionStore.clear();
+    final withoutSession = await OwnerAppState.memory(
+      store: store,
+      sessionStore: sessionStore,
+      profileApi: profileApi,
+    );
+    expect(withoutSession.materialEstimates, isEmpty);
+    expect(withoutSession.messages, isEmpty);
   });
+}
+
+AuthSession _validSession() => AuthSession(
+  accessToken: 'owner-token',
+  tokenType: 'Bearer',
+  expiresAt: DateTime.now().toUtc().add(const Duration(hours: 1)),
+  userId: 'owner-id',
+  phone: '13900000000',
+  roles: const ['OWNER'],
+);
+
+final class _OfflineOwnerProfileApi implements OwnerProfileApi {
+  const _OfflineOwnerProfileApi();
+
+  @override
+  Future<RemoteOwnerProfile> getCurrent(String accessToken) async {
+    throw const AuthApiException(
+      code: 'NETWORK_UNAVAILABLE',
+      message: 'offline fixture',
+    );
+  }
+
+  @override
+  Future<RemoteOwnerProfile> updateCurrent(
+    String accessToken,
+    OwnerProfileUpdate request,
+  ) => throw UnsupportedError('not used by material estimate tests');
 }

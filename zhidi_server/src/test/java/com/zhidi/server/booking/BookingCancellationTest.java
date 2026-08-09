@@ -33,6 +33,9 @@ class BookingCancellationTest extends MySqlContainerSupport {
 	BookingRepository bookings;
 
 	@Autowired
+	VisitProposalRepository visitProposals;
+
+	@Autowired
 	ServiceRequestRepository requests;
 
 	@Autowired
@@ -53,6 +56,7 @@ class BookingCancellationTest extends MySqlContainerSupport {
 
 	@BeforeEach
 	void cleanDatabase() {
+		visitProposals.deleteAll();
 		bookings.deleteAll();
 		requests.deleteAll();
 		workerProfiles.deleteAll();
@@ -143,7 +147,31 @@ class BookingCancellationTest extends MySqlContainerSupport {
 			bookingService.ownerCancel(owner.getId(),
 				pendingBooking.getId(), "再取消一次"));
 
-		assertThat(error).isInstanceOf(IllegalStateException.class);
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
+			ex -> {
+				assertThat(ex.status().value()).isEqualTo(409);
+				assertThat(ex.code()).isEqualTo("BOOKING_CANNOT_CANCEL");
+			});
+	}
+
+	@Test
+	void onSiteBookingCannotBeCancelledWithBusinessError() {
+		bookingService.proposeVisit(worker2.getId(), acceptedBooking.getId(),
+			Instant.parse("2026-08-02T01:00:00Z"));
+		bookingService.acceptVisit(owner.getId(), acceptedBooking.getId());
+		bookingService.arrive(worker2.getId(), acceptedBooking.getId(), true);
+		bookingService.arrive(owner.getId(), acceptedBooking.getId(), false);
+
+		Throwable error = catchThrowable(() ->
+			bookingService.ownerCancel(owner.getId(),
+				acceptedBooking.getId(), "已到场后误点取消"));
+
+		assertThat(error).isInstanceOfSatisfying(BusinessException.class,
+			ex -> {
+				assertThat(ex.status().value()).isEqualTo(409);
+				assertThat(ex.code()).isEqualTo("BOOKING_CANNOT_CANCEL");
+				assertThat(ex.getMessage()).contains("上门");
+			});
 	}
 
 	private User createUser(String phone, UserRole role) {

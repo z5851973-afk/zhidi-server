@@ -79,17 +79,32 @@ class OwnerProfileServiceIntegrationTest extends MySqlContainerSupport {
 	}
 
 	@Test
-	void completenessRequiresEveryRequiredProfileValue() {
-		assertThat(update("李明", "旧房改造", "科华路", new BigDecimal("89.50"))
-			.profileComplete()).isTrue();
+	void completenessRequiresIdentityInsteadOfHouseDetails() {
+		assertThat(update("李明", null, null, null).profileComplete()).isTrue();
 		assertThat(update(null, "旧房改造", "科华路", new BigDecimal("89.50"))
 			.profileComplete()).isFalse();
-		assertThat(update("李明", null, "科华路", new BigDecimal("89.50"))
-			.profileComplete()).isFalse();
-		assertThat(update("李明", "旧房改造", null, new BigDecimal("89.50"))
-			.profileComplete()).isFalse();
-		assertThat(update("李明", "旧房改造", "科华路", null)
-			.profileComplete()).isFalse();
+	}
+
+	@Test
+	void profileContractIncludesOptionalAvatarAndGender() {
+		assertThat(OwnerProfileRequest.class.getRecordComponents())
+			.extracting(component -> component.getName())
+			.contains("avatarUrl", "gender");
+		assertThat(OwnerProfileResponse.class.getRecordComponents())
+			.extracting(component -> component.getName())
+			.contains("avatarUrl", "gender");
+	}
+
+	@Test
+	void storesAndReturnsPlatformAvatarAndGender() {
+		OwnerProfileResponse response = service.update(owner.getId(), owner.getPhone(),
+			new OwnerProfileRequest("李明", "成都", null, null, null,
+				"/uploads/owner-avatar/2026/08/02/avatar.webp", "MALE"));
+
+		assertThat(response.avatarUrl())
+			.isEqualTo("/uploads/owner-avatar/2026/08/02/avatar.webp");
+		assertThat(response.gender()).isEqualTo("MALE");
+		assertThat(service.get(owner.getId(), owner.getPhone())).isEqualTo(response);
 	}
 
 	@Test
@@ -101,6 +116,14 @@ class OwnerProfileServiceIntegrationTest extends MySqlContainerSupport {
 			null, null, null, null, new BigDecimal("0.99")))).hasSize(1);
 		assertThat(validator.validate(new OwnerProfileRequest(
 			null, null, null, null, new BigDecimal("99999.99")))).isEmpty();
+		assertThat(validator.validate(new OwnerProfileRequest(
+			"李明", "成都", null, null, null,
+			"https://example.com/avatar.png", "MALE"))).hasSize(1);
+		assertThat(validator.validate(new OwnerProfileRequest(
+			"李明", "成都", null, null, null,
+			"/uploads/daily-reports/avatar.png", "MALE"))).hasSize(1);
+		assertThat(validator.validate(new OwnerProfileRequest(
+			"李明", "成都", null, null, null, null, "UNKNOWN"))).hasSize(1);
 	}
 
 	private OwnerProfileResponse update(String name, String decorationType, String address,

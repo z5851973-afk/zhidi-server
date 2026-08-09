@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../../app/owner_app_scope.dart';
 import '../../../app/owner_models.dart';
-import '../../renovation/worker_chat_page.dart';
 import '../../renovation/construction_standards_page.dart';
-import '../../order/create_order_page.dart';
 import '../../../design/tokens.dart';
 
 class WorkerDetailPage extends StatefulWidget {
@@ -775,8 +773,11 @@ class _TrustFlowSection extends StatelessWidget {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.verified_user_outlined,
-                      size: 18, color: ZdColors.primary),
+                  Icon(
+                    Icons.verified_user_outlined,
+                    size: 18,
+                    color: ZdColors.primary,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -790,10 +791,16 @@ class _TrustFlowSection extends StatelessWidget {
                   ),
                   Text(
                     '查看平台施工标准',
-                    style: TextStyle(fontSize: 13, color: ZdColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: ZdColors.textSecondary,
+                    ),
                   ),
-                  Icon(Icons.chevron_right_rounded,
-                      size: 18, color: ZdColors.textHint),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: ZdColors.textHint,
+                  ),
                 ],
               ),
             ),
@@ -2356,12 +2363,9 @@ class _BottomActionBar extends StatelessWidget {
               child: SizedBox(
                 height: 44,
                 child: ElevatedButton.icon(
-                  onPressed: () => Navigator.push(
+                  onPressed: () => ScaffoldMessenger.of(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => WorkerChatPage(workerName: workerName),
-                    ),
-                  ),
+                  ).showSnackBar(const SnackBar(content: Text('平台咨询暂未开放'))),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF07C160),
                     foregroundColor: Colors.white,
@@ -2372,7 +2376,7 @@ class _BottomActionBar extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.chat_rounded, size: 20),
                   label: const Text(
-                    '问师傅',
+                    '咨询未开放',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -2385,11 +2389,8 @@ class _BottomActionBar extends StatelessWidget {
               child: SizedBox(
                 height: 44,
                 child: ElevatedButton(
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => CreateOrderPage(workerName: workerName),
-                    ),
+                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请从“找师傅”选择真实师傅后预约')),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFF7A2F),
@@ -2401,10 +2402,7 @@ class _BottomActionBar extends StatelessWidget {
                   ),
                   child: const Text(
                     '立即预约',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),

@@ -10,7 +10,7 @@ import 'package:zhidi_app/services/auth_session_store.dart';
 import 'package:zhidi_app/services/owner_profile_api_client.dart';
 
 void main() {
-  testWidgets('start button enables as soon as required text fields change', (
+  testWidgets('only name and city are required and phone stays read only', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(430, 932);
@@ -34,15 +34,20 @@ void main() {
       '测试业主',
     );
     await tester.enterText(
-      find.byKey(const Key('onboarding-address-field')),
-      'TestHome1-1',
-    );
-    await tester.tap(find.text('新房装修'));
-    await tester.enterText(
-      find.byKey(const Key('onboarding-area-field')),
-      '90',
+      find.byKey(const Key('onboarding-city-field')),
+      '成都',
     );
     await tester.pump();
+
+    expect(find.byKey(const Key('onboarding-address-field')), findsNothing);
+    expect(find.byKey(const Key('onboarding-area-field')), findsNothing);
+    expect(find.text('装修类型'), findsNothing);
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const Key('onboarding-phone-field')))
+          .readOnly,
+      isTrue,
+    );
 
     final start = tester.widget<ElevatedButton>(
       find.widgetWithText(ElevatedButton, '开始使用'),
@@ -134,19 +139,14 @@ void main() {
     expect(finished, 0);
     expect(find.byType(OnboardingPage), findsOneWidget);
     expect(find.text('保存失败，请稍后重试'), findsOneWidget);
-    expect(find.text('麓湖 1 栋 101'), findsOneWidget);
-    expect(find.text('96'), findsOneWidget);
+    expect(find.text('刘先生'), findsOneWidget);
+    expect(find.text('成都'), findsOneWidget);
   });
 }
 
 Future<void> _fillRequiredFields(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('onboarding-name-field')), '刘先生');
-  await tester.enterText(
-    find.byKey(const Key('onboarding-address-field')),
-    '麓湖 1 栋 101',
-  );
-  await tester.tap(find.text('新房装修'));
-  await tester.enterText(find.byKey(const Key('onboarding-area-field')), '96');
+  await tester.enterText(find.byKey(const Key('onboarding-city-field')), '成都');
   await tester.pump();
 }
 
@@ -209,6 +209,8 @@ RemoteOwnerProfile _remoteProfile() => const RemoteOwnerProfile(
   phone: '13812345678',
   name: '王先生',
   city: '成都',
+  avatarUrl: null,
+  gender: null,
   decorationType: null,
   address: null,
   area: null,
@@ -220,8 +222,10 @@ RemoteOwnerProfile _updatedRemoteProfile() => const RemoteOwnerProfile(
   phone: '13812345678',
   name: '服务端姓名',
   city: '服务端城市',
-  decorationType: '新房装修',
-  address: '麓湖 1 栋 101',
-  area: 96,
+  avatarUrl: null,
+  gender: 'FEMALE',
+  decorationType: null,
+  address: null,
+  area: null,
   profileComplete: true,
 );

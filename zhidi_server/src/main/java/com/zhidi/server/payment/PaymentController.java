@@ -6,6 +6,7 @@ import com.zhidi.server.common.security.CurrentUserPrincipal;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -27,14 +28,17 @@ import org.springframework.web.bind.annotation.RestController;
 public class PaymentController {
 
 	private final PaymentOrderService paymentOrderService;
+	private final OfflinePaymentInstructionsService offlinePaymentInstructions;
 
-	public PaymentController(PaymentOrderService paymentOrderService) {
+	public PaymentController(PaymentOrderService paymentOrderService,
+			OfflinePaymentInstructionsService offlinePaymentInstructions) {
 		this.paymentOrderService = paymentOrderService;
+		this.offlinePaymentInstructions = offlinePaymentInstructions;
 	}
 
 	@PostMapping("/api/v1/payment/orders")
 	@PreAuthorize("hasRole('OWNER')")
-	@Operation(summary = "业主创建支付订单（HIRED 状态可用）")
+	@Operation(summary = "业主创建支付订单（施工中或验收完成状态可用）")
 	public ApiResponse<PaymentOrderResponse> createOrder(
 			@AuthenticationPrincipal CurrentUserPrincipal principal,
 			@Valid @RequestBody CreatePaymentOrderRequest request) {
@@ -64,6 +68,16 @@ public class PaymentController {
 			paymentOrderService.listOrdersForUser(principal.userId(),
 				PageRequest.of(page, size)),
 			traceId());
+	}
+
+	@GetMapping("/api/v1/payment/offline-instructions")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "读取本单工程款和平台服务费线下付款指引")
+	public ApiResponse<OfflinePaymentInstructionsResponse> offlineInstructions(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@RequestParam UUID orderId) {
+		return ApiResponse.ok(
+			offlinePaymentInstructions.get(principal.userId(), orderId), traceId());
 	}
 
 	@PostMapping("/api/v1/payment/callback")
@@ -110,6 +124,30 @@ public class PaymentController {
 			principal.userId(), orderId), traceId());
 	}
 
+	@PostMapping("/api/v1/payment/orders/{orderId}/offline-split-report")
+	@PreAuthorize("hasRole('OWNER')")
+	@Operation(summary = "业主一次提交工程款与平台服务费两笔线下付款信息")
+	public ApiResponse<PaymentOrderResponse> reportSplitOfflinePayments(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID orderId,
+			@Valid @RequestBody SplitOfflinePaymentReportRequest request) {
+		return ApiResponse.ok(paymentOrderService.reportSplitOfflinePayments(
+			principal.userId(), orderId,
+			request.constructionChannel(), request.constructionReference(),
+			request.platformFeeChannel(), request.platformFeeReference(),
+			request.note()), traceId());
+	}
+
+	@PostMapping("/api/v1/payment/orders/{orderId}/construction-receipt-confirmation")
+	@PreAuthorize("hasRole('WORKER')")
+	@Operation(summary = "工人确认收到本单全额工程款")
+	public ApiResponse<PaymentOrderResponse> confirmConstructionReceipt(
+			@AuthenticationPrincipal CurrentUserPrincipal principal,
+			@PathVariable UUID orderId) {
+		return ApiResponse.ok(paymentOrderService.confirmConstructionReceipt(
+			principal.userId(), orderId), traceId());
+	}
+
 	private static String traceId() {
 		return MDC.get(TraceIdFilter.MDC_KEY);
 	}
@@ -129,4 +167,31 @@ public class PaymentController {
 		@NotBlank @Size(max = 32) String channel,
 		@Size(max = 128) String reference,
 		@Size(max = 300) String note) {}
+
+	public record SplitOfflinePaymentReportRequest(
+		@Size(max = 32) String constructionChannel,
+		@Size(max = 128) String constructionReference,
+		@Size(max = 32) String platformFeeChannel,
+		@Size(max = 128) String platformFeeReference,
+		@Size(max = 300) String note) {
+
+		@AssertTrue(message = "至少提交一笔完整付款信息")
+		public boolean isComponentSelectionValid() {
+			boolean constructionAbsent = constructionChannel == null
+				&& constructionReference == null;
+			boolean platformFeeAbsent = platformFeeChannel == null
+				&& platformFeeReference == null;
+			boolean constructionComplete = hasText(constructionChannel)
+				&& hasText(constructionReference);
+			boolean platformFeeComplete = hasText(platformFeeChannel)
+				&& hasText(platformFeeReference);
+			return (constructionAbsent || constructionComplete)
+				&& (platformFeeAbsent || platformFeeComplete)
+				&& (constructionComplete || platformFeeComplete);
+		}
+
+		private static boolean hasText(String value) {
+			return value != null && !value.isBlank();
+		}
+	}
 }

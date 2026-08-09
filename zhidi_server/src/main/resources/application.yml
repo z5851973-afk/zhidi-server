@@ -55,3 +55,33 @@ zhidi:
   upload:
     root: ${ZHIDI_UPLOAD_ROOT:./uploads}
     max-image-bytes: 10485760
+    allowed-public-origins: "${ZHIDI_UPLOAD_ALLOWED_PUBLIC_ORIGINS:http://47.109.0.191:8080}"
+
+payment:
+  offline:
+    company-account-name: ${PAYMENT_COMPANY_ACCOUNT_NAME:}
+    company-bank-name: ${PAYMENT_COMPANY_BANK_NAME:}
+    company-bank-account: ${PAYMENT_COMPANY_BANK_ACCOUNT:}
+    warranty-account-name: ${PAYMENT_WARRANTY_ACCOUNT_NAME:}
+    warranty-bank-name: ${PAYMENT_WARRANTY_BANK_NAME:}
+    warranty-bank-account: ${PAYMENT_WARRANTY_BANK_ACCOUNT:}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+zhidi:
+  upload:
+    allowed-public-origins: "${ZHIDI_UPLOAD_ALLOWED_PUBLIC_ORIGINS:http://127.0.0.1:8080,http://localhost:8080,http://10.0.2.2:8080}"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: test
+
+zhidi:
+  upload:
+    allowed-public-origins: "${ZHIDI_UPLOAD_ALLOWED_PUBLIC_ORIGINS:http://127.0.0.1:8080,http://localhost:8080,http://10.0.2.2:8080}"

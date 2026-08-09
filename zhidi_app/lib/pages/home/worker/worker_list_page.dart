@@ -137,12 +137,9 @@ class _WorkerListPageState extends State<WorkerListPage> {
   void _confirmSelection(BuildContext context) async {
     if (_selectedIndex < 0) return;
     final worker = _workers[_selectedIndex];
-    final remoteProfile = _remoteWorkers
-        .cast<RemoteWorkerDirectoryProfile?>()
-        .firstWhere(
-          (remote) => remote != null && _remoteWorkerId(remote) == worker.id,
-          orElse: () => null,
-        );
+    final remoteProfile = _remoteWorkers.firstWhere(
+      (remote) => _remoteWorkerId(remote) == worker.id,
+    );
     final result = await Navigator.push(
       context,
       MaterialPageRoute(

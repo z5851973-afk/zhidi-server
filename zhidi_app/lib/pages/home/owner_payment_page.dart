@@ -4,6 +4,9 @@ import '../../app/owner_app_scope.dart';
 import '../../design/tokens.dart';
 import '../../models/payment_models.dart';
 import '../../services/payment_api_client.dart';
+import '../../services/worker_quote_api_client.dart';
+import 'owner_after_sale_page.dart';
+import '../shared/quote_detail_page.dart';
 
 const _primary = ZdColors.primary;
 const _bg = ZdColors.background;
@@ -19,11 +22,15 @@ class OwnerPaymentPage extends StatefulWidget {
   const OwnerPaymentPage({
     super.key,
     required this.bookingId,
+    this.initialPaymentOrderId,
     this.paymentApi,
+    this.quoteApi,
   });
 
   final String bookingId;
+  final String? initialPaymentOrderId;
   final PaymentApiClient? paymentApi;
+  final WorkerQuoteApiClient? quoteApi;
 
   @override
   State<OwnerPaymentPage> createState() => _OwnerPaymentPageState();
@@ -35,7 +42,25 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
   bool _creating = false;
   bool _reporting = false;
   String? _error;
+  String? _instructionError;
   bool _loaded = false;
+  bool _targetUnavailable = false;
+  bool _targetTemporarilyUnavailable = false;
+  bool _afterSaleEligible = false;
+  OfflinePaymentInstructionsModel? _instructions;
+  String _constructionChannel = '银行卡转账';
+  String _platformFeeChannel = '对公转账';
+  final _constructionReferenceController = TextEditingController();
+  final _platformFeeReferenceController = TextEditingController();
+  final _splitNoteController = TextEditingController();
+
+  @override
+  void dispose() {
+    _constructionReferenceController.dispose();
+    _platformFeeReferenceController.dispose();
+    _splitNoteController.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -50,18 +75,57 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     setState(() {
       _loading = true;
       _error = null;
+      _targetUnavailable = false;
+      _targetTemporarilyUnavailable = false;
+      _afterSaleEligible = false;
     });
     try {
       final api = widget.paymentApi ?? PaymentApiClient();
       final token = (await OwnerAppScope.of(context).getAccessToken())!;
-      final orders = await api.listOrders(token);
-      _order = orders.cast<PaymentOrderModel?>().firstWhere(
-        (o) => o?.bookingId == widget.bookingId,
-        orElse: () => null,
-      );
+      final targetOrderId = widget.initialPaymentOrderId?.trim();
+      if (targetOrderId != null && targetOrderId.isNotEmpty) {
+        try {
+          final targetOrder = await api.getOrder(token, targetOrderId);
+          if (targetOrder.id != targetOrderId ||
+              targetOrder.bookingId != widget.bookingId) {
+            _order = null;
+            _targetUnavailable = true;
+          } else {
+            _order = targetOrder;
+            _targetUnavailable = false;
+          }
+        } on PaymentApiException catch (error) {
+          _order = null;
+          if (error.isNotFound) {
+            _targetUnavailable = true;
+          } else {
+            _targetTemporarilyUnavailable = true;
+            _error = '暂时无法打开订单，请稍后重试';
+          }
+        } catch (_) {
+          _order = null;
+          _targetTemporarilyUnavailable = true;
+          _error = '暂时无法打开订单，请稍后重试';
+        }
+      } else {
+        final orders = await api.listOrders(token);
+        _order = orders.cast<PaymentOrderModel?>().firstWhere(
+          (o) => o?.bookingId == widget.bookingId,
+          orElse: () => null,
+        );
+      }
+      if (_order?.isSplitOfflineV2 == true) {
+        await _loadSplitInstructions(api, token, _order!.id);
+      }
+      await _loadAfterSaleEligibility(api, token);
     } catch (e) {
       _order = null;
-      _error = e.toString();
+      if (widget.initialPaymentOrderId?.trim().isNotEmpty == true) {
+        _targetTemporarilyUnavailable = true;
+        _error = '暂时无法打开订单，请稍后重试';
+      } else {
+        _error = e.toString();
+      }
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -70,15 +134,144 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     setState(() {
       _creating = true;
       _error = null;
+      _afterSaleEligible = false;
     });
     try {
       final api = widget.paymentApi ?? PaymentApiClient();
       final token = (await OwnerAppScope.of(context).getAccessToken())!;
       _order = await api.createOrder(token, widget.bookingId);
+      if (_order!.isSplitOfflineV2) {
+        await _loadSplitInstructions(api, token, _order!.id);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
     if (mounted) setState(() => _creating = false);
+  }
+
+  Future<void> _loadSplitInstructions(
+    PaymentApiClient api,
+    String token,
+    String orderId,
+  ) async {
+    try {
+      _instructions = await api.getOfflinePaymentInstructions(token, orderId);
+      _instructionError = null;
+    } catch (error) {
+      _instructions = null;
+      _instructionError = _friendlyError(error);
+    }
+  }
+
+  Future<void> _loadAfterSaleEligibility(
+    PaymentApiClient api,
+    String token,
+  ) async {
+    _afterSaleEligible = false;
+    if (_order?.isPaid != true) return;
+    try {
+      final context = await api.getAfterSaleBookingContext(
+        token,
+        widget.bookingId,
+      );
+      _afterSaleEligible =
+          context.bookingStatus == 'COMPLETED' &&
+          context.paymentStatus == 'PAID';
+    } catch (_) {
+      _afterSaleEligible = false;
+    }
+  }
+
+  Future<void> _reportSplitOfflinePayments() async {
+    final order = _order!;
+    final reportConstruction = order.canReportConstructionPayment;
+    final reportPlatformFee = order.canReportPlatformFee;
+    final constructionReference = _constructionReferenceController.text.trim();
+    final platformReference = _platformFeeReferenceController.text.trim();
+    if (!reportConstruction && !reportPlatformFee) return;
+    if (reportConstruction && constructionReference.isEmpty) {
+      setState(() => _error = '请填写工程款交易参考号');
+      return;
+    }
+    if (reportPlatformFee && platformReference.isEmpty) {
+      setState(() => _error = '请填写平台服务费交易参考号');
+      return;
+    }
+    final instructions = _instructions;
+    if (instructions == null) {
+      setState(() => _error = '平台收款账户配置中，请稍后再试');
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          reportConstruction && reportPlatformFee
+              ? '再次核对两笔付款'
+              : reportConstruction
+              ? '核对工程款付款信息'
+              : '核对平台服务费付款信息',
+        ),
+        content: Text(
+          '${reportConstruction ? '工程款 ¥${instructions.constructionAmount.toStringAsFixed(2)} 已支付给${instructions.workerName}\n' : ''}'
+          '${reportPlatformFee ? '平台服务费 ¥${instructions.platformFeeAmount.toStringAsFixed(2)} 已支付给${instructions.companyAccountName}\n' : ''}\n'
+          '请确认收款对象和金额无误。',
+          style: const TextStyle(height: 1.6),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('返回核对'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('确认提交核验'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _reporting = true;
+      _error = null;
+    });
+    try {
+      final token = await OwnerAppScope.of(context).getAccessToken();
+      if (token == null || token.isEmpty) throw Exception('登录已失效，请重新登录');
+      _order = await (widget.paymentApi ?? PaymentApiClient())
+          .reportSplitOfflinePayments(
+            token,
+            _order!.id,
+            constructionChannel: reportConstruction
+                ? _constructionChannel
+                : null,
+            constructionReference: reportConstruction
+                ? constructionReference
+                : null,
+            platformFeeChannel: reportPlatformFee ? _platformFeeChannel : null,
+            platformFeeReference: reportPlatformFee ? platformReference : null,
+            note: _splitNoteController.text.trim().isEmpty
+                ? null
+                : _splitNoteController.text.trim(),
+          );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reportConstruction && reportPlatformFee
+                  ? '两笔付款信息已提交核验'
+                  : reportConstruction
+                  ? '工程款信息已提交核验'
+                  : '平台服务费信息已提交核验',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = _friendlyError(error));
+    } finally {
+      if (mounted) setState(() => _reporting = false);
+    }
   }
 
   Future<void> _reportOfflinePayment() async {
@@ -157,13 +350,14 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     try {
       final token = await OwnerAppScope.of(context).getAccessToken();
       if (token == null || token.isEmpty) throw Exception('登录已失效，请重新登录');
-      _order = await (widget.paymentApi ?? PaymentApiClient()).reportOfflinePayment(
-        token,
-        _order!.id,
-        channel: channel,
-        reference: reference.isEmpty ? null : reference,
-        note: note.isEmpty ? null : note,
-      );
+      _order = await (widget.paymentApi ?? PaymentApiClient())
+          .reportOfflinePayment(
+            token,
+            _order!.id,
+            channel: channel,
+            reference: reference.isEmpty ? null : reference,
+            note: note.isEmpty ? null : note,
+          );
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -174,6 +368,40 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     } finally {
       if (mounted) setState(() => _reporting = false);
     }
+  }
+
+  Future<void> _openQuoteDetails() async {
+    final order = _order!;
+    try {
+      final token = await OwnerAppScope.of(context).getAccessToken();
+      if (token == null || token.isEmpty) throw Exception('登录已失效，请重新登录');
+      final quotes = await (widget.quoteApi ?? WorkerQuoteApiClient())
+          .listQuotesForBooking(token, widget.bookingId);
+      final quote = quotes.cast<RemoteQuote?>().firstWhere(
+        (item) => item?.id == order.quoteId,
+        orElse: () => null,
+      );
+      if (quote == null) throw Exception('未找到已确认的报价单');
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => QuoteDetailPage(quote: quote)),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('报价明细加载失败：$error')));
+    }
+  }
+
+  void _openAfterSale() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OwnerAfterSalePage(bookingId: _order!.bookingId),
+      ),
+    );
   }
 
   @override
@@ -191,13 +419,33 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
           : _order == null
           ? _buildNoOrder()
           : _buildOrderDetail(),
-      bottomNavigationBar: _order != null && _order!.isPending
+      bottomNavigationBar:
+          _order != null &&
+              (_order!.isPending ||
+                  (_order!.isSplitOfflineV2 &&
+                      _order!.status == 'PARTIALLY_REPORTED' &&
+                      _order!.hasReportableSplitPaymentComponent))
           ? _buildBottomBar()
           : null,
     );
   }
 
   Widget _buildNoOrder() {
+    if (_targetUnavailable) {
+      return const Center(child: Text('该订单已更新或不再可用'));
+    }
+    if (_targetTemporarilyUnavailable) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('暂时无法打开订单，请稍后重试'),
+            const SizedBox(height: 8),
+            TextButton(onPressed: _loadOrder, child: const Text('重试')),
+          ],
+        ),
+      );
+    }
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -241,6 +489,9 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
 
   Widget _buildOrderDetail() {
     final order = _order!;
+    final quoteTotal = order.isSplitOfflineV2
+        ? order.quoteAmount
+        : order.amount - order.platformFee;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -275,30 +526,34 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
           _infoCard(
             '金额明细',
             children: [
-              _row('报价总价', '¥${order.amount.toStringAsFixed(2)}'),
+              _row('报价清单总价', '¥${quoteTotal.toStringAsFixed(2)}'),
               _row(
-                '平台服务费',
+                '平台服务费（10%）',
                 '¥${order.platformFee.toStringAsFixed(2)}',
                 color: _textLight,
               ),
               const Divider(height: 16, color: _line),
               _row('应付金额', '¥${order.amount.toStringAsFixed(2)}', bold: true),
-              _row(
-                '工人可结算 90%',
-                '¥${order.workerSettlement.toStringAsFixed(2)}',
-                color: _textLight,
-                fontSize: 12,
-              ),
-              _row(
-                '质保金冻结 10%',
-                '¥${order.warrantyRetention.toStringAsFixed(2)}',
-                color: _primary,
-                fontSize: 12,
-              ),
+              if (order.quoteId != null) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _openQuoteDetails,
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    label: const Text('查看报价明细'),
+                  ),
+                ),
+              ],
             ],
           ),
 
           const SizedBox(height: 12),
+
+          if (order.isSplitOfflineV2) ...[
+            ..._buildSplitPaymentCards(order),
+            const SizedBox(height: 12),
+          ],
 
           // 订单信息
           _infoCard(
@@ -320,6 +575,13 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
                 _row('付款凭证', order.paymentReference!),
               if (order.ownerReportedPaidAt != null)
                 _row('业主报告付款', order.ownerReportedPaidAt!),
+              if (order.isSplitOfflineV2) ...[
+                _row(
+                  '工程款状态',
+                  _componentStatus(order.constructionPaymentStatus),
+                ),
+                _row('平台服务费状态', _componentStatus(order.platformFeeStatus)),
+              ],
               if (order.workerConfirmedReceivedAt != null)
                 _row('工人确认收款', order.workerConfirmedReceivedAt!),
               if (order.paidAt != null) _row('支付时间', order.paidAt!),
@@ -329,24 +591,30 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
 
           const SizedBox(height: 12),
           _infoCard(
-            '付款说明',
-            children: const [
+            '线下付款与人工确认',
+            children: [
               Text(
-                '在线支付与退款渠道尚未开通。当前采用线下付款、双方确认模式：平台不经手资金，不收取平台服务费；工人确认实际到账后订单才算已付款。',
-                style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
+                order.isSplitOfflineV2
+                    ? '当前采用线下付款与人工确认：工程款由业主直接支付给师傅，平台服务费单独支付到知底公司账户。工程款由师傅确认到账，服务费由平台人工核验；本页面只提交付款信息，不会直接划转资金。'
+                    : '应付金额由工人报价清单总价与 10% 平台服务费组成。当前采用线下付款与人工确认：业主提交付款信息后，由师傅确认实际到账；本页面不会直接划转资金。',
+                style: const TextStyle(
+                  fontSize: 13,
+                  color: _textMid,
+                  height: 1.5,
+                ),
               ),
             ],
           ),
 
-          // 退款入口
-          if (order.isPaid) ...[
+          // 订单绑定的人工售后入口
+          if (_afterSaleEligible) ...[
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: null,
-                icon: const Icon(Icons.undo),
-                label: const Text('退款渠道尚未开通'),
+                onPressed: _openAfterSale,
+                icon: const Icon(Icons.support_agent_outlined),
+                label: const Text('申请售后（人工处理）'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _errorColor,
                   padding: const EdgeInsets.symmetric(vertical: 14),
@@ -360,6 +628,7 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
   }
 
   Widget _buildBottomBar() {
+    final split = _order!.isSplitOfflineV2;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -373,29 +642,249 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
         ],
       ),
       child: SafeArea(
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _reporting ? null : _reportOfflinePayment,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _primary,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (split) ...[
+              Text(
+                '应付合计 ¥${_order!.amount.toStringAsFixed(2)}',
+                style: const TextStyle(
+                  color: _textDark,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _reporting || (split && _instructions == null)
+                    ? null
+                    : split
+                    ? _reportSplitOfflinePayments
+                    : _reportOfflinePayment,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: _reporting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        split
+                            ? _splitSubmitLabel(_order!)
+                            : '我已线下付款  ¥${_order!.amount.toStringAsFixed(2)}',
+                      ),
+              ),
             ),
-            child: _reporting
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : Text('我已线下付款  ¥${_order!.amount.toStringAsFixed(2)}'),
-          ),
+          ],
         ),
       ),
     );
+  }
+
+  List<Widget> _buildSplitPaymentCards(PaymentOrderModel order) {
+    final instructions = _instructions;
+    if (instructions == null) {
+      return [
+        _infoCard(
+          '付款账户',
+          children: [
+            Text(
+              _instructionError ?? '正在读取付款账户…',
+              style: TextStyle(
+                color: _instructionError == null ? _textMid : _errorColor,
+                height: 1.5,
+              ),
+            ),
+            if (_instructionError != null) ...[
+              const SizedBox(height: 8),
+              const Text(
+                '平台收款账户配置中，请稍后再试。当前不会改变订单付款状态。',
+                style: TextStyle(color: _textMid, fontSize: 13),
+              ),
+            ],
+          ],
+        ),
+      ];
+    }
+    final cards = <Widget>[];
+    if (order.canReportConstructionPayment) {
+      cards.add(
+        _infoCard(
+          '支付工程款给${instructions.workerName}',
+          children: [
+            _row(
+              '工程款（报价全额）',
+              '¥${instructions.constructionAmount.toStringAsFixed(2)}',
+              bold: true,
+            ),
+            const Text(
+              '请先在应用内联系师傅确认其本人收款方式，平台不保存或展示未经核验的工人银行卡。',
+              style: TextStyle(fontSize: 13, color: _textMid, height: 1.5),
+            ),
+            const SizedBox(height: 10),
+            _channelField(
+              value: _constructionChannel,
+              label: '工程款付款方式',
+              items: const ['银行卡转账', '微信转账', '支付宝转账', '现金'],
+              onChanged: (value) =>
+                  setState(() => _constructionChannel = value),
+            ),
+            TextField(
+              key: const Key('construction-payment-reference'),
+              controller: _constructionReferenceController,
+              maxLength: 128,
+              decoration: const InputDecoration(
+                labelText: '工程款交易参考号',
+                hintText: '转账单号或双方约定凭证',
+              ),
+            ),
+            if (!order.canReportPlatformFee) _splitNoteField(),
+          ],
+        ),
+      );
+    } else {
+      cards.add(
+        _readOnlyPaymentComponentCard(
+          title: '工程款付款记录',
+          amountLabel: '工程款（报价全额）',
+          amount: instructions.constructionAmount,
+          status: order.constructionPaymentStatus,
+          message: order.constructionPaymentStatus == 'CONFIRMED'
+              ? '已确认的工程款不需要重新转账'
+              : '工程款已提交核验，请勿重复转账',
+        ),
+      );
+    }
+    cards.add(const SizedBox(height: 12));
+    if (order.canReportPlatformFee) {
+      cards.add(
+        _infoCard(
+          '支付平台服务费给知底',
+          children: [
+            _row(
+              '平台服务费（10%）',
+              '¥${instructions.platformFeeAmount.toStringAsFixed(2)}',
+              bold: true,
+            ),
+            _row('收款户名', instructions.companyAccountName),
+            _row('开户银行', instructions.companyBankName),
+            _row('收款账号', instructions.companyBankAccount),
+            if (order.platformFeeStatus == 'REJECTED' &&
+                order.platformFeeRejectionReason != null)
+              _row('上次驳回原因', order.platformFeeRejectionReason!),
+            const SizedBox(height: 10),
+            _channelField(
+              value: _platformFeeChannel,
+              label: '平台服务费付款方式',
+              items: const ['对公转账', '银行柜台转账'],
+              onChanged: (value) => setState(() => _platformFeeChannel = value),
+            ),
+            TextField(
+              key: const Key('platform-fee-reference'),
+              controller: _platformFeeReferenceController,
+              maxLength: 128,
+              decoration: const InputDecoration(
+                labelText: '平台服务费交易参考号',
+                hintText: '对公转账流水号',
+              ),
+            ),
+            _splitNoteField(),
+          ],
+        ),
+      );
+    } else {
+      cards.add(
+        _readOnlyPaymentComponentCard(
+          title: '平台服务费付款记录',
+          amountLabel: '平台服务费（10%）',
+          amount: instructions.platformFeeAmount,
+          status: order.platformFeeStatus,
+          message: order.platformFeeStatus == 'VERIFIED'
+              ? '已核验的平台服务费不需要重新转账'
+              : '平台服务费已提交核验，请勿重复转账',
+        ),
+      );
+    }
+    return cards;
+  }
+
+  Widget _splitNoteField() => TextField(
+    controller: _splitNoteController,
+    maxLength: 300,
+    decoration: const InputDecoration(labelText: '备注（选填）'),
+  );
+
+  Widget _readOnlyPaymentComponentCard({
+    required String title,
+    required String amountLabel,
+    required double amount,
+    required String status,
+    required String message,
+  }) => _infoCard(
+    title,
+    children: [
+      _row(amountLabel, '¥${amount.toStringAsFixed(2)}', bold: true),
+      _row('当前状态', _componentStatus(status)),
+      const SizedBox(height: 8),
+      Text(message, style: const TextStyle(color: _textMid, height: 1.5)),
+    ],
+  );
+
+  String _splitSubmitLabel(PaymentOrderModel order) {
+    if (order.canReportConstructionPayment && order.canReportPlatformFee) {
+      return '提交付款核验';
+    }
+    if (order.canReportConstructionPayment) {
+      return order.constructionPaymentStatus == 'REJECTED'
+          ? '重新提交工程款核验'
+          : '提交工程款核验';
+    }
+    return order.platformFeeStatus == 'REJECTED' ? '重新提交平台服务费核验' : '提交平台服务费核验';
+  }
+
+  Widget _channelField({
+    required String value,
+    required String label,
+    required List<String> items,
+    required ValueChanged<String> onChanged,
+  }) {
+    return DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label),
+      items: items
+          .map((item) => DropdownMenuItem(value: item, child: Text(item)))
+          .toList(),
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    );
+  }
+
+  String _componentStatus(String status) => switch (status) {
+    'NOT_REPORTED' => '未报备',
+    'REPORTED' => '核验中',
+    'CONFIRMED' => '师傅已确认',
+    'VERIFIED' => '平台已核验',
+    'REJECTED' => '已驳回',
+    _ => status,
+  };
+
+  String _friendlyError(Object error) {
+    final text = error.toString();
+    if (text.contains('OFFLINE_PAYMENT_INSTRUCTIONS_NOT_CONFIGURED')) {
+      return '平台收款账户配置中，请稍后再试';
+    }
+    if (text.contains('NETWORK_UNAVAILABLE')) return '网络不可用，请检查网络后重试';
+    return text.replaceFirst('Exception: ', '');
   }
 
   Widget _statusIcon(String status) {
@@ -403,6 +892,16 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
       'PENDING' => Icon(Icons.hourglass_empty, size: 48, color: _warning),
       'OWNER_REPORTED_PAID' => Icon(
         Icons.pending_actions,
+        size: 48,
+        color: _primary,
+      ),
+      'PARTIALLY_REPORTED' => Icon(
+        Icons.pending_actions,
+        size: 48,
+        color: _warning,
+      ),
+      'UNDER_REVIEW' => Icon(
+        Icons.fact_check_outlined,
         size: 48,
         color: _primary,
       ),
@@ -417,6 +916,8 @@ class _OwnerPaymentPageState extends State<OwnerPaymentPage> {
     return switch (status) {
       'PENDING' => _warning,
       'OWNER_REPORTED_PAID' => _primary,
+      'PARTIALLY_REPORTED' => _warning,
+      'UNDER_REVIEW' => _primary,
       'PAID' => _success,
       'REFUNDED' => Colors.blue,
       'FAILED' => _errorColor,

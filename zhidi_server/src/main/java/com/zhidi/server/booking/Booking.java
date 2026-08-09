@@ -75,6 +75,9 @@ public class Booking extends BaseEntity {
 	@Column(name = "on_site_at")
 	private Instant onSiteAt;
 
+	@Column(name = "scheduled_visit_at")
+	private Instant scheduledVisitAt;
+
 	protected Booking() {
 	}
 
@@ -177,6 +180,10 @@ public class Booking extends BaseEntity {
 		return onSiteAt;
 	}
 
+	public Instant getScheduledVisitAt() {
+		return scheduledVisitAt;
+	}
+
 	public void accept() {
 		if (this.status != BookingStatus.PENDING) {
 			throw new IllegalStateException(
@@ -205,11 +212,12 @@ public class Booking extends BaseEntity {
 		this.status = BookingStatus.VISIT_PROPOSED;
 	}
 
-	public void scheduleVisit() {
+	public void scheduleVisit(Instant scheduledVisitAt) {
 		if (this.status != BookingStatus.VISIT_PROPOSED) {
 			throw new IllegalStateException(
 				"只有待确认上门时间状态(VISIT_PROPOSED)才能确认，当前状态: " + this.status);
 		}
+		this.scheduledVisitAt = Objects.requireNonNull(scheduledVisitAt);
 		this.status = BookingStatus.VISIT_SCHEDULED;
 	}
 
@@ -258,7 +266,16 @@ public class Booking extends BaseEntity {
 			case PENDING, ACCEPTED, VISIT_PROPOSED,
 				 VISIT_SCHEDULED, ARRIVAL_PENDING -> true;
 			case ON_SITE, QUOTE_PENDING, READY_TO_START,
-				 REJECTED, CANCELLED, NOT_SELECTED, HIRED -> false;
+				 REJECTED, CANCELLED, NOT_SELECTED, HIRED, COMPLETED -> false;
+		};
+	}
+
+	public boolean canBeRemovedAsCandidate() {
+		return switch (status) {
+			case PENDING, ACCEPTED, VISIT_PROPOSED,
+				 VISIT_SCHEDULED, ARRIVAL_PENDING -> true;
+			case ON_SITE, QUOTE_PENDING, READY_TO_START,
+				 REJECTED, CANCELLED, NOT_SELECTED, HIRED, COMPLETED -> false;
 		};
 	}
 
@@ -284,6 +301,17 @@ public class Booking extends BaseEntity {
 				"只有待确认报价状态(QUOTE_PENDING)才能选定，当前状态: " + this.status);
 		}
 		this.status = BookingStatus.HIRED;
+	}
+
+	public void markCompleted() {
+		if (this.status == BookingStatus.COMPLETED) {
+			return;
+		}
+		if (this.status != BookingStatus.HIRED) {
+			throw new IllegalStateException(
+				"只有施工中的预约(HIRED)才能完成，当前状态: " + this.status);
+		}
+		this.status = BookingStatus.COMPLETED;
 	}
 
 	public void cancel(BookingCancellationActor actor, String cancelReason,

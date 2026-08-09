@@ -9,5 +9,7 @@ public interface WorkerCaseRepository extends JpaRepository<WorkerCase, UUID> {
 
 	List<WorkerCase> findByWorkerUserIdOrderByCreatedAtDesc(UUID workerUserId);
 
+	long countByWorkerUserId(UUID workerUserId);
+
 	Optional<WorkerCase> findByIdAndWorkerUserId(UUID id, UUID workerUserId);
 }
